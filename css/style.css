@@ -54,7 +54,7 @@ body {
   align-items: flex-start;
   min-width: min(90vw, 26rem);
   gap: 0.35rem;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 #hud .hud-row {
@@ -72,6 +72,55 @@ body {
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--text);
+}
+
+#hud .hud-volume {
+  gap: 0.75rem;
+  width: 100%;
+  align-items: center;
+  color: var(--muted);
+}
+
+#hud .hud-volume label {
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+#hud .hud-volume label span {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+#hud .hud-volume input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#hud .hud-toggles {
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  width: 100%;
+  justify-content: flex-start;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+#hud .hud-toggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+#hud .hud-toggles input[type="checkbox"] {
+  accent-color: var(--accent);
+  transform: translateY(0.5px);
 }
 
 #controls {
@@ -126,18 +175,6 @@ body {
   width: min(100%, 14rem);
 }
 
-.vol {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.vol input {
-  width: 8rem;
-}
-
 #controls label {
   cursor: pointer;
 }
@@ -145,6 +182,17 @@ body {
 #controls input[type="checkbox"] {
   accent-color: var(--accent);
   transform: translateY(0.5px);
+}
+
+#hud.hud-collapsed {
+  gap: 0.25rem;
+  padding: 0.6rem 0.9rem;
+}
+
+#hud.hud-collapsed .hud-top,
+#hud.hud-collapsed .hud-stats,
+#hud.hud-collapsed .hud-volume {
+  display: none;
 }
 
 #player {
@@ -163,10 +211,6 @@ body {
 
   #seek {
     width: min(100%, 12rem);
-  }
-
-  .vol input {
-    width: 6.5rem;
   }
 }
 
@@ -188,7 +232,7 @@ body {
   }
 
   #seek,
-  .vol input {
+  #hud .hud-volume input[type="range"] {
     width: 100%;
   }
 }

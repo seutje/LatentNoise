@@ -129,14 +129,14 @@
 ---
 
 ## Phase 9 — Renderer (Canvas 2D) & HUD
-- [ ] DPR‑aware canvas sizing; adaptive downscale on frame drops.
-- [ ] Trail pass via alpha decay; particles rendered additive.
-- [ ] Optional glow (2‑pass box blur to temp canvas).
-- [ ] HUD: FPS, track title/time, **volume slider**, toggles (HUD, Bloom, Trails, Grid, Safe, NN Bypass).
-- [ ] Keyboard shortcuts per DESIGN.md.
+- [x] DPR‑aware canvas sizing; adaptive downscale on frame drops.
+- [x] Trail pass via alpha decay; particles rendered additive.
+- [x] Optional glow (2-pass box blur to temp canvas).
+- [x] HUD: FPS, track title/time, **volume slider**, toggles (HUD, Bloom, Trails, Grid, Safe, NN Bypass).
+- [x] Keyboard shortcuts per DESIGN.md.
 
 **Acceptance:**
-- [ ] Visuals are smooth; HUD reflects state; toggles operate correctly.
+- [x] Visuals are smooth; HUD reflects state; toggles operate correctly.
 
 ---
 

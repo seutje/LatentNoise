@@ -26,3 +26,6 @@
 
 ## 2025-10-21 - Phase 8
 - Built the physics core with pooled typed arrays, semi-implicit integration, gravity/noise/repel/spring forces, and adaptive caps tied to frame timing; verified in the running app via DevTools that the module imports cleanly and responds to parameter sweeps without errors, satisfying the Phase 8 acceptance.
+
+## 2025-10-21 - Phase 9
+- Delivered the canvas renderer with DPR-aware sizing, adaptive resolution scaling, trails, bloom compositing, and HUD bindings (volume readout plus safety toggles). Wired keyboard shortcuts and the physics rendering loop through `app.js`, then confirmed via Chrome DevTools on http://127.0.0.1:8000 that toggles/keys update visuals smoothly and the console stays clean aside from the expected favicon 404.
