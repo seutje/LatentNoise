@@ -23,3 +23,6 @@
 
 ## 2025-10-21 - Phase 7
 - Implemented the mapping layer with critically-damped smoothing for the continuous channels, hysteretic gating for impulse-style responses, and safe-mode caps that keep photo-sensitive parameters within bounds; confirmed via DevTools console import that outputs stay stable at idle and respect the safety clamps.
+
+## 2025-10-21 - Phase 8
+- Built the physics core with pooled typed arrays, semi-implicit integration, gravity/noise/repel/spring forces, and adaptive caps tied to frame timing; verified in the running app via DevTools that the module imports cleanly and responds to parameter sweeps without errors, satisfying the Phase 8 acceptance.

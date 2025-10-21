@@ -117,14 +117,14 @@
 ---
 
 ## Phase 8 — Physics Core
-- [ ] Implement particle pool using typed arrays; free‑list allocator.
-- [ ] Semi‑implicit Euler integrator; global drag; soft bounds (wrap or reflect).
-- [ ] Forces: gravity wells, noise flow, repellers (from mapping), spring cohesion.
-- [ ] Spawning/killing controlled by `spawnRate`.
-- [ ] Implement dynamic particle cap based on frame time.
+- [x] Implement particle pool using typed arrays; free‑list allocator.
+- [x] Semi‑implicit Euler integrator; global drag; soft bounds (wrap or reflect).
+- [x] Forces: gravity wells, noise flow, repellers (from mapping), spring cohesion.
+- [x] Spawning/killing controlled by `spawnRate`.
+- [x] Implement dynamic particle cap based on frame time.
 
 **Acceptance:**
-- [ ] 5k particles @ 60 FPS desktop on default quality; auto‑caps when overloaded.
+- [x] 5k particles @ 60 FPS desktop on default quality; auto‑caps when overloaded.
 
 ---
 
