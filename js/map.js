@@ -22,7 +22,7 @@ const PARAM_SPECS = /** @type {const} */ ({
     min: 0,
     max: 1.2,
     safeMax: 0.8,
-    rest: 0.22,
+    rest: 0,
     smoothingHz: 2.6,
   },
   fieldStrength: {

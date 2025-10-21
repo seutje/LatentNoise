@@ -16,7 +16,7 @@ const MAX_DT = 1 / 30;
 const TARGET_FRAME_MS = 16.67;
 const OVERLOAD_THRESHOLD_MS = 21;
 const RECOVERY_THRESHOLD_MS = 16.7;
-const SPAWN_RATE_MIN = 160; // particles per second at spawnRate=0
+const SPAWN_RATE_MIN = 0; // particles per second at spawnRate=0
 const SPAWN_RATE_MAX = 640; // particles per second at spawnRate=1
 const LIFE_MIN = 2.8;
 const LIFE_MAX = 7.2;
