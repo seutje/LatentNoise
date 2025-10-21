@@ -70,3 +70,7 @@
 ## 2025-10-24 - Sync Tuning
 - Added a 50ms animation look-ahead so the physics and rendering layers anticipate upcoming audio events and stay aligned with the music playback.
 - Confirmed no regressions via `npm test` and `npm run lint`.
+
+## 2025-10-24 - Activity Scaling Fix
+- Recalibrated the mapping layer's activity metric so RMS-driven values use a perceptual curve, yielding readings above 0.2 on energetic sections while keeping silence detection stable.
+- Added regression tests covering the new RMS normalization behavior and validated the suite with `npm test` plus `npm run lint`.

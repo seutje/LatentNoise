@@ -157,6 +157,10 @@ const PARAM_SPECS = /** @type {const} */ ({
 });
 
 const DEFAULT_SILENCE_THRESHOLD = 0.03;
+const RMS_FEATURE_INDEX = 5;
+const EMA_RMS_FEATURE_INDEX = 20;
+const RMS_ACTIVITY_FLOOR = 0.015;
+const RMS_ACTIVITY_SCALE = 12;
 const MIN_DT = 1 / 240;
 const MAX_DT = 0.5;
 const SCRATCH_OUTPUTS = new Float32Array(PARAM_NAMES.length);
@@ -268,15 +272,40 @@ function getTimestamp() {
   return Date.now();
 }
 
+function normalizeRmsActivity(rms) {
+  if (!Number.isFinite(rms)) {
+    return 0;
+  }
+  const adjusted = (rms - RMS_ACTIVITY_FLOOR) * RMS_ACTIVITY_SCALE;
+  if (adjusted <= 0) {
+    return 0;
+  }
+  const normalized = 1 - Math.exp(-adjusted);
+  if (normalized >= 1) {
+    return 1;
+  }
+  if (normalized <= 0) {
+    return 0;
+  }
+  return normalized;
+}
+
 function computeActivity(outputs, features, fallback) {
   if (features && typeof features === 'object') {
     if (typeof features.rms === 'number') {
-      return Math.max(0, features.rms);
+      const normalized = normalizeRmsActivity(features.rms);
+      if (normalized > 0) {
+        return normalized;
+      }
     }
     if (Array.isArray(features) || features instanceof Float32Array) {
-      const candidate = Number(features[5]);
-      if (Number.isFinite(candidate)) {
-        return Math.max(0, candidate);
+      const rms = Math.max(
+        Number(features[RMS_FEATURE_INDEX]) || 0,
+        Number(features[EMA_RMS_FEATURE_INDEX]) || 0,
+      );
+      const normalized = normalizeRmsActivity(rms);
+      if (normalized > 0) {
+        return normalized;
       }
     }
   }
@@ -289,7 +318,9 @@ function computeActivity(outputs, features, fallback) {
   for (let i = 0; i < outputs.length; i += 1) {
     sum += Math.abs(outputs[i]);
   }
-  return sum / outputs.length;
+  const average = sum / outputs.length;
+  const normalized = normalizeRmsActivity(average);
+  return normalized > 0 ? normalized : average;
 }
 
 function createImpulseState(spec) {
