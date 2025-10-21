@@ -21,11 +21,11 @@ const BAND_DEFS = [
 ];
 
 const BAND_GAINS = Object.freeze([
-  1.5, // sub-bass emphasis
-  1.0, // bass remains neutral to avoid overpowering the spectrum
-  1.35, // low-mid amplification
-  1.4, // mid amplification
-  1.2, // high-frequency lift
+  20, // sub-bass emphasis
+  50, // bass remains neutral to avoid overpowering the spectrum
+  100, // low-mid amplification
+  150, // mid amplification
+  200, // high-frequency lift
 ]);
 
 const BAND_COUNT = BAND_DEFS.length;
