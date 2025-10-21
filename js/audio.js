@@ -9,6 +9,8 @@ const DEFAULT_SAMPLE_RATE = 44100;
 const EPSILON = 1e-12;
 const DB_TO_LIN = Math.LN10 / 20;
 const ROLLOFF_TARGET = 0.85;
+const RMS_ACTIVITY_FLOOR_DB = -55;
+const RMS_ACTIVITY_CEILING_DB = 0;
 
 const BAND_DEFS = [
   { name: 'sub', min: 0, max: 60 },
@@ -137,6 +139,7 @@ const frameState = {
   frequencyByte: EMPTY_BYTE,
   waveform: EMPTY_FLOAT,
   rms: 0,
+  activity: 0,
   timestamp: 0,
   features: featureVector,
 };
@@ -350,6 +353,21 @@ function computeAlpha(deltaMs, windowMs) {
     return 1;
   }
   return 1 - Math.exp(ratio);
+}
+
+function rmsToActivity(rms) {
+  if (!Number.isFinite(rms) || rms <= 0) {
+    return 0;
+  }
+  const db = 20 * Math.log10(rms);
+  if (db <= RMS_ACTIVITY_FLOOR_DB) {
+    return 0;
+  }
+  if (db >= RMS_ACTIVITY_CEILING_DB) {
+    return 1;
+  }
+  const normalized = (db - RMS_ACTIVITY_FLOOR_DB) / (RMS_ACTIVITY_CEILING_DB - RMS_ACTIVITY_FLOOR_DB);
+  return clamp01(normalized);
 }
 
 function resetFeatureHistory() {
@@ -589,6 +607,15 @@ export function getAnalyser() {
 }
 
 /**
+ * Convert a linear RMS value into a perceptual activity level within [0, 1].
+ * @param {number} [rmsValue]
+ * @returns {number}
+ */
+export function getActivityLevel(rmsValue = frameState.rms) {
+  return rmsToActivity(Number.isFinite(rmsValue) ? rmsValue : 0);
+}
+
+/**
  * Access the current feature vector (length 24).
  * @returns {Float32Array}
  */
@@ -623,6 +650,7 @@ export function frame() {
 
   const rms = computeRms(timeDomainData);
   frameState.rms = rms;
+  frameState.activity = rmsToActivity(rms);
 
   updateFeatures(rms, now);
   updateTrackPositionFeature();
