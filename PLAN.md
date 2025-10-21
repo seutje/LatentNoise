@@ -141,12 +141,12 @@
 ---
 
 ## Phase 10 — Presets (Per‑Track Motifs)
-- [ ] Implement `js/presets.js` palettes/motifs for the 11 tracks.
-- [ ] Provide `getPreset(name)` and `applyPreset(preset, params)`.
-- [ ] Ensure presets scale NN outputs, not overwrite them.
+- [x] Implement `js/presets.js` palettes/motifs for the 11 tracks.
+- [x] Provide `getPreset(name)` and `applyPreset(preset, params)`.
+- [x] Ensure presets scale NN outputs, not overwrite them.
 
 **Acceptance:**
-- [ ] Clear visual distinction when switching tracks with the same audio passage.
+- [x] Clear visual distinction when switching tracks with the same audio passage.
 
 ---
 

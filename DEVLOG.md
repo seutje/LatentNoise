@@ -29,3 +29,6 @@
 
 ## 2025-10-21 - Phase 9
 - Delivered the canvas renderer with DPR-aware sizing, adaptive resolution scaling, trails, bloom compositing, and HUD bindings (volume readout plus safety toggles). Wired keyboard shortcuts and the physics rendering loop through `app.js`, then confirmed via Chrome DevTools on http://127.0.0.1:8000 that toggles/keys update visuals smoothly and the console stays clean aside from the expected favicon 404.
+
+## 2025-10-21 - Phase 10
+- Authored the full preset catalog with per-track palettes and scaling profiles, applied them on track switches in `app.js`, and verified via Chrome DevTools that changing tracks reloads models, logs the applied preset, and shifts particle density/colour response while the console remains clean apart from the known favicon 404.

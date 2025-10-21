@@ -2,6 +2,7 @@ import * as audio from './audio.js';
 import * as nn from './nn.js';
 import * as physics from './physics.js';
 import * as render from './render.js';
+import { applyPreset as applyPresetScaling, getDefaultPreset, getPreset } from './presets.js';
 import { getList, resolveUrl } from './playlist.js';
 
 const MODEL_FILES = Object.freeze([
@@ -74,6 +75,7 @@ physics.configure({
 
 const renderParams = { ...RENDER_PARAMS_DEFAULT };
 const simParams = { ...SIM_PARAMS_DEFAULT };
+let activePreset = getDefaultPreset();
 
 const tracks = getList();
 if (tracks.length === 0) {
@@ -104,6 +106,46 @@ const playback = {
   status: 'Idle',
   lastStatusText: '',
 };
+
+function copyParams(target, source) {
+  if (!target || !source) {
+    return target;
+  }
+  for (const key of Object.keys(source)) {
+    target[key] = source[key];
+  }
+  return target;
+}
+
+function applyPresetForTrack(index) {
+  const preset = getPreset(index) ?? activePreset ?? getDefaultPreset();
+  activePreset = preset;
+
+  copyParams(simParams, SIM_PARAMS_DEFAULT);
+  copyParams(renderParams, RENDER_PARAMS_DEFAULT);
+
+  const adjusted = applyPresetScaling(preset, { sim: simParams, render: renderParams });
+  if (adjusted && typeof adjusted === 'object') {
+    if (adjusted.sim) {
+      copyParams(simParams, adjusted.sim);
+    }
+    if (adjusted.render) {
+      copyParams(renderParams, adjusted.render);
+    }
+  }
+
+  physics.configure({
+    defaults: {
+      spawnRate: simParams.spawnRate,
+      fieldStrength: simParams.fieldStrength,
+      cohesion: simParams.cohesion,
+      repelImpulse: simParams.repelImpulse,
+      vortexAmount: simParams.vortexAmount,
+    },
+  });
+
+  return preset;
+}
 
 function updateStatus(metrics) {
   const count = metrics?.count ?? 0;
@@ -197,10 +239,15 @@ function setTrack(index, options = {}) {
   playlistSelect.selectedIndex = index;
   playlistSelect.value = String(index);
   audioElement.src = resolveUrl(index);
+  const preset = applyPresetForTrack(index);
   render.setTrackTitle(target?.title ?? `Track ${index + 1}`);
   render.updateTrackTime(0, Number.isFinite(audioElement.duration) ? audioElement.duration : NaN);
   playback.status = autoplay ? 'Buffering' : 'Idle';
   updateStatus(physics.getMetrics());
+
+  if (preset) {
+    console.info('[app] Applied preset:', preset.title);
+  }
 
   void prepareModel(index);
 
