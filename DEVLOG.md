@@ -66,3 +66,7 @@
 
 ## 2025-10-24 - Palette Application Fix
 - Routed preset palettes through the renderer and UI so accent colors and backgrounds now update alongside per-track baselines. Added renderer unit tests that exercise palette normalization and DOM styling both before and after initialization, and verified the suite with `npm test` plus `npm run lint`.
+
+## 2025-10-24 - Sync Tuning
+- Added a 50ms animation look-ahead so the physics and rendering layers anticipate upcoming audio events and stay aligned with the music playback.
+- Confirmed no regressions via `npm test` and `npm run lint`.

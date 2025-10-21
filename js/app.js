@@ -57,6 +57,8 @@ const PERFORMANCE_SEVERE_WINDOW = 45;
 const PERFORMANCE_RECOVERY_FRAMES = 120;
 const PERFORMANCE_SCALE_STEPS = Object.freeze([1, 0.85, 0.7]);
 
+const ANIMATION_LOOKAHEAD_MS = 50;
+
 const BASE_PARTICLE_CAP = 5200;
 const MIN_PARTICLE_CAP = 800;
 const HIDDEN_VISIBILITY_SCALE = 0.5;
@@ -954,6 +956,8 @@ function frame(now) {
   const dtSeconds = clamp(dtMsRaw / 1000, 1 / 240, 1 / 20);
   const frameTimeMs = dtSeconds * 1000;
 
+  const lookAheadTimestamp = now + ANIMATION_LOOKAHEAD_MS;
+
   fpsMonitor.sample(frameTimeMs);
   const averageFps = fpsMonitor.getAverageFps();
   const averageFrameTime = fpsMonitor.getAverageFrameTime();
@@ -983,7 +987,7 @@ function frame(now) {
 
   const mappedParams = map.update(nnOutputs, {
     dt: dtSeconds,
-    timestamp: now,
+    timestamp: lookAheadTimestamp,
     activity,
     features,
   });
