@@ -32,3 +32,6 @@
 
 ## 2025-10-21 - Phase 10
 - Authored the full preset catalog with per-track palettes and scaling profiles, applied them on track switches in `app.js`, and verified via Chrome DevTools that changing tracks reloads models, logs the applied preset, and shifts particle density/colour response while the console remains clean apart from the known favicon 404.
+
+## 2025-10-21 - Phase 11
+- Completed the orchestration layer by running the audio -> NN -> mapping -> physics -> render pipeline each animation frame, wiring HUD controls (play/seek/prev/next) plus keyboard events through shared handlers, and persisting playlist, safe mode, HUD visibility, and volume state. Validated the end-to-end loop in Chrome DevTools at http://127.0.0.1:8000 with a clean console and stable memory usage.

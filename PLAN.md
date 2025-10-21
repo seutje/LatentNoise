@@ -151,13 +151,13 @@
 ---
 
 ## Phase 11 — App Orchestration (ES Modules)
-- [ ] In `js/app.js`, import modules and bootstrap audio, NN, map, physics, render, presets, playlist.
-- [ ] Implement main loop: `features → model.forward → map → physics → render` via `requestAnimationFrame`.
-- [ ] Implement handlers for play/pause/prev/next/seek; playlist change loads audio+model+preset.
-- [ ] Persist UI state: last track, volume, safe mode, HUD visibility.
+- [x] In `js/app.js`, import modules and bootstrap audio, NN, map, physics, render, presets, playlist.
+- [x] Implement main loop: `features → model.forward → map → physics → render` via `requestAnimationFrame`.
+- [x] Implement handlers for play/pause/prev/next/seek; playlist change loads audio+model+preset.
+- [x] Persist UI state: last track, volume, safe mode, HUD visibility.
 
 **Acceptance:**
-- [ ] End‑to‑end system runs continuously with no memory growth.
+- [x] End-to-end system runs continuously with no memory growth.
 
 ---
 
