@@ -4,7 +4,9 @@
   "description": "Audio visiualizer.",
   "main": "index.html",
   "scripts": {
-    "start": "http-server . -p 8000"
+    "start": "http-server . -p 8000",
+    "lint": "eslint .",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest"
   },
   "keywords": [],
   "author": "AI Agents",

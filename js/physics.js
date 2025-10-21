@@ -119,11 +119,6 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
-function mixExp(prev, next, lambda) {
-  const clamped = clamp(lambda, 0, 1);
-  return prev + (next - prev) * clamped;
-}
-
 function ensurePool(capacity) {
   if (state.capacity === capacity && state.posX) {
     return;
@@ -392,7 +387,7 @@ function releaseIndex(index) {
   state.activeCount = Math.max(0, state.activeCount - 1);
 }
 
-function spawnParticle(params) {
+function spawnParticle() {
   const index = allocateIndex();
   if (index < 0 || !state.posX || !state.posY || !state.velX || !state.velY || !state.mass || !state.seed || !state.alive) {
     return false;
