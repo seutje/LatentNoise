@@ -172,7 +172,9 @@
 ---
 
 ## Phase 13 — Automated Tests & Diagnostics
+- [ ] Add lint config.
 - [ ] Add simple test harness (in page) that runs NN/Map unit checks on boot and logs pass/fail.
+- [ ] Add full test suite (using Jest) that runs unit tests.
 - [ ] Validate `/models/*.json` schema before loading; log descriptive errors.
 - [ ] Add `?debug=1` query flag to show overlay diagnostics (feature values, NN outputs, params).
 
