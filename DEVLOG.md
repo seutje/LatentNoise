@@ -20,3 +20,6 @@
 
 ## 2025-10-21 - Phase 6
 - Authored the 11 per-track placeholder models and wired `app.js` to load, cache, and warm up the matching model when the playlist changes; verified via DevTools that track switches swap models cleanly without new fetches.
+
+## 2025-10-21 - Phase 7
+- Implemented the mapping layer with critically-damped smoothing for the continuous channels, hysteretic gating for impulse-style responses, and safe-mode caps that keep photo-sensitive parameters within bounds; confirmed via DevTools console import that outputs stay stable at idle and respect the safety clamps.
