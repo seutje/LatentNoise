@@ -11,3 +11,6 @@
 
 ## 2025-10-21 - Phase 3
 - Built the Web Audio graph with persistent volume control, analyser buffers, and slider binding so loudness ramps smoothly and survives reloads per Phase 3 acceptance.
+
+## 2025-10-21 - Phase 4
+- Implemented analyser feature extraction with band energy aggregates, RMS/centroid/roll-off/flatness metrics, signed deltas, EMAs, and spectral flux; exposed the sanitized 23-channel `getFeatureVector()` for downstream NN mapping and verified stable idle output.

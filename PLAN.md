@@ -71,15 +71,15 @@
 ---
 
 ## Phase 4 — Feature Extraction
-- [ ] Implement band summation for `sub, bass, lowMid, mid, high`.
-- [ ] Compute RMS, spectral centroid, roll‑off(85%), flatness.
-- [ ] Compute deltas Δ(bands), Δ(RMS) and EMAs (200–400ms windows).
-- [ ] Optional: spectral flux → onset flags (kick/snare/hat proxies).
-- [ ] Export `getFeatureVector()` returning `Float32Array` (16–32 length).
-- [ ] Add guard rails: replace NaN/Inf with zeros; clamp ranges.
+- [x] Implement band summation for `sub, bass, lowMid, mid, high`.
+- [x] Compute RMS, spectral centroid, roll-off(85%), flatness.
+- [x] Compute deltas Δ(bands), Δ(RMS) and EMAs (200–400ms windows).
+- [x] Optional: spectral flux → onset flags (kick/snare/hat proxies).
+- [x] Export `getFeatureVector()` returning `Float32Array` (16–32 length).
+- [x] Add guard rails: replace NaN/Inf with zeros; clamp ranges.
 
 **Acceptance:**
-- [ ] `getFeatureVector()` returns stable values at idle and during playback.
+- [x] `getFeatureVector()` returns stable values at idle and during playback.
 
 ---
 
