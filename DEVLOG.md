@@ -107,3 +107,7 @@
 ## 2025-10-24 - Zoom Amplification
 - Amplified the mapping and render clamps for the zoom channel so neural outputs can drive a tenfold wider scale range, and adjusted application-layer scaling to boost the final zoom parameter accordingly.
 - Updated preset limits and validated the expanded range through `npm test` and `npm run lint`.
+
+## 2025-10-24 - Track Transition Intermission
+- Added a reusable track-transition intermission in `app.js` that resets the physics pool and suppresses spawning for one second whenever tracks change or auto-advance, guaranteeing an empty field between songs.
+- Updated playlist, HUD, and auto-advance handlers to trigger the intermission and verified the behavior with `npm run lint` and `npm test`.
