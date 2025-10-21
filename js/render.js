@@ -9,7 +9,13 @@ const DROP_THRESHOLD_MS = 20.5;
 const RECOVER_THRESHOLD_MS = 17;
 const RESIZE_DEBOUNCE_MS = 150;
 const TRAIL_BASE_ALPHA = 0.12;
-const COLOR_BASE_HUE = 218;
+const DEFAULT_BASE_HUE = 218;
+const DEFAULT_PALETTE = Object.freeze({
+  background: '#050505',
+  accents: ['#a78bfa', '#c4b5fd', '#ede9fe'],
+  baseHue: DEFAULT_BASE_HUE,
+});
+const DEFAULT_GRID_COLOR = 'rgba(170, 180, 220, 0.08)';
 const VOLUME_MIN = 0;
 const VOLUME_MAX = 1;
 const PARAM_SCRATCH = {
@@ -44,7 +50,155 @@ const KEY_PLAYLIST_MAP = {
   Minus: 10,
 };
 
+function normalizeHexColor(color) {
+  if (typeof color !== 'string') {
+    return null;
+  }
+  const trimmed = color.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const withoutHash = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  if (/^[0-9a-fA-F]{6}$/.test(withoutHash)) {
+    return `#${withoutHash.toLowerCase()}`;
+  }
+  if (/^[0-9a-fA-F]{3}$/.test(withoutHash)) {
+    const expanded = withoutHash
+      .toLowerCase()
+      .split('')
+      .map((ch) => ch + ch)
+      .join('');
+    return `#${expanded}`;
+  }
+  return null;
+}
+
+function hexToRgb(hex) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) {
+    return { r: 0, g: 0, b: 0 };
+  }
+  const value = parseInt(normalized.slice(1), 16);
+  return {
+    r: (value >> 16) & 0xff,
+    g: (value >> 8) & 0xff,
+    b: value & 0xff,
+  };
+}
+
+function rgbToHex(rgb) {
+  const r = clamp(Math.round(rgb.r ?? 0), 0, 255);
+  const g = clamp(Math.round(rgb.g ?? 0), 0, 255);
+  const b = clamp(Math.round(rgb.b ?? 0), 0, 255);
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+function rgbToHsl(rgb) {
+  const r = (rgb.r ?? 0) / 255;
+  const g = (rgb.g ?? 0) / 255;
+  const b = (rgb.b ?? 0) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  let h = 0;
+  if (delta !== 0) {
+    if (max === r) {
+      h = ((g - b) / delta) % 6;
+    } else if (max === g) {
+      h = (b - r) / delta + 2;
+    } else {
+      h = (r - g) / delta + 4;
+    }
+  }
+  h = (h * 60 + 360) % 360;
+  const l = (max + min) * 0.5;
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+  return {
+    h,
+    s: s * 100,
+    l: l * 100,
+  };
+}
+
+function mixRgb(a, b, amount) {
+  const t = clamp(Number.isFinite(amount) ? amount : 0, 0, 1);
+  return {
+    r: Math.round((a.r ?? 0) + ((b.r ?? 0) - (a.r ?? 0)) * t),
+    g: Math.round((a.g ?? 0) + ((b.g ?? 0) - (a.g ?? 0)) * t),
+    b: Math.round((a.b ?? 0) + ((b.b ?? 0) - (a.b ?? 0)) * t),
+  };
+}
+
+function wrapHue360(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_BASE_HUE;
+  }
+  let result = value % 360;
+  if (result < 0) {
+    result += 360;
+  }
+  return result;
+}
+
+function buildPalette(paletteInput = {}) {
+  const backgroundHex = normalizeHexColor(paletteInput.background) ?? DEFAULT_PALETTE.background;
+  const backgroundRgb = hexToRgb(backgroundHex);
+
+  const accentSource = Array.isArray(paletteInput.accents) && paletteInput.accents.length > 0
+    ? paletteInput.accents
+    : DEFAULT_PALETTE.accents;
+  const accentHexes = accentSource
+    .map((value) => normalizeHexColor(value))
+    .filter((value) => value !== null);
+  if (accentHexes.length === 0) {
+    accentHexes.push(DEFAULT_PALETTE.accents[0]);
+  }
+  const accentRgb = accentHexes.map((hex) => hexToRgb(hex));
+  const accentHsl = accentRgb.map((rgb) => rgbToHsl(rgb));
+
+  const baseHueInput = Number.isFinite(paletteInput.baseHue) ? paletteInput.baseHue : DEFAULT_PALETTE.baseHue;
+  const baseHue = wrapHue360(baseHueInput);
+
+  const gradientAccent = accentRgb[0] ?? accentRgb[1] ?? backgroundRgb;
+  const gradientInner = mixRgb(backgroundRgb, gradientAccent, 0.35);
+  const canvasBackground = `radial-gradient(circle at 20% 20%, ${rgbToHex(gradientInner)}, ${backgroundHex} 68%)`;
+
+  const gridBase = accentRgb[1] ?? accentRgb[0] ?? hexToRgb('#aab4dc');
+  const gridMix = mixRgb(gridBase, backgroundRgb, 0.55);
+  const gridColor = `rgba(${gridMix.r}, ${gridMix.g}, ${gridMix.b}, 0.12)`;
+
+  const panelColor = `rgba(${backgroundRgb.r}, ${backgroundRgb.g}, ${backgroundRgb.b}, 0.82)`;
+  const accentPrimary = accentHexes[0];
+
+  return {
+    backgroundHex,
+    backgroundRgb,
+    accentHexes,
+    accentHsl,
+    baseHue,
+    canvasBackground,
+    gridColor,
+    panelColor,
+    accentPrimary,
+  };
+}
+
+function applyPaletteToDom() {
+  const root = document.documentElement;
+  if (root) {
+    root.style.setProperty('--bg', state.palette.backgroundHex);
+    root.style.setProperty('--panel', state.palette.panelColor);
+    const accent = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+    root.style.setProperty('--accent', accent);
+  }
+  if (state.canvas) {
+    state.canvas.style.background = state.palette.canvasBackground;
+  }
+}
+
 const listeners = new Map();
+
+const paletteState = buildPalette(DEFAULT_PALETTE);
 
 const state = {
   initialized: false,
@@ -97,7 +251,10 @@ const state = {
   resizeHandlerBound: false,
   resizeTimerId: 0,
   frameSeed: 0,
+  palette: paletteState,
 };
+
+applyPaletteToDom();
 
 function clamp(value, min, max) {
   if (!Number.isFinite(value)) {
@@ -387,7 +544,8 @@ function fadeCanvas(alpha) {
   state.ctx.save();
   state.ctx.setTransform(1, 0, 0, 1, 0, 0);
   state.ctx.globalCompositeOperation = 'source-over';
-  state.ctx.fillStyle = `rgba(5, 6, 12, ${alpha})`;
+  const bg = state.palette.backgroundRgb;
+  state.ctx.fillStyle = `rgba(${bg.r}, ${bg.g}, ${bg.b}, ${alpha})`;
   state.ctx.fillRect(0, 0, state.canvas.width, state.canvas.height);
   state.ctx.restore();
   state.ctx.setTransform(state.pixelRatio * state.dynamicScale, 0, 0, state.pixelRatio * state.dynamicScale, 0, 0);
@@ -420,7 +578,7 @@ function drawGrid() {
 
   ctx.save();
   ctx.globalCompositeOperation = 'screen';
-  ctx.strokeStyle = 'rgba(170, 180, 220, 0.08)';
+  ctx.strokeStyle = state.palette.gridColor ?? DEFAULT_GRID_COLOR;
   ctx.lineWidth = 1;
 
   for (let x = spacing * 0.5; x < width; x += spacing) {
@@ -607,6 +765,7 @@ export function init(options = {}) {
 
   state.canvas = canvas;
   state.ctx = ctx;
+  applyPaletteToDom();
 
   const hudRoot = assertElement(options.hud || document.getElementById('hud'), 'HUD element #hud is required.');
   const title = assertElement(options.trackTitle || document.getElementById('track-title'), 'HUD track title element missing.');
@@ -679,7 +838,33 @@ export function destroy() {
     toggleContainer.removeEventListener('change', handleToggleInput);
   }
 
+  state.hud.toggleInputs.clear();
   state.initialized = false;
+  state.canvas = null;
+  state.ctx = null;
+  state.glow.canvas = null;
+  state.glow.ctx = null;
+  state.hud.root = null;
+  state.hud.title = null;
+  state.hud.time = null;
+  state.hud.status = null;
+  state.hud.fps = null;
+  state.hud.volumeSlider = null;
+  state.hud.volumeDisplay = null;
+}
+
+export function getPalette() {
+  return {
+    background: state.palette.backgroundHex,
+    accents: [...state.palette.accentHexes],
+    baseHue: state.palette.baseHue,
+  };
+}
+
+export function setPalette(palette) {
+  state.palette = buildPalette(palette ?? {});
+  applyPaletteToDom();
+  return getPalette();
 }
 
 export function setWorldSize(width, height) {
@@ -788,7 +973,9 @@ function drawParticles(particles, params, dt) {
 
   const jitter = params.sizeJitter;
   const sparkle = params.sparkleDensity;
-  const hueBase = COLOR_BASE_HUE + params.hueShift;
+  const palette = state.palette;
+  const accentCount = palette.accentHsl.length;
+  const hueBase = wrapHue360((palette.baseHue ?? DEFAULT_BASE_HUE) + params.hueShift);
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -816,18 +1003,30 @@ function drawParticles(particles, params, dt) {
     const sizeJitter = 1 + (rng - 0.5) * 2 * jitter;
     const radius = (1.6 + baseMass * 1.1) * sizeJitter * (0.6 + (1 - lifeT) * 0.6);
 
-    const hue = (hueBase + rng * 45 + lifeT * 120) % 360;
-    const lightness = 48 + (1 - lifeT) * 32;
+    const accent = accentCount > 0 ? palette.accentHsl[Math.floor(rng * accentCount)] : null;
+    let hue = wrapHue360(hueBase + rng * 36 + lifeT * 72);
+    let saturation = 78;
+    let bodyLight = 48 + (1 - lifeT) * 32;
+    let glowLight = 60;
+    let sparkleLight = clamp(bodyLight + 16, 0, 100);
+    if (accent) {
+      hue = wrapHue360(accent.h + params.hueShift + (rng - 0.5) * 24 + lifeT * 14);
+      saturation = clamp(accent.s * (0.85 + (1 - lifeT) * 0.18), 20, 100);
+      const accentLight = clamp(accent.l, 10, 88);
+      bodyLight = clamp(accentLight * 0.7 + (1 - lifeT) * 28, 8, 94);
+      glowLight = clamp(accentLight + 24, 14, 98);
+      sparkleLight = clamp(bodyLight + 14, 0, 100);
+    }
     const alpha = clamp(0.25 + (1 - lifeT) * 0.55, 0.1, 0.85) * fadeBoost;
 
-    ctx.fillStyle = `hsl(${Math.round(hue)}, 78%, ${Math.round(lightness)}%)`;
+    ctx.fillStyle = `hsl(${Math.round(hue)}, ${Math.round(saturation)}%, ${Math.round(bodyLight)}%)`;
     ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.arc(sx, sy, radius, 0, TAU);
     ctx.fill();
 
     if (glowCtx) {
-      glowCtx.fillStyle = `hsl(${Math.round(hue)}, 100%, 60%)`;
+      glowCtx.fillStyle = `hsl(${Math.round(hue)}, ${Math.round(Math.min(100, saturation + 8))}%, ${Math.round(glowLight)}%)`;
       glowCtx.globalAlpha = clamp(alpha * 0.8, 0.05, 0.6);
       glowCtx.beginPath();
       glowCtx.arc(sx, sy, radius * 1.6, 0, TAU);
@@ -836,7 +1035,9 @@ function drawParticles(particles, params, dt) {
 
     if (rng > sparkleThreshold) {
       const sparkleAlpha = clamp((rng - sparkleThreshold) * 5, 0.1, 0.8);
-      ctx.fillStyle = `hsl(${Math.round(hue)}, 95%, 75%)`;
+      const sparkleHue = wrapHue360(hue + (accent ? (rng - 0.5) * 12 : 0));
+      const sparkleSat = Math.round(clamp(saturation + 12, 0, 100));
+      ctx.fillStyle = `hsl(${Math.round(sparkleHue)}, ${sparkleSat}%, ${Math.round(sparkleLight)}%)`;
       ctx.globalAlpha = sparkleAlpha;
       ctx.beginPath();
       ctx.arc(sx, sy, radius * 0.45, 0, TAU);
