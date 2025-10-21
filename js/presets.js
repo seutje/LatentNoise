@@ -45,9 +45,9 @@ const PRESET_DATA = /** @type {const} */ ([
     title: 'Built on the Steppers',
     description: 'Structured lattice with strong fields and restrained sparkle.',
     palette: {
-      background: '#060b12',
-      accents: ['#2db0c7', '#6be2d6', '#a2ffd9'],
-      baseHue: 188,
+      background: '#03261c',
+      accents: ['#f94144', '#ff7f11', '#ffd166'],
+      baseHue: 140,
     },
     sim: {
       spawnRate: { scale: 1.1 },
@@ -141,9 +141,9 @@ const PRESET_DATA = /** @type {const} */ ([
     title: 'Traffic Jam',
     description: 'Stop-go motion with hard-lane repulsion cues.',
     palette: {
-      background: '#050b05',
-      accents: ['#64ff8f', '#f5ff9c', '#ffe07d'],
-      baseHue: 98,
+      background: '#04321c',
+      accents: ['#ff2d55', '#ff8a3d', '#ffc15e'],
+      baseHue: 136,
     },
     sim: {
       spawnRate: { scale: 0.82 },
@@ -165,9 +165,9 @@ const PRESET_DATA = /** @type {const} */ ([
     title: 'Backpack',
     description: 'Transient bursts with compact life and jitter.',
     palette: {
-      background: '#120612',
-      accents: ['#ff4fb2', '#ff94d7', '#ffd8f3'],
-      baseHue: 312,
+      background: '#4a3300',
+      accents: ['#ffd700', '#ffe866', '#fff4b1'],
+      baseHue: 44,
     },
     sim: {
       spawnRate: { scale: 1.08 },
