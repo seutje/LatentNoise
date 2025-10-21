@@ -22,7 +22,9 @@ const PARAM_SPECS = /** @type {const} */ ({
     min: 0,
     max: 1.2,
     safeMax: 0.8,
-    rest: 0.22,
+    rest: 0,
+    restFollowsBaseline: false,
+    forceRestOnSilence: true,
     smoothingHz: 2.6,
   },
   fieldStrength: {
@@ -394,19 +396,27 @@ function getImpulseState(name, spec) {
   return impulse;
 }
 
-function applyContinuous(name, spec, rawValue, dt, silence) {
+function applyContinuous(name, spec, rawValue, dt, silence, forceSilence) {
   const swing = resolveSwing(spec, state.safeMode);
   const { min, max } = resolveBounds(spec, state.safeMode);
   const smoother = getSmoother(name, spec);
   const baseline = state.baselines[name] ?? spec.baseline;
   const rest = state.rests[name] ?? spec.rest ?? baseline;
+  const shouldForceRest = silence && forceSilence && spec.forceRestOnSilence;
+
+  if (shouldForceRest) {
+    smoother.reset(rest);
+    state.params[name] = rest;
+    return;
+  }
+
   const target = silence ? rest : baseline + rawValue * swing;
   const clampedTarget = clamp(target, min, max);
   const value = smoother.update(clampedTarget, dt);
   state.params[name] = clamp(value, min, max);
 }
 
-function applyImpulse(name, spec, rawValue, dt, silence) {
+function applyImpulse(name, spec, rawValue, dt, silence, forceSilence) {
   const swing = resolveSwing(spec, state.safeMode);
   const { min, max } = resolveBounds(spec, state.safeMode);
   const impulseState = getImpulseState(name, spec);
@@ -416,7 +426,11 @@ function applyImpulse(name, spec, rawValue, dt, silence) {
   if (silence) {
     impulseState.active = false;
     impulseState.hold = 0;
-    impulseState.envelope = Math.max(rest, impulseState.envelope * Math.exp(-impulseState.decay * dt));
+    if (forceSilence && spec.forceRestOnSilence) {
+      impulseState.envelope = rest;
+    } else {
+      impulseState.envelope = Math.max(rest, impulseState.envelope * Math.exp(-impulseState.decay * dt));
+    }
   } else {
     const positive = Math.max(0, rawValue);
     const normalized = positive > 1 ? 1 : positive;
@@ -449,7 +463,8 @@ export function reset(params) {
     const { min, max } = resolveBounds(spec, state.safeMode);
     const baseline = params && typeof params[name] === 'number' ? clamp(params[name], min, max) : spec.baseline;
     const restBase = typeof spec.rest === 'number' ? spec.rest : spec.baseline;
-    const rest = clamp(restBase + (baseline - spec.baseline), min, max);
+    const restOffset = spec.restFollowsBaseline === false ? 0 : baseline - spec.baseline;
+    const rest = clamp(restBase + restOffset, min, max);
     state.baselines[name] = baseline;
     state.rests[name] = rest;
     state.params[name] = baseline;
@@ -497,15 +512,16 @@ export function update(outputs, options = {}) {
     ? options.activity
     : computeActivity(cleanedOutputs, options.features, state.silenceThreshold);
 
-  const silence = activity < state.silenceThreshold;
+  const forcedSilence = options.forceSilence === true;
+  const silence = forcedSilence || activity < state.silenceThreshold;
 
   for (const name of PARAM_NAMES) {
     const spec = PARAM_SPECS[name];
     const raw = cleanedOutputs[spec.index] ?? 0;
     if (spec.type === 'continuous') {
-      applyContinuous(name, spec, raw, dt, silence);
+      applyContinuous(name, spec, raw, dt, silence, forcedSilence);
     } else {
-      applyImpulse(name, spec, raw, dt, silence);
+      applyImpulse(name, spec, raw, dt, silence, forcedSilence);
     }
   }
 

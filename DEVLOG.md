@@ -77,3 +77,21 @@
 
 ## 2025-10-24 - Activity Scaling Fix
 - Re-mapped the audio RMS signal to a perceptual activity scale with a -55 dB floor so debug overlays and silence detection reflect musical intensity, exposed the helper via `audio.getActivityLevel`, and updated the render loop to consume the normalized metric. Added unit coverage for the conversion and confirmed `npm test` plus `npm run lint` continue to pass.
+
+## 2025-10-24 - Spawn Rate Silence Fix
+- Updated the mapping layer so the spawn-rate channel rests at zero during silence, letting the physics system stop generating new particles when nothing is playing.
+- Lowered the physics spawn-rate floor to zero so a neural output of -1 truly pauses spawning while 1 still produces the maximum emission rate.
+- Verified the change set with `npm test` and `npm run lint`.
+
+## 2025-10-24 - Spawn Rate Floor Follow-Up
+- Prevented preset baselines from lifting the spawn-rate rest value so silence always decays to zero, even after preset scaling.
+- Removed the application-layer minimum clamp on spawn rate so mapped values can fully reach zero when the NN or silence gating demand it.
+- Re-ran `npm test` and `npm run lint` to confirm the adjustments remain stable.
+
+## 2025-10-24 - Spawn Rate Pause Gate
+- Added a playback-silence override so the mapping layer instantly resets spawn rate (and related impulse envelopes) to zero whenever the player is paused or stopped, guaranteeing no new particles appear without audio.
+- Passed a new regression test that asserts the forced-silence path clamps spawn rate to rest and verified the suite with `npm test` plus `npm run lint`.
+
+## 2025-10-24 - Idle Spawn Reset
+- When loading a track without autoplay, run the mapper through a forced-silence update and reset the physics pool so the simulation starts from a clean slate with zero particles until playback begins.
+- Re-verified the suite via `npm test` and `npm run lint`.
