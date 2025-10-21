@@ -17,3 +17,6 @@
 
 ## 2025-10-21 - Phase 5
 - Shipped the tiny NN runtime with typed-array model loading, feature normalization, forward inference, and console self-test validation so downstream layers can run bounded predictions within the frame budget.
+
+## 2025-10-21 - Phase 6
+- Authored the 11 per-track placeholder models and wired `app.js` to load, cache, and warm up the matching model when the playlist changes; verified via DevTools that track switches swap models cleanly without new fetches.

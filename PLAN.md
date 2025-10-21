@@ -95,13 +95,13 @@
 ---
 
 ## Phase 6 — Models Loader (Per‑Track JSON)
-- [ ] Create **11 model JSON** placeholders in `/models/` following DESIGN.md schema.
-- [ ] Map playlist entry → model path in `app.js`.
-- [ ] On track selection, fetch model JSON, run a warm‑up forward pass.
-- [ ] Cache last‑used model to avoid refetch on reselection.
+- [x] Create **11 model JSON** placeholders in `/models/` following DESIGN.md schema.
+- [x] Map playlist entry → model path in `app.js`.
+- [x] On track selection, fetch model JSON, run a warm‑up forward pass.
+- [x] Cache last‑used model to avoid refetch on reselection.
 
 **Acceptance:**
-- [ ] Switching tracks swaps models without visible frame hitch.
+- [x] Switching tracks swaps models without visible frame hitch.
 
 ---
 

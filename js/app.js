@@ -1,5 +1,20 @@
 import * as audio from './audio.js';
+import * as nn from './nn.js';
 import { getList, resolveUrl } from './playlist.js';
+
+const MODEL_FILES = Object.freeze([
+  'models/meditation.json',
+  'models/built-on-the-steppers.json',
+  'models/unsound.json',
+  'models/system-js.json',
+  'models/binary-mirage.json',
+  'models/traffic-jam.json',
+  'models/backpack.json',
+  'models/last-pack.json',
+  'models/cloud.json',
+  'models/ease-up.json',
+  'models/epoch-infinity.json',
+]);
 
 const playlistSelect = document.getElementById('playlist');
 const audioElement = document.getElementById('player');
@@ -14,6 +29,10 @@ if (tracks.length === 0) {
   throw new Error('Playlist is empty; Phase 2 requires 11 static tracks.');
 }
 
+if (MODEL_FILES.length !== tracks.length) {
+  throw new Error('Model placeholder count mismatch with playlist length.');
+}
+
 // Remove any stray options before populating the locked playlist.
 playlistSelect.innerHTML = '';
 
@@ -25,9 +44,95 @@ tracks.forEach((track, index) => {
   playlistSelect.append(option);
 });
 
+const modelCache = new Map();
+let currentTrackIndex = -1;
+let activeModelIndex = -1;
+let modelLoadToken = 0;
+
+function cacheEntryIsPromise(entry) {
+  return entry && typeof entry === 'object' && typeof entry.then === 'function';
+}
+
+async function fetchModelDefinition(index) {
+  const existing = modelCache.get(index);
+  if (existing) {
+    if (cacheEntryIsPromise(existing)) {
+      return existing;
+    }
+    return existing;
+  }
+
+  const url = MODEL_FILES[index];
+  if (!url) {
+    throw new RangeError(`Model path missing for playlist index ${index}`);
+  }
+
+  const fetchPromise = fetch(url)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Failed to fetch model "${url}" (${response.status} ${response.statusText}).`);
+      }
+      return response.json();
+    })
+    .then((json) => {
+      modelCache.set(index, json);
+      return json;
+    })
+    .catch((error) => {
+      modelCache.delete(index);
+      throw error;
+    });
+
+  modelCache.set(index, fetchPromise);
+  return fetchPromise;
+}
+
+async function prepareModel(index) {
+  const token = ++modelLoadToken;
+  try {
+    const definition = await fetchModelDefinition(index);
+    if (token !== modelLoadToken) {
+      return null;
+    }
+
+    const info = await nn.loadModel(definition);
+    if (token !== modelLoadToken) {
+      return info;
+    }
+
+    audio.frame();
+    const features = audio.getFeatureVector();
+    const normalized = nn.normalize(features);
+    nn.forward(normalized);
+    activeModelIndex = index;
+    if (info) {
+      console.info(`[app] Model ready for "${tracks[index]?.title ?? index}" (${info.layers} layers)`);
+    }
+    return info;
+  } catch (error) {
+    console.error(`[app] Failed to load model for "${tracks[index]?.title ?? index}"`, error);
+    return null;
+  }
+}
+
+function setTrack(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= tracks.length) {
+    console.warn('[app] Ignoring out-of-range track index', index);
+    return;
+  }
+  if (index === currentTrackIndex && activeModelIndex === index) {
+    return;
+  }
+
+  currentTrackIndex = index;
+  playlistSelect.selectedIndex = index;
+  playlistSelect.value = String(index);
+  audioElement.src = resolveUrl(index);
+  void prepareModel(index);
+}
+
 // Default to the first track and ensure the audio element points to bundled media only.
-playlistSelect.selectedIndex = 0;
-audioElement.src = resolveUrl(0);
+setTrack(0);
 
 const restoredVolume = audio.init(audioElement);
 const initialVolume = Number.isFinite(restoredVolume) ? restoredVolume : Number(volumeSlider.value);
@@ -51,7 +156,7 @@ playlistSelect.addEventListener('change', (event) => {
   if (Number.isNaN(selected)) {
     return;
   }
-  audioElement.src = resolveUrl(selected);
+  setTrack(selected);
 });
 
 const blockFileInput = (event) => {
