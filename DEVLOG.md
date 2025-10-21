@@ -82,3 +82,8 @@
 - Updated the mapping layer so the spawn-rate channel rests at zero during silence, letting the physics system stop generating new particles when nothing is playing.
 - Lowered the physics spawn-rate floor to zero so a neural output of -1 truly pauses spawning while 1 still produces the maximum emission rate.
 - Verified the change set with `npm test` and `npm run lint`.
+
+## 2025-10-24 - Spawn Rate Floor Follow-Up
+- Prevented preset baselines from lifting the spawn-rate rest value so silence always decays to zero, even after preset scaling.
+- Removed the application-layer minimum clamp on spawn rate so mapped values can fully reach zero when the NN or silence gating demand it.
+- Re-ran `npm test` and `npm run lint` to confirm the adjustments remain stable.

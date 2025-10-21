@@ -65,7 +65,7 @@ describe('map module', () => {
 
     params = update(outputs, { dt: 1 / 60, activity: 0 });
     expect(params.spawnRate).toBeLessThan(custom.spawnRate);
-    expect(params.spawnRate).toBeGreaterThan(0);
+    expect(params.spawnRate).toBeGreaterThanOrEqual(0);
     expect(params.sparkleDensity).toBeLessThanOrEqual(custom.sparkleDensity);
   });
 });

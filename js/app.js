@@ -606,7 +606,7 @@ function applyMappedParams(mapped) {
   const sparkleBase = Number.isFinite(mapped.sparkleDensity) ? mapped.sparkleDensity : RENDER_PARAMS_DEFAULT.sparkleDensity;
   const zoomBase = Number.isFinite(mapped.zoom) ? mapped.zoom : RENDER_PARAMS_DEFAULT.zoom;
 
-  const spawnMin = 0.05;
+  const spawnMin = 0;
   const spawnMax = safe ? 0.8 : 1.2;
   const glowMax = safe ? 0.6 : 1;
   const sparkleMax = safe ? 0.65 : 1;

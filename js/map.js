@@ -23,6 +23,7 @@ const PARAM_SPECS = /** @type {const} */ ({
     max: 1.2,
     safeMax: 0.8,
     rest: 0,
+    restFollowsBaseline: false,
     smoothingHz: 2.6,
   },
   fieldStrength: {
@@ -449,7 +450,8 @@ export function reset(params) {
     const { min, max } = resolveBounds(spec, state.safeMode);
     const baseline = params && typeof params[name] === 'number' ? clamp(params[name], min, max) : spec.baseline;
     const restBase = typeof spec.rest === 'number' ? spec.rest : spec.baseline;
-    const rest = clamp(restBase + (baseline - spec.baseline), min, max);
+    const restOffset = spec.restFollowsBaseline === false ? 0 : baseline - spec.baseline;
+    const rest = clamp(restBase + restOffset, min, max);
     state.baselines[name] = baseline;
     state.rests[name] = rest;
     state.params[name] = baseline;
