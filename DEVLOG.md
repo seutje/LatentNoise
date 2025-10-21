@@ -70,3 +70,6 @@
 ## 2025-10-24 - Sync Tuning
 - Added a 50ms animation look-ahead so the physics and rendering layers anticipate upcoming audio events and stay aligned with the music playback.
 - Confirmed no regressions via `npm test` and `npm run lint`.
+
+## 2025-10-24 - Activity Scaling Fix
+- Re-mapped the audio RMS signal to a perceptual activity scale with a -55 dB floor so debug overlays and silence detection reflect musical intensity, exposed the helper via `audio.getActivityLevel`, and updated the render loop to consume the normalized metric. Added unit coverage for the conversion and confirmed `npm test` plus `npm run lint` continue to pass.
