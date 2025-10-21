@@ -44,9 +44,10 @@ const FEATURE_INDEX = Object.freeze({
   EMA_RMS: 20,
   FLUX: 21,
   FLUX_EMA: 22,
+  TRACK_POSITION: 23,
 });
 
-const FEATURE_COUNT = 23;
+const FEATURE_COUNT = 24;
 
 const BAND_VALUE_FEATURES = [
   FEATURE_INDEX.SUB,
@@ -149,6 +150,27 @@ function clampSigned(value, limit = 1) {
     return -max;
   }
   return value;
+}
+
+function getTrackPositionValue() {
+  if (!audioElement) {
+    return -1;
+  }
+  const duration = Number(audioElement.duration);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return -1;
+  }
+  const current = Number(audioElement.currentTime);
+  if (!Number.isFinite(current) || current <= 0) {
+    return -1;
+  }
+  const ratio = Math.min(Math.max(current / duration, 0), 1);
+  const signed = ratio * 2 - 1;
+  return clampSigned(signed, 1);
+}
+
+function updateTrackPositionFeature() {
+  featureVector[FEATURE_INDEX.TRACK_POSITION] = getTrackPositionValue();
 }
 
 function readStoredVolume() {
@@ -313,6 +335,7 @@ function resetFeatureHistory() {
   lastFeatureTimestamp = 0;
   featuresInitialized = false;
   featureVector.fill(0);
+  updateTrackPositionFeature();
 }
 
 function initializeFeatureBuffers() {
@@ -483,6 +506,8 @@ function updateFeatures(rms, now) {
   fluxEma = clamp01(fluxEma);
   featureVector[FEATURE_INDEX.FLUX_EMA] = fluxEma;
 
+  updateTrackPositionFeature();
+
   featuresInitialized = true;
   lastFeatureTimestamp = now;
 }
@@ -537,7 +562,7 @@ export function getAnalyser() {
 }
 
 /**
- * Access the current feature vector (length 23).
+ * Access the current feature vector (length 24).
  * @returns {Float32Array}
  */
 export function getFeatureVector() {
@@ -553,6 +578,7 @@ export function frame() {
 
   if (!analyserNode) {
     frameState.timestamp = now;
+    updateTrackPositionFeature();
     return frameState;
   }
 
@@ -564,6 +590,7 @@ export function frame() {
   frameState.rms = rms;
 
   updateFeatures(rms, now);
+  updateTrackPositionFeature();
 
   frameState.timestamp = now;
   return frameState;

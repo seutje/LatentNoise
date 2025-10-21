@@ -44,3 +44,7 @@
 
 ## 2025-10-22 - Phase 11
 - Added a one-second delayed auto-advance when tracks end so the playlist flows continuously without manual input, clearing any pending timers when playback resumes or tracks change to avoid unintended skips.
+
+## 2025-10-22 - Feature Update
+- Extended the audio feature vector with a normalized track-position input and upgraded all model JSONs to accept the new dimension while emitting an additional zoom output.
+- Routed the zoom channel through the mapping layer into renderer parameters so NN predictions can smoothly scale the scene, and added debug/overlay plumbing to surface the new values.

@@ -12,6 +12,7 @@ const RENDER_LIMITS = /** @type {const} */ ({
   sizeJitter: { min: 0, max: 0.8 },
   hueShift: { min: -180, max: 180 },
   sparkleDensity: { min: 0, max: 1 },
+  zoom: { min: 0.5, max: 2 },
 });
 
 const PRESET_DATA = /** @type {const} */ ([
