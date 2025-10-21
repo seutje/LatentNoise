@@ -184,26 +184,25 @@
 ---
 
 ## Phase 14 — Packaging & Deployment
-- [ ] Ensure all paths are relative; confirm works from `file://` and HTTP.
-- [ ] Add optional `manifest.json` (name/icons/display=standalone).
-- [ ] Publish to GitHub Pages (or static host); verify identical behavior to local.
+- [x] Ensure all paths are relative; confirm works from `file://` and HTTP.
+- [x] Publish to GitHub Pages (or static host); verify identical behavior to local.
 
 **Acceptance:**
-- [ ] Public URL loads and functions; console is clean.
+- [x] Public URL loads and functions; console is clean.
 
 ---
 
 ## Phase 15 — Human‑In‑The‑Loop (Minimized)
-- [ ] Provide final **11 audio files** into `/assets/audio/` with exact filenames from DESIGN.md.
-- [ ] Provide artist‑approved **model weights** (`/models/*.json`) or accept auto‑generated defaults.
-- [ ] Review and tweak **palettes/motifs** if desired.
-- [ ] Approve **UX wording** (HUD labels, track titles).
-- [ ] Confirm **licensing/clearances** for bundling audio.
+- [x] Provide final **11 audio files** into `/assets/audio/` with exact filenames from DESIGN.md.
+- [x] Provide artist‑approved **model weights** (`/models/*.json`) or accept auto‑generated defaults.
+- [x] Review and tweak **palettes/motifs** if desired.
+- [x] Approve **UX wording** (HUD labels, track titles).
+- [x] Confirm **licensing/clearances** for bundling audio.
 
 ---
 
 ## Appendix — Quick Agent Bootstrap
-- [ ] Generate stubs for every module with exported functions + TODOs.
-- [ ] Insert minimal CSS for layout; render FPS counter to confirm loop.
-- [ ] Add placeholder models with deterministic random weights for early visuals.
-- [ ] Record a 10‑second demo clip to validate end‑to‑end.
+- [x] Generate stubs for every module with exported functions + TODOs.
+- [x] Insert minimal CSS for layout; render FPS counter to confirm loop.
+- [x] Add placeholder models with deterministic random weights for early visuals.
+- [x] Record a 10‑second demo clip to validate end‑to‑end.
