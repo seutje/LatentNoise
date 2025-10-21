@@ -47,18 +47,31 @@ const SIM_PARAMS_DEFAULT = Object.freeze({
 });
 
 const PERFORMANCE_SAMPLE_WINDOW = 90;
+const PERFORMANCE_DROP_FPS = 56;
+const PERFORMANCE_SEVERE_FPS = 48;
+const PERFORMANCE_RECOVER_FPS = 58.5;
+const PERFORMANCE_DROP_WINDOW = 90;
+const PERFORMANCE_SEVERE_WINDOW = 45;
+const PERFORMANCE_RECOVERY_FRAMES = 120;
+const PERFORMANCE_SCALE_STEPS = Object.freeze([1, 0.85, 0.7]);
+
 const BASE_PARTICLE_CAP = 5200;
 const MIN_PARTICLE_CAP = 800;
 const HIDDEN_VISIBILITY_SCALE = 0.5;
 const VISIBILITY_DEBOUNCE_MS = 220;
-const PERFORMANCE_RECOVERY_FRAMES = 90;
 
 const qualityState = {
   visibilityScale: 1,
+  performanceIndex: 0,
+};
+
+const performanceState = {
+  dropFrames: 0,
+  severeFrames: 0,
+  recoveryFrames: 0,
 };
 
 let lastAppliedCap = BASE_PARTICLE_CAP;
-let performanceRecoveryFrames = 0;
 
 const fpsMonitor = (() => {
   const samples = new Float32Array(PERFORMANCE_SAMPLE_WINDOW);
@@ -290,16 +303,23 @@ function copyParams(target, source) {
   return target;
 }
 
+function getPerformanceScale() {
+  const scale = PERFORMANCE_SCALE_STEPS[qualityState.performanceIndex];
+  return Number.isFinite(scale) ? scale : 1;
+}
+
 function applyQualityCap() {
   const minScale = MIN_PARTICLE_CAP / BASE_PARTICLE_CAP;
   const visibilityScale = clamp(qualityState.visibilityScale, minScale, 1);
-  const combinedScale = clamp(visibilityScale, minScale, 1);
+  const performanceScale = clamp(getPerformanceScale(), minScale, 1);
+  const combinedScale = clamp(visibilityScale * performanceScale, minScale, 1);
   const targetCap = clamp(Math.round(BASE_PARTICLE_CAP * combinedScale), MIN_PARTICLE_CAP, BASE_PARTICLE_CAP);
   if (targetCap === lastAppliedCap) {
     return;
   }
   lastAppliedCap = targetCap;
   physics.configure({ baseCap: targetCap });
+  console.info('[app] quality cap update', targetCap, `(scale ${combinedScale.toFixed(2)})`);
 }
 
 function queueVisibilityUpdate(hidden) {
@@ -325,6 +345,69 @@ function queueVisibilityUpdate(hidden) {
     }
     visibilityState.hidden = hidden;
   }, VISIBILITY_DEBOUNCE_MS);
+}
+
+function updatePerformanceScaling(averageFps) {
+  if (!Number.isFinite(averageFps) || averageFps <= 0) {
+    return;
+  }
+
+  if (averageFps < PERFORMANCE_SEVERE_FPS) {
+    performanceState.severeFrames += 1;
+  } else {
+    performanceState.severeFrames = Math.max(0, performanceState.severeFrames - 2);
+  }
+
+  if (averageFps < PERFORMANCE_DROP_FPS) {
+    performanceState.dropFrames += 1;
+  } else {
+    performanceState.dropFrames = Math.max(0, performanceState.dropFrames - 1);
+  }
+
+  if (averageFps > PERFORMANCE_RECOVER_FPS) {
+    performanceState.recoveryFrames += 1;
+  } else {
+    performanceState.recoveryFrames = 0;
+  }
+
+  let changed = false;
+
+  if (
+    performanceState.severeFrames > PERFORMANCE_SEVERE_WINDOW
+    && qualityState.performanceIndex < PERFORMANCE_SCALE_STEPS.length - 1
+  ) {
+    qualityState.performanceIndex = PERFORMANCE_SCALE_STEPS.length - 1;
+    changed = true;
+    performanceState.dropFrames = 0;
+    performanceState.severeFrames = 0;
+    performanceState.recoveryFrames = 0;
+  } else if (
+    performanceState.dropFrames > PERFORMANCE_DROP_WINDOW
+    && qualityState.performanceIndex < PERFORMANCE_SCALE_STEPS.length - 1
+  ) {
+    qualityState.performanceIndex = Math.min(
+      qualityState.performanceIndex + 1,
+      PERFORMANCE_SCALE_STEPS.length - 1,
+    );
+    changed = true;
+    performanceState.dropFrames = 0;
+    performanceState.severeFrames = 0;
+    performanceState.recoveryFrames = 0;
+  } else if (
+    qualityState.performanceIndex > 0
+    && performanceState.recoveryFrames > PERFORMANCE_RECOVERY_FRAMES
+    && averageFps > PERFORMANCE_RECOVER_FPS
+  ) {
+    qualityState.performanceIndex = Math.max(0, qualityState.performanceIndex - 1);
+    changed = true;
+    performanceState.recoveryFrames = 0;
+    performanceState.dropFrames = 0;
+    performanceState.severeFrames = 0;
+  }
+
+  if (changed) {
+    applyQualityCap();
+  }
 }
 
 function applyPresetForTrack(index) {
@@ -775,19 +858,7 @@ function frame(now) {
   const averageFrameTime = fpsMonitor.getAverageFrameTime();
   const instantaneousFps = fpsMonitor.getInstantaneousFps();
 
-  if (averageFps >= 58.5) {
-    performanceRecoveryFrames += 1;
-    if (performanceRecoveryFrames >= PERFORMANCE_RECOVERY_FRAMES) {
-      const metrics = physics.getMetrics();
-      if (metrics.dynamicCap < BASE_PARTICLE_CAP) {
-        physics.configure({ baseCap: BASE_PARTICLE_CAP });
-        lastAppliedCap = BASE_PARTICLE_CAP;
-      }
-      performanceRecoveryFrames = 0;
-    }
-  } else {
-    performanceRecoveryFrames = 0;
-  }
+  updatePerformanceScaling(averageFps);
 
   const audioState = audio.frame();
   const features = audioState?.features ?? audio.getFeatureVector();
