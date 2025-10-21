@@ -108,6 +108,13 @@ body {
 
 #controls select {
   padding-right: 2.5rem;
+  background: rgba(20, 22, 35, 0.9);
+  border-color: rgba(167, 139, 250, 0.4);
+}
+
+#controls select option {
+  color: var(--text);
+  background-color: rgba(10, 12, 20, 0.96);
 }
 
 #controls input[type="range"] {
