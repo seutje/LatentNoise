@@ -623,7 +623,7 @@ function applyMappedParams(mapped) {
   const spawnMax = safe ? 0.8 : 1.2;
   const glowMax = safe ? 0.6 : 1;
   const sparkleMax = safe ? 0.65 : 1;
-  const zoomMin = 0.5;
+  const zoomMin = 0.1;
   const zoomMax = safe ? 1.5 : 10;
 
   const spawnAdjusted = spawnBase + manualAdjustments.spawnOffset;
