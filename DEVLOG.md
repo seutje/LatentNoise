@@ -8,3 +8,6 @@
 
 ## 2025-10-21 - Phase 2
 - Implemented the locked 11-track playlist module and boot-time select population from bundled assets; suppressed external file inputs and drag/drop so playback stays album-only.
+
+## 2025-10-21 - Phase 3
+- Built the Web Audio graph with persistent volume control, analyser buffers, and slider binding so loudness ramps smoothly and survives reloads per Phase 3 acceptance.

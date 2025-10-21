@@ -58,15 +58,15 @@
 ---
 
 ## Phase 3 — Audio Graph & Volume Control
-- [ ] Implement `js/audio.js` with `init(audioEl)` that creates `AudioContext` on user gesture.
-- [ ] Connect `MediaElementAudioSourceNode → GainNode(volume) → AnalyserNode → destination`.
-- [ ] Expose `setVolume(0..1)` and persist under `ln.volume` in `localStorage`.
-- [ ] Configure `AnalyserNode` (FFT 2048, smoothing 0.8) and typed arrays.
-- [ ] Export `getAnalyser()`, `frame()` to update cached audio data.
-- [ ] In `app.js`, bind `#volume` slider to `audio.setVolume` (log mapping optional).
+- [x] Implement `js/audio.js` with `init(audioEl)` that creates `AudioContext` on user gesture.
+- [x] Connect `MediaElementAudioSourceNode → GainNode(volume) → AnalyserNode → destination`.
+- [x] Expose `setVolume(0..1)` and persist under `ln.volume` in `localStorage`.
+- [x] Configure `AnalyserNode` (FFT 2048, smoothing 0.8) and typed arrays.
+- [x] Export `getAnalyser()`, `frame()` to update cached audio data.
+- [x] In `app.js`, bind `#volume` slider to `audio.setVolume` (log mapping optional).
 
 **Acceptance:**
-- [ ] Volume slider adjusts loudness smoothly with **no clipping** at 1.0.
+- [x] Volume slider adjusts loudness smoothly with **no clipping** at 1.0.
 
 ---
 
