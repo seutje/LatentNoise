@@ -497,12 +497,14 @@ function updatePerformanceScaling(averageFps) {
   }
 }
 
-function applyPresetForTrack(index) {
+function applyPresetForTrack(index, options = {}) {
   const preset = getPreset(index) ?? activePreset ?? getDefaultPreset();
   activePreset = preset;
   if (preset?.palette) {
     render.setPalette(preset.palette);
   }
+
+  const forceSilence = options.forceSilence === true;
 
   resetManualAdjustments();
   copyParams(simParams, SIM_PARAMS_DEFAULT);
@@ -540,6 +542,16 @@ function applyPresetForTrack(index) {
     hueShift: renderParams.hueShift,
     sparkleDensity: renderParams.sparkleDensity,
   });
+
+  if (forceSilence) {
+    const restParams = map.update(FALLBACK_NN_OUTPUTS, {
+      dt: 1 / 60,
+      activity: 0,
+      forceSilence: true,
+    });
+    applyMappedParams(restParams);
+    physics.reset();
+  }
 
   return preset;
 }
@@ -718,7 +730,7 @@ function setTrack(index, options = {}) {
   playlistSelect.value = String(index);
   audioElement.src = resolveUrl(index);
   writeStorage(STORAGE_KEYS.TRACK_INDEX, String(index));
-  const preset = applyPresetForTrack(index);
+  const preset = applyPresetForTrack(index, { forceSilence: !autoplay });
   render.setTrackTitle(target?.title ?? `Track ${index + 1}`);
   render.updateTrackTime(0, Number.isFinite(audioElement.duration) ? audioElement.duration : NaN);
   updateSeekUi(0, NaN);
