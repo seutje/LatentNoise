@@ -99,3 +99,7 @@
 ## 2025-10-24 - Mapping Smoothing Removal
 - Disabled the critically-damped smoother in the mapping layer so NN outputs drive the continuous parameters directly, per the latest requirement.
 - Updated the implementation plan to note the change and confirmed via `npm test` and `npm run lint`.
+
+## 2025-10-24 - Band Feature Amplification
+- Expanded the audio feature extraction so the sub, low-mid, mid, and high band values (and their EMAs) are remapped into a signed [-1, 1] range for stronger NN inputs while keeping deltas stable.
+- Reconfirmed the suite health with `npm test` and `npm run lint`.
