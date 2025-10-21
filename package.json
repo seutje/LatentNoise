@@ -1,5 +1,5 @@
 {
-  "name": "Latent Noise",
+  "name": "latentnoise",
   "version": "1.0.0",
   "description": "Audio visiualizer.",
   "main": "index.html",
