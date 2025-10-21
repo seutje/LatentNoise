@@ -367,6 +367,15 @@ const playback = {
   lastStatusText: '',
 };
 
+let autoAdvanceTimer = 0;
+
+function clearAutoAdvanceTimer() {
+  if (autoAdvanceTimer) {
+    window.clearTimeout(autoAdvanceTimer);
+    autoAdvanceTimer = 0;
+  }
+}
+
 function copyParams(target, source) {
   if (!target || !source) {
     return target;
@@ -681,6 +690,7 @@ async function prepareModel(index) {
 }
 
 function setTrack(index, options = {}) {
+  clearAutoAdvanceTimer();
   if (!Number.isInteger(index) || index < 0 || index >= tracks.length) {
     console.warn('[app] Ignoring out-of-range track index', index);
     return;
@@ -726,12 +736,13 @@ function setTrack(index, options = {}) {
   updatePlayButtonUi();
 }
 
-function nextTrack(step = 1) {
+function nextTrack(step = 1, options = {}) {
   if (tracks.length === 0) {
     return;
   }
   const nextIndex = (currentTrackIndex + step + tracks.length) % tracks.length;
-  setTrack(nextIndex, { autoplay: !audioElement.paused });
+  const autoplay = options.autoplay ?? !audioElement.paused;
+  setTrack(nextIndex, { autoplay });
 }
 
 function prevTrack() {
@@ -866,6 +877,7 @@ render.setToggle('safe', storedSafeMode);
 render.setToggle('bypass', storedBypass);
 
 audioElement.addEventListener('play', () => {
+  clearAutoAdvanceTimer();
   playback.status = 'Playing';
   updateStatus(physics.getMetrics());
   updatePlayButtonUi();
@@ -887,6 +899,11 @@ audioElement.addEventListener('ended', () => {
   playback.status = 'Ended';
   updateStatus(physics.getMetrics());
   updatePlayButtonUi();
+  clearAutoAdvanceTimer();
+  autoAdvanceTimer = window.setTimeout(() => {
+    autoAdvanceTimer = 0;
+    nextTrack(1, { autoplay: true });
+  }, 1000);
 });
 
 const updateTrackTime = () => {
