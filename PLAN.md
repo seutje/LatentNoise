@@ -84,13 +84,13 @@
 ---
 
 ## Phase 5 — Tiny NN Runtime (No External ML Libs)
-- [ ] Implement `js/nn.js` with MLP forward pass using `Float32Array` and preallocated buffers.
-- [ ] Support activations: `relu`, `elu`, `tanh`, `linear`.
-- [ ] Implement `loadModel(urlOrObject)`, `normalize(F)`, `forward(F_norm, out)`.
-- [ ] Add simple in‑page tests (console): compare output of dummy model vs known reference.
+- [x] Implement `js/nn.js` with MLP forward pass using `Float32Array` and preallocated buffers.
+- [x] Support activations: `relu`, `elu`, `tanh`, `linear`.
+- [x] Implement `loadModel(urlOrObject)`, `normalize(F)`, `forward(F_norm, out)`.
+- [x] Add simple in-page tests (console): compare output of dummy model vs known reference.
 
 **Acceptance:**
-- [ ] Forward pass < **0.2ms/frame** desktop; outputs finite and bounded.
+- [x] Forward pass < **0.2ms/frame** desktop; outputs finite and bounded.
 
 ---
 

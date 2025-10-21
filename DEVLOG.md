@@ -14,3 +14,6 @@
 
 ## 2025-10-21 - Phase 4
 - Implemented analyser feature extraction with band energy aggregates, RMS/centroid/roll-off/flatness metrics, signed deltas, EMAs, and spectral flux; exposed the sanitized 23-channel `getFeatureVector()` for downstream NN mapping and verified stable idle output.
+
+## 2025-10-21 - Phase 5
+- Shipped the tiny NN runtime with typed-array model loading, feature normalization, forward inference, and console self-test validation so downstream layers can run bounded predictions within the frame budget.
