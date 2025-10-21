@@ -103,3 +103,7 @@
 ## 2025-10-24 - Mapping Smoothing Removal
 - Disabled the critically-damped smoother in the mapping layer so NN outputs drive the continuous parameters directly, per the latest requirement.
 - Updated the implementation plan to note the change and confirmed via `npm test` and `npm run lint`.
+
+## 2025-10-24 - Zoom Amplification
+- Amplified the mapping and render clamps for the zoom channel so neural outputs can drive a tenfold wider scale range, and adjusted application-layer scaling to boost the final zoom parameter accordingly.
+- Updated preset limits and validated the expanded range through `npm test` and `npm run lint`.
