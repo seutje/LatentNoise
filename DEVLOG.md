@@ -51,3 +51,6 @@
 
 ## 2025-10-22 - Fix
 - Labeled the debug overlay feature list with human-readable names and surfaced the track-position input alongside the zoom output so the new telemetry is visible when inspecting diagnostics.
+
+## 2025-10-23 - Tooling
+- Added a `npm run models` CLI that regenerates placeholder neural-network JSON files with random weights for all tracks (or a targeted subset via index/slug) so artists can quickly spin up fresh model scaffolds during experimentation.
