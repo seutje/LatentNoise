@@ -20,6 +20,14 @@ const BAND_DEFS = [
   { name: 'high', min: 2000, max: Number.POSITIVE_INFINITY },
 ];
 
+const BAND_GAINS = Object.freeze([
+  1.5, // sub-bass emphasis
+  1.0, // bass remains neutral to avoid overpowering the spectrum
+  1.35, // low-mid amplification
+  1.4, // mid amplification
+  1.2, // high-frequency lift
+]);
+
 const BAND_COUNT = BAND_DEFS.length;
 
 const FEATURE_INDEX = Object.freeze({
@@ -485,7 +493,10 @@ function updateFeatures(rms, now) {
 
   for (let band = 0; band < BAND_COUNT; band += 1) {
     const divisor = bandBinCounts[band] || 1;
-    const normalized = clamp01(bandValues[band] / divisor);
+    const averageEnergy = divisor > 0 ? bandValues[band] / divisor : 0;
+    const amplified = averageEnergy * BAND_GAINS[band];
+    const bounded = clamp01(amplified);
+    const normalized = clampSigned(bounded * 2 - 1);
     const delta = clampSigned(normalized - previousBandValues[band]);
     previousBandValues[band] = normalized;
 
@@ -497,7 +508,7 @@ function updateFeatures(rms, now) {
 
     featureVector[BAND_VALUE_FEATURES[band]] = normalized;
     featureVector[BAND_DELTA_FEATURES[band]] = delta;
-    featureVector[BAND_EMA_FEATURES[band]] = clamp01(bandEma[band]);
+    featureVector[BAND_EMA_FEATURES[band]] = clampSigned(bandEma[band]);
   }
 
   const rmsClamped = clamp01(rms);
