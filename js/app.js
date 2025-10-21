@@ -967,7 +967,9 @@ function frame(now) {
 
   const audioState = audio.frame();
   const features = audioState?.features ?? audio.getFeatureVector();
-  const activity = Number.isFinite(audioState?.rms) ? Math.max(0, audioState.rms) : 0;
+  const activity = Number.isFinite(audioState?.activity)
+    ? Math.min(Math.max(audioState.activity, 0), 1)
+    : audio.getActivityLevel(audioState?.rms ?? 0);
 
   let nnOutputs = lastModelOutputs;
   if (!nnBypass && activeModelIndex === currentTrackIndex) {
