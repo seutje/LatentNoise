@@ -1,1 +1,187 @@
-/* TODO: Base styling arrives in Phase 1. */
+:root {
+  color-scheme: dark;
+  --bg: #050505;
+  --panel: rgba(10, 12, 20, 0.82);
+  --accent: #a78bfa;
+  --text: #f5f7ff;
+  --muted: rgba(245, 247, 255, 0.6);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", "Segoe UI", Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+#c {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  background: radial-gradient(circle at 20% 20%, #1f1a32, #050505 64%);
+}
+
+.ui {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
+  border-radius: 1rem;
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+}
+
+#hud {
+  position: fixed;
+  top: 1.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: min(90vw, 26rem);
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+#hud .hud-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+#hud #track-title {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+
+#controls {
+  position: fixed;
+  bottom: 1.8rem;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-wrap: wrap;
+  justify-content: center;
+  width: min(90vw, 52rem);
+  gap: 1rem;
+}
+
+#controls button,
+#controls select {
+  font: inherit;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+#controls button:hover,
+#controls button:focus-visible,
+#controls select:hover,
+#controls select:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+#controls select {
+  padding-right: 2.5rem;
+}
+
+#controls input[type="range"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#seek {
+  width: min(100%, 14rem);
+}
+
+.vol {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.vol input {
+  width: 8rem;
+}
+
+#controls label {
+  cursor: pointer;
+}
+
+#controls input[type="checkbox"] {
+  accent-color: var(--accent);
+  transform: translateY(0.5px);
+}
+
+#player {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  #hud {
+    top: 1rem;
+  }
+
+  #controls {
+    bottom: 1rem;
+    gap: 0.75rem;
+  }
+
+  #seek {
+    width: min(100%, 12rem);
+  }
+
+  .vol input {
+    width: 6.5rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .ui {
+    padding: 0.75rem 1rem;
+  }
+
+  #controls {
+    width: 92vw;
+    justify-content: flex-start;
+  }
+
+  #controls button,
+  #controls select {
+    flex: 1 1 auto;
+    min-width: 6.5rem;
+    text-align: center;
+  }
+
+  #seek,
+  .vol input {
+    width: 100%;
+  }
+}

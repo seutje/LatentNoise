@@ -36,13 +36,13 @@
 ---
 
 ## Phase 1 — HTML Shell (Single ESM Entry) & Basic CSS
-- [ ] Implement `index.html` per DESIGN.md with `<script type="module" src="js/app.js">` only.
-- [ ] Add minimal HUD/controls markup (Prev, Play, Next, Seek, Playlist, Volume, NN Bypass).
-- [ ] Create `css/style.css` with full‑screen canvas, system UI font, HUD layout, responsive rules.
-- [ ] Wire `#c` canvas, `#hud`, `#controls`, `#player` elements.
+- [x] Implement `index.html` per DESIGN.md with `<script type="module" src="js/app.js">` only.
+- [x] Add minimal HUD/controls markup (Prev, Play, Next, Seek, Playlist, Volume, NN Bypass).
+- [x] Create `css/style.css` with full‑screen canvas, system UI font, HUD layout, responsive rules.
+- [x] Wire `#c` canvas, `#hud`, `#controls`, `#player` elements.
 
 **Acceptance:**
-- [ ] Page loads with styled HUD and an empty canvas; **no JS errors**.
+- [x] Page loads with styled HUD and an empty canvas; **no JS errors**.
 
 ---
 

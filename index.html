@@ -8,6 +8,16 @@
   </head>
   <body>
     <canvas id="c"></canvas>
+    <div id="hud" class="ui">
+      <div class="hud-row">
+        <span id="track-title">Latent Noise</span>
+        <span id="track-time">00:00</span>
+      </div>
+      <div class="hud-row">
+        <span id="hud-status">Idle</span>
+        <span id="hud-fps">FPS: --</span>
+      </div>
+    </div>
     <div id="controls" class="ui">
       <button id="prev">Prev</button>
       <button id="play">Play</button>
@@ -17,7 +27,6 @@
       <label class="vol">Volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7"></label>
       <label><input type="checkbox" id="bypass"> NN Bypass</label>
     </div>
-    <div id="hud" hidden></div>
     <audio id="player" preload="metadata"></audio>
     <script type="module" src="js/app.js"></script>
   </body>
