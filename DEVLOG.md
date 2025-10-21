@@ -41,3 +41,6 @@
 
 ## 2025-10-21 - Phase 13
 - Introduced repository automation by wiring ESLint configuration, Jest scripts, and a startup diagnostics harness that exercises NN and mapping modules at boot with clear console pass/fail logs. Added JSON schema validation for model files to surface descriptive errors before NN load, created a query-driven debug overlay that streams features, NN outputs, and mapped parameters, and added Jest unit tests covering NN normalization/forward paths plus map safety clamps; all suites pass via `npm test`.
+
+## 2025-10-22 - Phase 11
+- Added a one-second delayed auto-advance when tracks end so the playlist flows continuously without manual input, clearing any pending timers when playback resumes or tracks change to avoid unintended skips.
