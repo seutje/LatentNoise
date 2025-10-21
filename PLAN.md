@@ -23,15 +23,15 @@
 ---
 
 ## Phase 0 — Project Init & Spec Ingestion
-- [ ] Create repository root `/latent-noise`.
-- [ ] Add `README.md` with one‑paragraph summary + link to **DESIGN.md**.
-- [ ] Add `.gitignore` (DS_Store, *.log) and `.editorconfig` (UTF‑8, LF, 2 spaces).
-- [ ] Create empty files and folders per tree above.
-- [ ] Add `LICENSE` (MIT) with placeholder author.
-- [ ] Commit initial scaffold `feat: init scaffold`.
+- [x] Create repository root `/latent-noise`.
+- [x] Add `README.md` with one‑paragraph summary + link to **DESIGN.md**.
+- [x] Add `.gitignore` (DS_Store, *.log) and `.editorconfig` (UTF‑8, LF, 2 spaces).
+- [x] Create empty files and folders per tree above.
+- [x] Add `LICENSE` (MIT) with placeholder author.
+- [x] Commit initial scaffold `feat: init scaffold`.
 
 **Acceptance:**
-- [ ] Opening `index.html` (blank) yields **no console errors**.
+- [x] Opening `index.html` (blank) yields **no console errors**.
 
 ---
 
