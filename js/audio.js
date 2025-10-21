@@ -22,6 +22,8 @@ const BAND_DEFS = [
 
 const BAND_COUNT = BAND_DEFS.length;
 
+const BAND_AMPLIFICATION_FLAGS = /** @type {const} */ ([true, false, true, true, true]);
+
 const FEATURE_INDEX = Object.freeze({
   SUB: 0,
   BASS: 1,
@@ -485,19 +487,30 @@ function updateFeatures(rms, now) {
 
   for (let band = 0; band < BAND_COUNT; band += 1) {
     const divisor = bandBinCounts[band] || 1;
-    const normalized = clamp01(bandValues[band] / divisor);
-    const delta = clampSigned(normalized - previousBandValues[band]);
-    previousBandValues[band] = normalized;
+    const averaged = bandValues[band] / divisor;
+    const normalized = clamp01(averaged);
+    const processed = BAND_AMPLIFICATION_FLAGS[band]
+      ? clampSigned(normalized * 2 - 1)
+      : normalized;
+
+    const delta = clampSigned(processed - previousBandValues[band]);
+    previousBandValues[band] = processed;
 
     if (!featuresInitialized) {
-      bandEma[band] = normalized;
+      bandEma[band] = processed;
     } else {
-      bandEma[band] += alphaBand * (normalized - bandEma[band]);
+      bandEma[band] += alphaBand * (processed - bandEma[band]);
     }
 
-    featureVector[BAND_VALUE_FEATURES[band]] = normalized;
+    if (BAND_AMPLIFICATION_FLAGS[band]) {
+      bandEma[band] = clampSigned(bandEma[band]);
+    } else {
+      bandEma[band] = clamp01(bandEma[band]);
+    }
+
+    featureVector[BAND_VALUE_FEATURES[band]] = processed;
     featureVector[BAND_DELTA_FEATURES[band]] = delta;
-    featureVector[BAND_EMA_FEATURES[band]] = clamp01(bandEma[band]);
+    featureVector[BAND_EMA_FEATURES[band]] = bandEma[band];
   }
 
   const rmsClamped = clamp01(rms);
