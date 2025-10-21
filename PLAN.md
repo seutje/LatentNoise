@@ -47,13 +47,13 @@
 ---
 
 ## Phase 2 — Playlist (Album‑Only Lockdown)
-- [ ] Implement `js/playlist.js` with static array of 11 tracks (titles/filenames from DESIGN.md).
-- [ ] Export `getList()`, `resolveUrl(i)`, `count()`.
-- [ ] In `app.js`, populate `<select id="playlist">` at boot from `playlist.getList()`.
-- [ ] Disable arbitrary file inputs (no drag‑and‑drop, no file picker, no mic).
+- [x] Implement `js/playlist.js` with static array of 11 tracks (titles/filenames from DESIGN.md).
+- [x] Export `getList()`, `resolveUrl(i)`, `count()`.
+- [x] In `app.js`, populate `<select id="playlist">` at boot from `playlist.getList()`.
+- [x] Disable arbitrary file inputs (no drag‑and‑drop, no file picker, no mic).
 
 **Acceptance:**
-- [ ] Playlist shows exactly **11 options** and cannot be modified at runtime.
+- [x] Playlist shows exactly **11 options** and cannot be modified at runtime.
 
 ---
 
