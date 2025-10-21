@@ -58,6 +58,7 @@ const PERFORMANCE_RECOVERY_FRAMES = 120;
 const PERFORMANCE_SCALE_STEPS = Object.freeze([1, 0.85, 0.7]);
 
 const ANIMATION_LOOKAHEAD_MS = 25;
+const TRACK_INTERMISSION_MS = 1000;
 
 const BASE_PARTICLE_CAP = 5200;
 const MIN_PARTICLE_CAP = 800;
@@ -76,6 +77,7 @@ const performanceState = {
 };
 
 let lastAppliedCap = BASE_PARTICLE_CAP;
+let particleIntermissionUntil = 0;
 
 const fpsMonitor = (() => {
   const samples = new Float32Array(PERFORMANCE_SAMPLE_WINDOW);
@@ -142,6 +144,24 @@ function ensureNumberArray(source, expectedLength, label, contextLabel, options 
     }
   }
   return source;
+}
+
+function nowMs() {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function startParticleIntermission(durationMs = TRACK_INTERMISSION_MS) {
+  const clampedDuration = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
+  if (clampedDuration <= 0) {
+    particleIntermissionUntil = 0;
+    physics.reset();
+    return;
+  }
+  particleIntermissionUntil = nowMs() + clampedDuration;
+  physics.reset();
 }
 
 function validateModelDefinition(definition, contextLabel = 'model') {
@@ -766,6 +786,12 @@ function nextTrack(step = 1, options = {}) {
   }
   const nextIndex = (currentTrackIndex + step + tracks.length) % tracks.length;
   const autoplay = options.autoplay ?? !audioElement.paused;
+  if (!options.skipIntermission && nextIndex !== currentTrackIndex && currentTrackIndex >= 0) {
+    const duration = Number.isFinite(options.intermissionDuration)
+      ? options.intermissionDuration
+      : TRACK_INTERMISSION_MS;
+    startParticleIntermission(duration);
+  }
   setTrack(nextIndex, { autoplay });
 }
 
@@ -840,6 +866,9 @@ playlistSelect.addEventListener('change', (event) => {
   if (Number.isNaN(selected)) {
     return;
   }
+  if (selected !== currentTrackIndex && currentTrackIndex >= 0) {
+    startParticleIntermission(TRACK_INTERMISSION_MS);
+  }
   setTrack(selected, { autoplay: !audioElement.paused });
 });
 
@@ -856,7 +885,11 @@ render.on('selectTrack', ({ index }) => {
   if (!Number.isInteger(index)) {
     return;
   }
-  setTrack((index + tracks.length) % tracks.length, { autoplay: !audioElement.paused });
+  const nextIndex = (index + tracks.length) % tracks.length;
+  if (nextIndex !== currentTrackIndex && currentTrackIndex >= 0) {
+    startParticleIntermission(TRACK_INTERMISSION_MS);
+  }
+  setTrack(nextIndex, { autoplay: !audioElement.paused });
 });
 render.on('adjustParticles', ({ delta }) => {
   if (!Number.isFinite(delta)) {
@@ -924,10 +957,11 @@ audioElement.addEventListener('ended', () => {
   updateStatus(physics.getMetrics());
   updatePlayButtonUi();
   clearAutoAdvanceTimer();
+  startParticleIntermission(TRACK_INTERMISSION_MS);
   autoAdvanceTimer = window.setTimeout(() => {
     autoAdvanceTimer = 0;
-    nextTrack(1, { autoplay: true });
-  }, 1000);
+    nextTrack(1, { autoplay: true, skipIntermission: true });
+  }, TRACK_INTERMISSION_MS);
 });
 
 const updateTrackTime = () => {
@@ -1014,6 +1048,13 @@ function frame(now) {
     forceSilence: playbackSilent,
   });
   applyMappedParams(mappedParams);
+
+  const intermissionActive = particleIntermissionUntil > now;
+  if (intermissionActive) {
+    simParams.spawnRate = 0;
+  } else if (particleIntermissionUntil !== 0) {
+    particleIntermissionUntil = 0;
+  }
 
   physics.step(simParams, { dt: dtSeconds, frameTime: frameTimeMs, frameTimeAvg: averageFrameTime });
   const particles = physics.getParticles();
