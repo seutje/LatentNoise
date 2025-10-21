@@ -70,3 +70,7 @@
 ## 2025-10-24 - Sync Tuning
 - Added a 50ms animation look-ahead so the physics and rendering layers anticipate upcoming audio events and stay aligned with the music playback.
 - Confirmed no regressions via `npm test` and `npm run lint`.
+
+## 2025-10-24 - Audio Activity Fix
+- Rewired the audio graph so analyser measurements occur before gain adjustments, keeping the derived activity metric stable regardless of the HUD volume slider and ensuring diagnostics reflect the underlying track energy.
+- Verified behavior with `npm test` and `npm run lint`.

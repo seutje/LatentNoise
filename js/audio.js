@@ -282,9 +282,10 @@ function createGraph() {
   frameState.frequencyByte = byteFrequencyData;
   frameState.waveform = timeDomainData;
 
-  sourceNode.connect(gainNode);
-  gainNode.connect(analyserNode);
-  analyserNode.connect(audioContext.destination);
+  // Route analysis before volume adjustments so diagnostics/activity ignore the UI gain setting.
+  sourceNode.connect(analyserNode);
+  analyserNode.connect(gainNode);
+  gainNode.connect(audioContext.destination);
 
   initializeFeatureBuffers();
   applyVolume(desiredVolume, true);
