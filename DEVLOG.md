@@ -57,3 +57,6 @@
 
 ## 2025-10-23 - Mapping Tuning
 - Doubled the swing on the spawn-rate, hue-shift, and zoom mapping channels (including safe-mode envelopes) so neural outputs drive more pronounced density, color, and scale shifts while keeping the existing clamps in place; verified via `npm test` and `npm run lint` that automated checks remain green.
+
+## 2025-10-24 - Palette Refresh
+- Updated the presets for Built on the Steppers and Traffic Jam with a deep green base and complementary red/orange accents, and re-themed Backpack around gold tones with bright yellow highlights to align with the latest art direction. Validated the tweak with `npm test` and `npm run lint`.
