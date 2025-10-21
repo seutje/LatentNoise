@@ -146,6 +146,7 @@ const PARAM_SPECS = /** @type {const} */ ({
 const DEFAULT_SILENCE_THRESHOLD = 0.03;
 const MIN_DT = 1 / 240;
 const MAX_DT = 0.5;
+const SCRATCH_OUTPUTS = new Float32Array(PARAM_NAMES.length);
 
 class CriticallyDampedSmoother {
   constructor(initialValue = 0, smoothingHz = 2) {
@@ -204,13 +205,16 @@ function clamp(value, min, max) {
 }
 
 function sanitizeArrayLike(values) {
-  const count = PARAM_NAMES.length;
-  const result = new Float32Array(count);
+  const result = SCRATCH_OUTPUTS;
+  for (let i = 0; i < result.length; i += 1) {
+    result[i] = 0;
+  }
+
   if (!values || typeof values.length !== 'number') {
     return result;
   }
 
-  const len = Math.min(values.length, count);
+  const len = Math.min(values.length, result.length);
   for (let i = 0; i < len; i += 1) {
     const value = Number(values[i]);
     result[i] = Number.isFinite(value) ? clamp(value, -1, 1) : 0;

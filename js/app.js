@@ -46,6 +46,66 @@ const SIM_PARAMS_DEFAULT = Object.freeze({
   vortexAmount: 0.28,
 });
 
+const PERFORMANCE_SAMPLE_WINDOW = 90;
+const BASE_PARTICLE_CAP = 5200;
+const MIN_PARTICLE_CAP = 800;
+const HIDDEN_VISIBILITY_SCALE = 0.5;
+const VISIBILITY_DEBOUNCE_MS = 220;
+const PERFORMANCE_RECOVERY_FRAMES = 90;
+
+const qualityState = {
+  visibilityScale: 1,
+};
+
+let lastAppliedCap = BASE_PARTICLE_CAP;
+let performanceRecoveryFrames = 0;
+
+const fpsMonitor = (() => {
+  const samples = new Float32Array(PERFORMANCE_SAMPLE_WINDOW);
+  let index = 0;
+  let count = 0;
+  let sum = 0;
+  let instantaneousFps = 60;
+  let averageFps = 60;
+  let lastFrameTime = 1000 / 60;
+
+  return {
+    sample(frameTimeMs) {
+      if (!Number.isFinite(frameTimeMs) || frameTimeMs <= 0) {
+        return;
+      }
+      lastFrameTime = frameTimeMs;
+      instantaneousFps = 1000 / frameTimeMs;
+      if (count === samples.length) {
+        sum -= samples[index];
+      }
+      samples[index] = instantaneousFps;
+      sum += instantaneousFps;
+      if (count < samples.length) {
+        count += 1;
+      }
+      index = (index + 1) % samples.length;
+      averageFps = count > 0 ? sum / count : instantaneousFps;
+    },
+    getAverageFps() {
+      return averageFps;
+    },
+    getAverageFrameTime() {
+      return averageFps > 0 ? 1000 / averageFps : lastFrameTime;
+    },
+    getInstantaneousFps() {
+      return instantaneousFps;
+    },
+  };
+})();
+
+const visibilityState = {
+  timer: 0,
+  hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
+};
+
+console.debug('[app] visibility state bootstrap', visibilityState.hidden);
+
 function clamp(value, min, max) {
   if (!Number.isFinite(value)) {
     return min;
@@ -131,8 +191,8 @@ render.setStatus('Idle · Particles 0');
 
 physics.configure({
   bounds: { width: 2, height: 2, mode: 'wrap' },
-  baseCap: 5200,
-  minCap: 800,
+  baseCap: BASE_PARTICLE_CAP,
+  minCap: MIN_PARTICLE_CAP,
   defaults: {
     spawnRate: SIM_PARAMS_DEFAULT.spawnRate,
     fieldStrength: SIM_PARAMS_DEFAULT.fieldStrength,
@@ -141,6 +201,13 @@ physics.configure({
     vortexAmount: SIM_PARAMS_DEFAULT.vortexAmount,
   },
 });
+
+console.info('[app] physics dynamicCap init', physics.getMetrics().dynamicCap);
+
+if (visibilityState.hidden) {
+  qualityState.visibilityScale = Math.max(MIN_PARTICLE_CAP / BASE_PARTICLE_CAP, HIDDEN_VISIBILITY_SCALE);
+  applyQualityCap();
+}
 
 const renderParams = { ...RENDER_PARAMS_DEFAULT };
 const simParams = { ...SIM_PARAMS_DEFAULT };
@@ -151,6 +218,7 @@ const manualAdjustments = {
   sparkleOffset: 0,
   hueOffset: 0,
 };
+
 
 function resetManualAdjustments() {
   manualAdjustments.spawnOffset = 0;
@@ -220,6 +288,43 @@ function copyParams(target, source) {
     target[key] = source[key];
   }
   return target;
+}
+
+function applyQualityCap() {
+  const minScale = MIN_PARTICLE_CAP / BASE_PARTICLE_CAP;
+  const visibilityScale = clamp(qualityState.visibilityScale, minScale, 1);
+  const combinedScale = clamp(visibilityScale, minScale, 1);
+  const targetCap = clamp(Math.round(BASE_PARTICLE_CAP * combinedScale), MIN_PARTICLE_CAP, BASE_PARTICLE_CAP);
+  if (targetCap === lastAppliedCap) {
+    return;
+  }
+  lastAppliedCap = targetCap;
+  physics.configure({ baseCap: targetCap });
+}
+
+function queueVisibilityUpdate(hidden) {
+  if (!Number.isFinite(VISIBILITY_DEBOUNCE_MS) || VISIBILITY_DEBOUNCE_MS <= 0) {
+    const nextScale = hidden ? Math.max(MIN_PARTICLE_CAP / BASE_PARTICLE_CAP, HIDDEN_VISIBILITY_SCALE) : 1;
+    if (qualityState.visibilityScale !== nextScale) {
+      qualityState.visibilityScale = nextScale;
+      applyQualityCap();
+    }
+    visibilityState.hidden = hidden;
+    return;
+  }
+
+  if (visibilityState.timer) {
+    window.clearTimeout(visibilityState.timer);
+  }
+  visibilityState.timer = window.setTimeout(() => {
+    visibilityState.timer = 0;
+    const nextScale = hidden ? Math.max(MIN_PARTICLE_CAP / BASE_PARTICLE_CAP, HIDDEN_VISIBILITY_SCALE) : 1;
+    if (qualityState.visibilityScale !== nextScale) {
+      qualityState.visibilityScale = nextScale;
+      applyQualityCap();
+    }
+    visibilityState.hidden = hidden;
+  }, VISIBILITY_DEBOUNCE_MS);
 }
 
 function applyPresetForTrack(index) {
@@ -585,11 +690,6 @@ render.on('safeModeChange', (enabled) => {
   writeStoredBoolean(STORAGE_KEYS.SAFE_MODE, safeModeEnabled);
   constrainManualAdjustmentsForSafeMode(safeModeEnabled);
 });
-render.on('resolutionChange', ({ scale }) => {
-  if (Number.isFinite(scale) && scale > 0.3) {
-    physics.configure({ baseCap: Math.round(5200 * clamp(scale, 0.55, 1)) });
-  }
-});
 render.on('nnBypassChange', (enabled) => {
   nnBypass = Boolean(enabled);
   writeStoredBoolean(STORAGE_KEYS.NN_BYPASS, nnBypass);
@@ -658,12 +758,36 @@ document.addEventListener('paste', (event) => {
   }
 });
 
+document.addEventListener('visibilitychange', () => {
+  queueVisibilityUpdate(document.visibilityState === 'hidden');
+});
+
 let lastFrameTime = performance.now();
 
 function frame(now) {
-  const dtMs = now - lastFrameTime;
+  const dtMsRaw = now - lastFrameTime;
   lastFrameTime = now;
-  const dtSeconds = clamp(dtMs / 1000, 1 / 240, 1 / 20);
+  const dtSeconds = clamp(dtMsRaw / 1000, 1 / 240, 1 / 20);
+  const frameTimeMs = dtSeconds * 1000;
+
+  fpsMonitor.sample(frameTimeMs);
+  const averageFps = fpsMonitor.getAverageFps();
+  const averageFrameTime = fpsMonitor.getAverageFrameTime();
+  const instantaneousFps = fpsMonitor.getInstantaneousFps();
+
+  if (averageFps >= 58.5) {
+    performanceRecoveryFrames += 1;
+    if (performanceRecoveryFrames >= PERFORMANCE_RECOVERY_FRAMES) {
+      const metrics = physics.getMetrics();
+      if (metrics.dynamicCap < BASE_PARTICLE_CAP) {
+        physics.configure({ baseCap: BASE_PARTICLE_CAP });
+        lastAppliedCap = BASE_PARTICLE_CAP;
+      }
+      performanceRecoveryFrames = 0;
+    }
+  } else {
+    performanceRecoveryFrames = 0;
+  }
 
   const audioState = audio.frame();
   const features = audioState?.features ?? audio.getFeatureVector();
@@ -693,11 +817,17 @@ function frame(now) {
   });
   applyMappedParams(mappedParams);
 
-  physics.step(simParams, { dt: dtSeconds, frameTime: dtMs });
+  physics.step(simParams, { dt: dtSeconds, frameTime: frameTimeMs, frameTimeAvg: averageFrameTime });
   const particles = physics.getParticles();
   const metrics = physics.getMetrics();
 
-  render.renderFrame(particles, renderParams, { dt: dtSeconds, frameTime: dtMs });
+  render.renderFrame(particles, renderParams, {
+    dt: dtSeconds,
+    frameTime: frameTimeMs,
+    frameTimeAvg: averageFrameTime,
+    fps: instantaneousFps,
+    fpsAvg: averageFps,
+  });
   updateStatus(metrics);
 
   if (!audioElement.paused && audioElement.readyState >= 1) {

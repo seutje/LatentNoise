@@ -15,7 +15,7 @@ const MIN_DT = 1 / 240;
 const MAX_DT = 1 / 30;
 const TARGET_FRAME_MS = 16.67;
 const OVERLOAD_THRESHOLD_MS = 21;
-const RECOVERY_THRESHOLD_MS = 16.2;
+const RECOVERY_THRESHOLD_MS = 16.7;
 const SPAWN_RATE_MIN = 160; // particles per second at spawnRate=0
 const SPAWN_RATE_MAX = 640; // particles per second at spawnRate=1
 const LIFE_MIN = 2.8;
@@ -37,7 +37,8 @@ const EPSILON = 1e-6;
 /**
  * @typedef {Object} StepOptions
  * @property {number} [dt]
- * @property {number} [frameTime] Frame time in ms used for dynamic caps.
+ * @property {number} [frameTime] Instantaneous frame time in ms.
+ * @property {number} [frameTimeAvg] Rolling-average frame time in ms.
  */
 
 const state = {
@@ -93,6 +94,7 @@ const state = {
   },
   metrics: {
     frameTime: TARGET_FRAME_MS,
+    frameTimeInstant: TARGET_FRAME_MS,
     fps: 60,
     trimmedLastFrame: false,
     overloadedFrames: 0,
@@ -565,26 +567,38 @@ function integrateParticles(dt, params) {
   }
 }
 
-function updateDynamicCap(frameTime) {
-  if (!Number.isFinite(frameTime) || frameTime <= 0) {
+function updateDynamicCap(frameTimeInstant, frameTimeAverage) {
+  const previousCap = state.dynamicCap;
+  const instant = Number.isFinite(frameTimeInstant) && frameTimeInstant > 0 ? frameTimeInstant : Number.NaN;
+  const rolling = Number.isFinite(frameTimeAverage) && frameTimeAverage > 0 ? frameTimeAverage : Number.NaN;
+  const overloadCheck = Number.isFinite(instant)
+    ? (Number.isFinite(rolling) ? Math.max(instant, rolling) : instant)
+    : rolling;
+  const recoveryCheck = Number.isFinite(rolling)
+    ? (Number.isFinite(instant) ? Math.min(instant, rolling) : rolling)
+    : instant;
+
+  if (!Number.isFinite(overloadCheck) || overloadCheck <= 0) {
     return;
   }
 
-  state.metrics.frameTime = frameTime;
-  state.metrics.fps = frameTime > 0 ? 1000 / frameTime : 60;
+  const representative = Number.isFinite(rolling) ? rolling : overloadCheck;
+  state.metrics.frameTime = representative;
+  state.metrics.frameTimeInstant = Number.isFinite(instant) ? instant : representative;
+  state.metrics.fps = representative > 0 ? 1000 / representative : 60;
   state.metrics.trimmedLastFrame = false;
 
-  if (frameTime > OVERLOAD_THRESHOLD_MS) {
+  if (overloadCheck > OVERLOAD_THRESHOLD_MS) {
     state.metrics.overloadedFrames = Math.min(120, state.metrics.overloadedFrames + 1);
     const next = Math.max(
       state.minCap,
-      Math.floor(state.dynamicCap * (frameTime > TARGET_FRAME_MS * 2 ? 0.82 : 0.92)),
+      Math.floor(state.dynamicCap * (overloadCheck > TARGET_FRAME_MS * 2 ? 0.82 : 0.92)),
     );
     if (next < state.dynamicCap) {
       state.dynamicCap = next;
       state.metrics.trimmedLastFrame = true;
     }
-  } else if (frameTime < RECOVERY_THRESHOLD_MS) {
+  } else if (Number.isFinite(recoveryCheck) && recoveryCheck < RECOVERY_THRESHOLD_MS) {
     state.metrics.overloadedFrames = Math.max(0, state.metrics.overloadedFrames - 2);
     if (state.dynamicCap < state.baseCap) {
       state.dynamicCap = Math.min(
@@ -597,6 +611,10 @@ function updateDynamicCap(frameTime) {
   }
 
   state.dynamicCap = clamp(Math.floor(state.dynamicCap), state.minCap, state.capacity);
+
+  if (state.dynamicCap !== previousCap) {
+    console.info('[physics] dynamicCap', state.dynamicCap);
+  }
 }
 
 function trimToDynamicCap() {
@@ -626,10 +644,11 @@ function updateRepelStrength(target, dt) {
  */
 export function step(params = {}, options = {}) {
   const dt = sanitizeDt(options.dt);
-  const frameTime = Number.isFinite(options.frameTime) ? options.frameTime : dt * 1000;
+  const frameTimeInstant = Number.isFinite(options.frameTime) ? options.frameTime : dt * 1000;
+  const frameTimeAverage = Number.isFinite(options.frameTimeAvg) ? options.frameTimeAvg : frameTimeInstant;
   const sanitized = sanitizeParams(params);
 
-  updateDynamicCap(frameTime);
+  updateDynamicCap(frameTimeInstant, frameTimeAverage);
   computeCenterOfMass();
   updateRepelStrength(sanitized.repelImpulse, dt);
   updateWells(sanitized, dt);
@@ -672,6 +691,7 @@ export function reset() {
   state.centerY = 0;
   state.repelStrength = 0;
   state.metrics.frameTime = TARGET_FRAME_MS;
+  state.metrics.frameTimeInstant = TARGET_FRAME_MS;
   state.metrics.fps = 60;
   state.metrics.trimmedLastFrame = false;
   state.metrics.overloadedFrames = 0;
@@ -775,6 +795,7 @@ export function getParticles() {
 export function getMetrics() {
   return {
     frameTime: state.metrics.frameTime,
+    frameTimeInstant: state.metrics.frameTimeInstant,
     fps: state.metrics.fps,
     trimmedLastFrame: state.metrics.trimmedLastFrame,
     overloadedFrames: state.metrics.overloadedFrames,

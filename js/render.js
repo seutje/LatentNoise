@@ -3,8 +3,11 @@ const MAX_PIXEL_RATIO = 3;
 const MIN_DYNAMIC_SCALE = 0.55;
 const MAX_DYNAMIC_SCALE = 1;
 const SCALE_STEP = 0.1;
+const TARGET_FPS = 58;
+const TARGET_FRAME_MS = 1000 / TARGET_FPS;
 const DROP_THRESHOLD_MS = 20.5;
-const RECOVER_THRESHOLD_MS = 16;
+const RECOVER_THRESHOLD_MS = 17;
+const RESIZE_DEBOUNCE_MS = 150;
 const TRAIL_BASE_ALPHA = 0.12;
 const COLOR_BASE_HUE = 218;
 const VOLUME_MIN = 0;
@@ -59,6 +62,8 @@ const state = {
   frameCounter: 0,
   fpsSamples: new Float32Array(120),
   fpsIndex: 0,
+  fpsSum: 0,
+  fpsSampleCount: 0,
   fps: 0,
   statusText: 'Idle',
   trackTitle: 'Latent Noise',
@@ -67,6 +72,7 @@ const state = {
   performance: {
     overloadFrames: 0,
     recoveryFrames: 0,
+    rollingFrameTime: 1000 / 60,
   },
   world: {
     width: 2,
@@ -81,6 +87,7 @@ const state = {
   },
   keyHandlersBound: false,
   resizeHandlerBound: false,
+  resizeTimerId: 0,
   frameSeed: 0,
 };
 
@@ -281,28 +288,62 @@ function handleToggleInput(event) {
   handleToggleChange(name, target.checked, 'ui');
 }
 
-function updateFps(frameTimeMs) {
-  const instantaneous = frameTimeMs > 0 ? 1000 / frameTimeMs : 0;
-  const samples = state.fpsSamples;
-  samples[state.fpsIndex] = instantaneous;
-  state.fpsIndex = (state.fpsIndex + 1) % samples.length;
-  const sampleCount = state.frameCounter < samples.length ? state.frameCounter + 1 : samples.length;
-  let sum = 0;
-  for (let i = 0; i < sampleCount; i += 1) {
-    sum += samples[i];
+function updateFps(frameTimeMs, fpsInstantHint, fpsAverageHint) {
+  let instantaneous = Number.isFinite(fpsInstantHint) && fpsInstantHint > 0 ? fpsInstantHint : 0;
+  if (!Number.isFinite(instantaneous) || instantaneous <= 0) {
+    instantaneous = frameTimeMs > 0 ? 1000 / frameTimeMs : 0;
   }
-  state.fps = sampleCount > 0 ? sum / sampleCount : instantaneous;
+
+  const samples = state.fpsSamples;
+  const index = state.fpsIndex;
+
+  if (state.fpsSampleCount === samples.length) {
+    state.fpsSum -= samples[index];
+  }
+
+  samples[index] = instantaneous;
+  state.fpsSum += instantaneous;
+
+  if (state.fpsSampleCount < samples.length) {
+    state.fpsSampleCount += 1;
+  }
+
+  state.fpsIndex = (index + 1) % samples.length;
+
+  const windowAverage = state.fpsSampleCount > 0 ? state.fpsSum / state.fpsSampleCount : instantaneous;
+  const average = Number.isFinite(fpsAverageHint) && fpsAverageHint > 0 ? fpsAverageHint : windowAverage;
+
+  state.fps = average;
+  state.performance.rollingFrameTime = average > 0 ? 1000 / average : frameTimeMs > 0 ? frameTimeMs : Infinity;
+
   if (state.hud.fps) {
-    const fpsValue = Number.isFinite(state.fps) ? Math.round(state.fps) : 0;
+    const fpsValue = Number.isFinite(state.fps) && state.fps > 0 ? Math.round(state.fps) : 0;
     state.hud.fps.textContent = fpsValue > 0 ? `FPS: ${fpsValue}` : 'FPS: --';
   }
 }
 
-function adjustDynamicScale(frameTimeMs) {
-  if (!Number.isFinite(frameTimeMs)) {
+function adjustDynamicScale(frameTimeMs, rollingFrameTimeMs) {
+  const hasInstant = Number.isFinite(frameTimeMs);
+  const hasRolling = Number.isFinite(rollingFrameTimeMs);
+  if (!hasInstant && !hasRolling) {
     return;
   }
-  if (frameTimeMs > DROP_THRESHOLD_MS) {
+
+  const overloadCheck = hasInstant && hasRolling
+    ? Math.max(frameTimeMs, rollingFrameTimeMs)
+    : hasInstant
+      ? frameTimeMs
+      : rollingFrameTimeMs;
+  const recoveryCheck = hasInstant && hasRolling
+    ? Math.min(frameTimeMs, rollingFrameTimeMs)
+    : hasRolling
+      ? rollingFrameTimeMs
+      : frameTimeMs;
+
+  const overloadByAverage = hasRolling && rollingFrameTimeMs > TARGET_FRAME_MS;
+  const overloadBySpike = Number.isFinite(overloadCheck) && overloadCheck > DROP_THRESHOLD_MS;
+
+  if (overloadByAverage || overloadBySpike) {
     state.performance.overloadFrames += 1;
     state.performance.recoveryFrames = 0;
     if (state.performance.overloadFrames > 8 && state.dynamicScale > MIN_DYNAMIC_SCALE) {
@@ -310,14 +351,21 @@ function adjustDynamicScale(frameTimeMs) {
       state.performance.overloadFrames = 0;
       ensureCanvasSize(true);
       emit('resolutionChange', { scale: state.dynamicScale });
+      console.info('[render] dynamicScale drop', state.dynamicScale);
     }
-  } else if (frameTimeMs < RECOVER_THRESHOLD_MS && state.dynamicScale < MAX_DYNAMIC_SCALE) {
+  } else if (
+    Number.isFinite(recoveryCheck)
+    && recoveryCheck < RECOVER_THRESHOLD_MS
+    && (!hasRolling || rollingFrameTimeMs < TARGET_FRAME_MS)
+    && state.dynamicScale < MAX_DYNAMIC_SCALE
+  ) {
     state.performance.recoveryFrames += 1;
-    if (state.performance.recoveryFrames > 180) {
+    if (state.performance.recoveryFrames > 90) {
       state.dynamicScale = Math.min(MAX_DYNAMIC_SCALE, state.dynamicScale + SCALE_STEP);
       state.performance.recoveryFrames = 0;
       ensureCanvasSize(true);
       emit('resolutionChange', { scale: state.dynamicScale });
+      console.info('[render] dynamicScale recover', state.dynamicScale);
     }
   } else {
     state.performance.overloadFrames = Math.max(0, state.performance.overloadFrames - 1);
@@ -493,11 +541,23 @@ function unbindKeyboard() {
   state.keyHandlersBound = false;
 }
 
+function flushResize() {
+  if (!state.initialized) {
+    state.resizeTimerId = 0;
+    return;
+  }
+  state.resizeTimerId = 0;
+  ensureCanvasSize(true);
+}
+
 function handleResize() {
   if (!state.initialized) {
     return;
   }
-  ensureCanvasSize(true);
+  if (state.resizeTimerId) {
+    window.clearTimeout(state.resizeTimerId);
+  }
+  state.resizeTimerId = window.setTimeout(flushResize, RESIZE_DEBOUNCE_MS);
 }
 
 function bindResize() {
@@ -514,6 +574,10 @@ function unbindResize() {
   }
   window.removeEventListener('resize', handleResize);
   state.resizeHandlerBound = false;
+  if (state.resizeTimerId) {
+    window.clearTimeout(state.resizeTimerId);
+    state.resizeTimerId = 0;
+  }
 }
 
 function assertElement(element, message) {
@@ -592,6 +656,10 @@ export function destroy() {
   }
   unbindKeyboard();
   unbindResize();
+  if (state.resizeTimerId) {
+    window.clearTimeout(state.resizeTimerId);
+    state.resizeTimerId = 0;
+  }
 
   if (state.hud.toggleInputs.size > 0) {
     for (const input of state.hud.toggleInputs.values()) {
@@ -779,15 +847,26 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
 
   const now = performance.now();
   const dt = Number.isFinite(metrics.dt) ? Math.max(metrics.dt, 1 / 120) : state.lastTime > 0 ? (now - state.lastTime) / 1000 : 1 / 60;
-  const frameTime = Number.isFinite(metrics.frameTime) ? metrics.frameTime : dt * 1000;
+  const frameTimeInstant = Number.isFinite(metrics.frameTime) ? metrics.frameTime : dt * 1000;
+  const frameTimeAverage = Number.isFinite(metrics.frameTimeAvg) ? metrics.frameTimeAvg : frameTimeInstant;
+  const fpsInstant = Number.isFinite(metrics.fps) && metrics.fps > 0
+    ? metrics.fps
+    : frameTimeInstant > 0
+      ? 1000 / frameTimeInstant
+      : 0;
+  const fpsAverage = Number.isFinite(metrics.fpsAvg) && metrics.fpsAvg > 0
+    ? metrics.fpsAvg
+    : frameTimeAverage > 0
+      ? 1000 / frameTimeAverage
+      : fpsInstant;
 
   state.lastTime = now;
   state.frameCounter += 1;
   state.frameSeed = state.frameCounter * 0.37;
 
   ensureCanvasSize();
-  adjustDynamicScale(frameTime);
-  updateFps(frameTime);
+  adjustDynamicScale(frameTimeInstant, frameTimeAverage);
+  updateFps(frameTimeInstant, fpsInstant, fpsAverage);
 
   const params = resolveParams(renderParams);
   const fadeAlpha = state.toggles.trails ? clamp(1 - params.trailFade, 0.02, 0.35) : 1;
