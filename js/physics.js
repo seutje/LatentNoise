@@ -24,6 +24,7 @@ const FLOW_FREQ_X = 0.37;
 const FLOW_FREQ_Y = 0.41;
 const FLOW_TIME_SCALE = 0.18;
 const EPSILON = 1e-6;
+const BOUNDS_SCRATCH = { x: 0, y: 0, vx: 0, vy: 0 };
 
 /**
  * @typedef {Object} PhysicsParams
@@ -297,16 +298,14 @@ function wrapValue(value, min, max) {
 
 function applyBounds(x, y, vx, vy) {
   const { minX, maxX, minY, maxY, mode } = state.bounds;
+  const out = BOUNDS_SCRATCH;
 
   if (mode === 'wrap') {
-    const wrappedX = wrapValue(x, minX, maxX);
-    const wrappedY = wrapValue(y, minY, maxY);
-    return {
-      x: wrappedX,
-      y: wrappedY,
-      vx,
-      vy,
-    };
+    out.x = wrapValue(x, minX, maxX);
+    out.y = wrapValue(y, minY, maxY);
+    out.vx = vx;
+    out.vy = vy;
+    return out;
   }
 
   let nextX = x;
@@ -330,12 +329,11 @@ function applyBounds(x, y, vx, vy) {
     nextVy = -Math.abs(nextVy);
   }
 
-  return {
-    x: nextX,
-    y: nextY,
-    vx: nextVx,
-    vy: nextVy,
-  };
+  out.x = nextX;
+  out.y = nextY;
+  out.vx = nextVx;
+  out.vy = nextVy;
+  return out;
 }
 
 function randomUnit() {

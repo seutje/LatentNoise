@@ -162,12 +162,12 @@
 ---
 
 ## Phase 12 — Performance Guardrails & Stability
-- [ ] Implement FPS rolling average; adjust particle cap/resolution when FPS < target.
-- [ ] Pre‑allocate temp arrays; ban `new` in hot loops (lint or assert).
-- [ ] Debounce expensive operations on resize/visibility change.
+- [x] Implement FPS rolling average; adjust particle cap/resolution when FPS < target.
+- [x] Pre‑allocate temp arrays; ban `new` in hot loops (lint or assert).
+- [x] Debounce expensive operations on resize/visibility change.
 
 **Acceptance:**
-- [ ] Under stress, app reduces quality gracefully and restores when load subsides.
+- [x] Under stress, app reduces quality gracefully and restores when load subsides.
 
 ---
 

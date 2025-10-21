@@ -35,3 +35,6 @@
 
 ## 2025-10-21 - Phase 11
 - Completed the orchestration layer by running the audio -> NN -> mapping -> physics -> render pipeline each animation frame, wiring HUD controls (play/seek/prev/next) plus keyboard events through shared handlers, and persisting playlist, safe mode, HUD visibility, and volume state. Validated the end-to-end loop in Chrome DevTools at http://127.0.0.1:8000 with a clean console and stable memory usage.
+
+## 2025-10-21 - Phase 12
+- Added frame-time monitoring with rolling FPS sampling, dynamic particle cap scaling, and render resolution throttling so the system proactively sheds load during stress and restores quality after sustained recovery. Reused scratch buffers in the renderer and physics bounds handling to eliminate per-frame allocations, and verified resize/visibility work is debounced so quality changes remain smooth.

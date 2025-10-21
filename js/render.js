@@ -12,6 +12,13 @@ const TRAIL_BASE_ALPHA = 0.12;
 const COLOR_BASE_HUE = 218;
 const VOLUME_MIN = 0;
 const VOLUME_MAX = 1;
+const PARAM_SCRATCH = {
+  trailFade: 0.65,
+  glow: 0.5,
+  sizeJitter: 0.25,
+  hueShift: 0,
+  sparkleDensity: 0.05,
+};
 
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
   hud: true,
@@ -727,13 +734,12 @@ export function off(eventName, handler) {
 }
 
 function resolveParams(input = {}) {
-  return {
-    trailFade: clamp(input.trailFade ?? 0.65, 0, 0.98),
-    glow: clamp(input.glow ?? 0.5, 0, 1),
-    sizeJitter: clamp(input.sizeJitter ?? 0.25, 0, 0.8),
-    hueShift: Number.isFinite(input.hueShift) ? input.hueShift : 0,
-    sparkleDensity: clamp(input.sparkleDensity ?? 0.05, 0, 1),
-  };
+  PARAM_SCRATCH.trailFade = clamp(input.trailFade ?? 0.65, 0, 0.98);
+  PARAM_SCRATCH.glow = clamp(input.glow ?? 0.5, 0, 1);
+  PARAM_SCRATCH.sizeJitter = clamp(input.sizeJitter ?? 0.25, 0, 0.8);
+  PARAM_SCRATCH.hueShift = Number.isFinite(input.hueShift) ? input.hueShift : 0;
+  PARAM_SCRATCH.sparkleDensity = clamp(input.sparkleDensity ?? 0.05, 0, 1);
+  return PARAM_SCRATCH;
 }
 
 function prepareGlow(glowLevel) {
