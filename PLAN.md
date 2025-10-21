@@ -107,7 +107,7 @@
 
 ## Phase 7 — Mapping Layer (NN → Params)
 - [x] Implement `js/map.js` mapping NN outputs → params: `spawnRate, fieldStrength, cohesion, repelImpulse, trailFade, glow, sizeJitter, hueShift, sparkleDensity, vortexAmount`.
-- [x] Add critically-damped low-pass smoothing on continuous channels.
+- [x] Add critically-damped low-pass smoothing on continuous channels. *(Currently disabled per latest requirements; mapper now applies NN outputs directly without smoothing.)*
 - [x] Implement hysteresis/gating on impulse-like channels.
 - [x] Respect photosensitive caps from settings.
 
