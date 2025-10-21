@@ -161,7 +161,7 @@ function readStoredVolume() {
     if (Number.isFinite(parsed)) {
       return clamp01(parsed);
     }
-  } catch (error) {
+  } catch {
     // Ignore storage access issues (private mode, disabled storage, etc.).
   }
   return DEFAULT_VOLUME;
@@ -170,7 +170,7 @@ function readStoredVolume() {
 function persistVolume(value) {
   try {
     window.localStorage.setItem(STORAGE_KEY, value.toString());
-  } catch (error) {
+  } catch {
     // Ignore persistence failures and continue; volume will reset next boot.
   }
 }

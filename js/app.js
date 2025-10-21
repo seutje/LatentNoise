@@ -5,6 +5,7 @@ import * as map from './map.js';
 import * as render from './render.js';
 import { applyPreset as applyPresetScaling, getDefaultPreset, getPreset } from './presets.js';
 import { getList, resolveUrl } from './playlist.js';
+import { initDebugOverlay, runStartupDiagnostics, updateDebugOverlay } from './diagnostics.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -119,6 +120,76 @@ const visibilityState = {
 
 console.debug('[app] visibility state bootstrap', visibilityState.hidden);
 
+function ensureNumberArray(source, expectedLength, label, contextLabel, options = {}) {
+  if (!Array.isArray(source)) {
+    throw new Error(`[${contextLabel}] ${label} must be an array of numbers.`);
+  }
+  if (typeof expectedLength === 'number' && source.length !== expectedLength) {
+    throw new Error(
+      `[${contextLabel}] ${label} expected length ${expectedLength}, received ${source.length}.`,
+    );
+  }
+  for (let i = 0; i < source.length; i += 1) {
+    const value = Number(source[i]);
+    if (!Number.isFinite(value)) {
+      throw new Error(`[${contextLabel}] ${label}[${i}] must be a finite number.`);
+    }
+    if (options.positive && !(value > 0)) {
+      throw new Error(`[${contextLabel}] ${label}[${i}] must be greater than 0.`);
+    }
+  }
+  return source;
+}
+
+function validateModelDefinition(definition, contextLabel = 'model') {
+  if (!definition || typeof definition !== 'object') {
+    throw new Error(`[${contextLabel}] Model definition must be an object.`);
+  }
+
+  const layers = Array.isArray(definition.layers) ? definition.layers : [];
+  if (layers.length === 0) {
+    throw new Error(`[${contextLabel}] Model must define at least one layer.`);
+  }
+
+  const inputSize = Number(definition.input);
+  if (!Number.isFinite(inputSize) || inputSize <= 0) {
+    throw new Error(`[${contextLabel}] "input" must be a positive number.`);
+  }
+
+  const norm = definition.normalization ?? {};
+  ensureNumberArray(norm.mean, inputSize, 'normalization.mean', contextLabel);
+  ensureNumberArray(norm.std, inputSize, 'normalization.std', contextLabel, { positive: true });
+
+  let expectedInputs = inputSize;
+  layers.forEach((rawLayer, layerIndex) => {
+    if (!rawLayer || typeof rawLayer !== 'object') {
+      throw new Error(`[${contextLabel}] Layer ${layerIndex} must be an object.`);
+    }
+    if (typeof rawLayer.activation !== 'string' || rawLayer.activation.length === 0) {
+      throw new Error(`[${contextLabel}] Layer ${layerIndex} is missing an activation name.`);
+    }
+    const biases = ensureNumberArray(
+      rawLayer.bias ?? rawLayer.biases,
+      undefined,
+      `layers[${layerIndex}].bias`,
+      contextLabel,
+    );
+    if (biases.length === 0) {
+      throw new Error(`[${contextLabel}] Layer ${layerIndex} must include at least one bias value.`);
+    }
+    const expectedWeights = expectedInputs * biases.length;
+    ensureNumberArray(
+      rawLayer.weights,
+      expectedWeights,
+      `layers[${layerIndex}].weights`,
+      contextLabel,
+    );
+    expectedInputs = biases.length;
+  });
+
+  return true;
+}
+
 function clamp(value, min, max) {
   if (!Number.isFinite(value)) {
     return min;
@@ -135,7 +206,7 @@ function clamp(value, min, max) {
 function readStorage(key) {
   try {
     return window.localStorage.getItem(key);
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -143,7 +214,7 @@ function readStorage(key) {
 function writeStorage(key, value) {
   try {
     window.localStorage.setItem(key, value);
-  } catch (error) {
+  } catch {
     // Ignore storage write failures (private mode, quota exceeded, etc.).
   }
 }
@@ -270,6 +341,9 @@ map.configure({ safeMode: safeModeEnabled });
 if (safeModeEnabled) {
   constrainManualAdjustmentsForSafeMode(true);
 }
+
+initDebugOverlay({ search: typeof window !== 'undefined' ? window.location.search : '' });
+await runStartupDiagnostics({ safeMode: safeModeEnabled });
 
 // Remove any stray options before populating the locked playlist.
 playlistSelect.innerHTML = '';
@@ -564,6 +638,7 @@ async function fetchModelDefinition(index) {
       return response.json();
     })
     .then((json) => {
+      validateModelDefinition(json, url);
       modelCache.set(index, json);
       return json;
     })
@@ -900,6 +975,33 @@ function frame(now) {
     fpsAvg: averageFps,
   });
   updateStatus(metrics);
+
+  updateDebugOverlay({
+    fps: instantaneousFps,
+    fpsAvg: averageFps,
+    activity,
+    features,
+    outputs: nnOutputs,
+    modelInfo: nn.getCurrentModelInfo(),
+    params: {
+      spawnRate: simParams.spawnRate,
+      fieldStrength: simParams.fieldStrength,
+      cohesion: simParams.cohesion,
+      repelImpulse: simParams.repelImpulse,
+      vortexAmount: simParams.vortexAmount,
+      trailFade: renderParams.trailFade,
+      glow: renderParams.glow,
+      sizeJitter: renderParams.sizeJitter,
+      hueShift: renderParams.hueShift,
+      sparkleDensity: renderParams.sparkleDensity,
+      spawnOffset: manualAdjustments.spawnOffset,
+      glowOffset: manualAdjustments.glowOffset,
+      sparkleOffset: manualAdjustments.sparkleOffset,
+      hueOffset: manualAdjustments.hueOffset,
+      safeMode: safeModeEnabled ? 1 : 0,
+      nnBypass: nnBypass ? 1 : 0,
+    },
+  });
 
   if (!audioElement.paused && audioElement.readyState >= 1) {
     const { currentTime, duration } = audioElement;
