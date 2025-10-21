@@ -102,6 +102,9 @@ const BAND_EMA_FEATURES = [
   FEATURE_INDEX.EMA_HIGH,
 ];
 
+const BAND_VALUE_GAINS = Object.freeze([1.5, 1.5, 1.5, 1.5, 1.5]);
+const BAND_VALUE_SIGNED = Object.freeze([true, true, true, true, true]);
+
 const BAND_EMA_MS = 300;
 const RMS_EMA_MS = 250;
 const FLUX_EMA_MS = 200;
@@ -485,19 +488,25 @@ function updateFeatures(rms, now) {
 
   for (let band = 0; band < BAND_COUNT; band += 1) {
     const divisor = bandBinCounts[band] || 1;
-    const normalized = clamp01(bandValues[band] / divisor);
-    const delta = clampSigned(normalized - previousBandValues[band]);
-    previousBandValues[band] = normalized;
+    const rawNormalized = clamp01(bandValues[band] / divisor);
+    const signedBase = BAND_VALUE_SIGNED[band] ? rawNormalized * 2 - 1 : rawNormalized;
+    const gain = BAND_VALUE_GAINS[band] ?? 1;
+    const amplified = signedBase * gain;
+    const value = BAND_VALUE_SIGNED[band] ? clampSigned(amplified) : clamp01(amplified);
+    const delta = clampSigned(value - previousBandValues[band]);
+    previousBandValues[band] = value;
 
     if (!featuresInitialized) {
-      bandEma[band] = normalized;
+      bandEma[band] = value;
     } else {
-      bandEma[band] += alphaBand * (normalized - bandEma[band]);
+      bandEma[band] += alphaBand * (value - bandEma[band]);
     }
 
-    featureVector[BAND_VALUE_FEATURES[band]] = normalized;
+    const emaClamped = BAND_VALUE_SIGNED[band] ? clampSigned(bandEma[band]) : clamp01(bandEma[band]);
+
+    featureVector[BAND_VALUE_FEATURES[band]] = value;
     featureVector[BAND_DELTA_FEATURES[band]] = delta;
-    featureVector[BAND_EMA_FEATURES[band]] = clamp01(bandEma[band]);
+    featureVector[BAND_EMA_FEATURES[band]] = emaClamped;
   }
 
   const rmsClamped = clamp01(rms);

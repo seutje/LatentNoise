@@ -99,3 +99,6 @@
 ## 2025-10-24 - Mapping Smoothing Removal
 - Disabled the critically-damped smoother in the mapping layer so NN outputs drive the continuous parameters directly, per the latest requirement.
 - Updated the implementation plan to note the change and confirmed via `npm test` and `npm run lint`.
+
+## 2025-10-24 - Band Feature Scaling
+- Boosted the analyser's sub/bass/lowMid/mid/high feature channels, remapping them to signed ranges and feeding the amplified signals through deltas and EMAs so downstream models see a wider dynamic swing.
