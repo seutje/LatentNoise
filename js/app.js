@@ -987,11 +987,18 @@ function frame(now) {
     lastModelOutputs = FALLBACK_NN_OUTPUTS;
   }
 
+  const playbackSilent =
+    !audioElement
+    || audioElement.paused
+    || audioElement.ended
+    || audioElement.readyState < 2;
+
   const mappedParams = map.update(nnOutputs, {
     dt: dtSeconds,
     timestamp: lookAheadTimestamp,
     activity,
     features,
+    forceSilence: playbackSilent,
   });
   applyMappedParams(mappedParams);
 

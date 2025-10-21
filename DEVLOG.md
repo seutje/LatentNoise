@@ -87,3 +87,7 @@
 - Prevented preset baselines from lifting the spawn-rate rest value so silence always decays to zero, even after preset scaling.
 - Removed the application-layer minimum clamp on spawn rate so mapped values can fully reach zero when the NN or silence gating demand it.
 - Re-ran `npm test` and `npm run lint` to confirm the adjustments remain stable.
+
+## 2025-10-24 - Spawn Rate Pause Gate
+- Added a playback-silence override so the mapping layer instantly resets spawn rate (and related impulse envelopes) to zero whenever the player is paused or stopped, guaranteeing no new particles appear without audio.
+- Passed a new regression test that asserts the forced-silence path clamps spawn rate to rest and verified the suite with `npm test` plus `npm run lint`.
