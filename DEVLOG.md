@@ -48,3 +48,6 @@
 ## 2025-10-22 - Feature Update
 - Extended the audio feature vector with a normalized track-position input and upgraded all model JSONs to accept the new dimension while emitting an additional zoom output.
 - Routed the zoom channel through the mapping layer into renderer parameters so NN predictions can smoothly scale the scene, and added debug/overlay plumbing to surface the new values.
+
+## 2025-10-22 - Fix
+- Labeled the debug overlay feature list with human-readable names and surfaced the track-position input alongside the zoom output so the new telemetry is visible when inspecting diagnostics.

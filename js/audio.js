@@ -49,6 +49,33 @@ const FEATURE_INDEX = Object.freeze({
 
 const FEATURE_COUNT = 24;
 
+const FEATURE_LABELS = Object.freeze([
+  'sub',
+  'bass',
+  'lowMid',
+  'mid',
+  'high',
+  'rms',
+  'centroid',
+  'rollOff',
+  'flatness',
+  'deltaSub',
+  'deltaBass',
+  'deltaLowMid',
+  'deltaMid',
+  'deltaHigh',
+  'deltaRms',
+  'emaSub',
+  'emaBass',
+  'emaLowMid',
+  'emaMid',
+  'emaHigh',
+  'emaRms',
+  'flux',
+  'fluxEma',
+  'trackPosition',
+]);
+
 const BAND_VALUE_FEATURES = [
   FEATURE_INDEX.SUB,
   FEATURE_INDEX.BASS,
@@ -567,6 +594,14 @@ export function getAnalyser() {
  */
 export function getFeatureVector() {
   return featureVector;
+}
+
+/**
+ * Retrieve human-readable labels for the feature vector indices.
+ * @returns {string[]}
+ */
+export function getFeatureLabels() {
+  return FEATURE_LABELS.slice();
 }
 
 /**
