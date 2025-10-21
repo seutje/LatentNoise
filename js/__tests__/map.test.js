@@ -43,4 +43,29 @@ describe('map module', () => {
       }
     }
   });
+
+  test('respects custom baselines passed to reset', () => {
+    const outputs = new Float32Array(getParamNames().length);
+    const custom = {
+      spawnRate: 0.72,
+      glow: 0.8,
+      sparkleDensity: 0.18,
+    };
+
+    reset(custom);
+
+    let params = {};
+    for (let i = 0; i < 3; i += 1) {
+      params = update(outputs, { dt: 1 / 60, activity: 1 });
+    }
+
+    expect(params.spawnRate).toBeCloseTo(custom.spawnRate, 1e-3);
+    expect(params.glow).toBeCloseTo(custom.glow, 1e-3);
+    expect(params.sparkleDensity).toBeCloseTo(custom.sparkleDensity, 1e-3);
+
+    params = update(outputs, { dt: 1 / 60, activity: 0 });
+    expect(params.spawnRate).toBeLessThan(custom.spawnRate);
+    expect(params.spawnRate).toBeGreaterThan(0);
+    expect(params.sparkleDensity).toBeLessThanOrEqual(custom.sparkleDensity);
+  });
 });

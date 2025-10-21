@@ -60,3 +60,6 @@
 
 ## 2025-10-24 - Palette Refresh
 - Updated the presets for Built on the Steppers and Traffic Jam with a deep green base and complementary red/orange accents, and re-themed Backpack around gold tones with bright yellow highlights to align with the latest art direction. Validated the tweak with `npm test` and `npm run lint`.
+
+## 2025-10-24 - Preset Baseline Fix
+- Updated the mapping layer so preset-provided defaults persist as the active baselines for both continuous and impulse parameters, keeping preset scalings alive after the NN runs. Added a regression test to ensure `map.reset` honors custom baselines, and confirmed the suite stays green with `npm test` plus `npm run lint`.
