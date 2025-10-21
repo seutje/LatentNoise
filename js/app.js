@@ -37,6 +37,7 @@ const RENDER_PARAMS_DEFAULT = Object.freeze({
   sizeJitter: 0.32,
   hueShift: 0,
   sparkleDensity: 0.14,
+  zoom: 1,
 });
 
 const SIM_PARAMS_DEFAULT = Object.freeze({
@@ -597,11 +598,14 @@ function applyMappedParams(mapped) {
   const jitterBase = Number.isFinite(mapped.sizeJitter) ? mapped.sizeJitter : RENDER_PARAMS_DEFAULT.sizeJitter;
   const hueBase = Number.isFinite(mapped.hueShift) ? mapped.hueShift : RENDER_PARAMS_DEFAULT.hueShift;
   const sparkleBase = Number.isFinite(mapped.sparkleDensity) ? mapped.sparkleDensity : RENDER_PARAMS_DEFAULT.sparkleDensity;
+  const zoomBase = Number.isFinite(mapped.zoom) ? mapped.zoom : RENDER_PARAMS_DEFAULT.zoom;
 
   const spawnMin = 0.05;
   const spawnMax = safe ? 0.8 : 1.2;
   const glowMax = safe ? 0.6 : 1;
   const sparkleMax = safe ? 0.65 : 1;
+  const zoomMin = 0.5;
+  const zoomMax = safe ? 1.5 : 2;
 
   const spawnAdjusted = spawnBase + manualAdjustments.spawnOffset;
   const glowAdjusted = glowBase + manualAdjustments.glowOffset;
@@ -619,6 +623,7 @@ function applyMappedParams(mapped) {
   renderParams.sizeJitter = clamp(jitterBase, 0, 0.8);
   renderParams.hueShift = wrapHue(hueAdjusted);
   renderParams.sparkleDensity = clamp(sparkleAdjusted, 0, sparkleMax);
+  renderParams.zoom = clamp(zoomBase, zoomMin, zoomMax);
 }
 
 function cacheEntryIsPromise(entry) {
@@ -1011,6 +1016,7 @@ function frame(now) {
       sizeJitter: renderParams.sizeJitter,
       hueShift: renderParams.hueShift,
       sparkleDensity: renderParams.sparkleDensity,
+      zoom: renderParams.zoom,
       spawnOffset: manualAdjustments.spawnOffset,
       glowOffset: manualAdjustments.glowOffset,
       sparkleOffset: manualAdjustments.sparkleOffset,

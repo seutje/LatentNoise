@@ -9,6 +9,7 @@ const PARAM_NAMES = Object.freeze([
   'hueShift',
   'sparkleDensity',
   'vortexAmount',
+  'zoom',
 ]);
 
 const PARAM_SPECS = /** @type {const} */ ({
@@ -140,6 +141,18 @@ const PARAM_SPECS = /** @type {const} */ ({
     safeMax: 0.8,
     rest: 0.36,
     smoothingHz: 2,
+  },
+  zoom: {
+    index: 10,
+    type: 'continuous',
+    baseline: 1,
+    swing: 0.6,
+    safeSwing: 0.4,
+    min: 0.5,
+    max: 2,
+    safeMax: 1.5,
+    rest: 1,
+    smoothingHz: 1.8,
   },
 });
 

@@ -1,5 +1,6 @@
 import * as map from './map.js';
 import * as nn from './nn.js';
+import { getFeatureLabels } from './audio.js';
 
 const diagnosticsState = {
   debugEnabled: false,
@@ -16,6 +17,7 @@ const diagnosticsState = {
 };
 
 const OUTPUT_LABELS = map.PARAM_NAMES.slice();
+const FEATURE_LABELS = getFeatureLabels();
 
 function formatNumber(value, fractionDigits = 3) {
   if (!Number.isFinite(value)) {
@@ -264,7 +266,7 @@ export function updateDebugOverlay(payload = {}) {
     metrics.textContent = lines.length > 0 ? lines.join('\n') : 'No metrics';
   }
   if (features) {
-    features.textContent = formatArray(payload.features);
+    features.textContent = formatArray(payload.features, FEATURE_LABELS);
   }
   if (outputs) {
     outputs.textContent = formatArray(payload.outputs, OUTPUT_LABELS);
