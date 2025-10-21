@@ -54,3 +54,6 @@
 
 ## 2025-10-23 - Tooling
 - Added a `npm run models` CLI that regenerates placeholder neural-network JSON files with random weights for all tracks (or a targeted subset via index/slug) so artists can quickly spin up fresh model scaffolds during experimentation.
+
+## 2025-10-23 - Mapping Tuning
+- Doubled the swing on the spawn-rate, hue-shift, and zoom mapping channels (including safe-mode envelopes) so neural outputs drive more pronounced density, color, and scale shifts while keeping the existing clamps in place; verified via `npm test` and `npm run lint` that automated checks remain green.
