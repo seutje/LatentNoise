@@ -379,10 +379,10 @@ const state = {
 function getSmoother(name, spec) {
   let smoother = state.smoothers.get(name);
   if (!smoother) {
-    smoother = new CriticallyDampedSmoother(spec.baseline, spec.smoothingHz ?? 2);
+    smoother = new CriticallyDampedSmoother(spec.baseline, 0);
     state.smoothers.set(name, smoother);
-  } else if (typeof spec.smoothingHz === 'number') {
-    smoother.setFrequency(spec.smoothingHz);
+  } else {
+    smoother.setFrequency(0);
   }
   return smoother;
 }

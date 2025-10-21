@@ -95,3 +95,7 @@
 ## 2025-10-24 - Idle Spawn Reset
 - When loading a track without autoplay, run the mapper through a forced-silence update and reset the physics pool so the simulation starts from a clean slate with zero particles until playback begins.
 - Re-verified the suite via `npm test` and `npm run lint`.
+
+## 2025-10-24 - Mapping Smoothing Removal
+- Disabled the critically-damped smoother in the mapping layer so NN outputs drive the continuous parameters directly, per the latest requirement.
+- Updated the implementation plan to note the change and confirmed via `npm test` and `npm run lint`.
