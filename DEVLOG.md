@@ -63,3 +63,6 @@
 
 ## 2025-10-24 - Preset Baseline Fix
 - Updated the mapping layer so preset-provided defaults persist as the active baselines for both continuous and impulse parameters, keeping preset scalings alive after the NN runs. Added a regression test to ensure `map.reset` honors custom baselines, and confirmed the suite stays green with `npm test` plus `npm run lint`.
+
+## 2025-10-24 - Palette Application Fix
+- Routed preset palettes through the renderer and UI so accent colors and backgrounds now update alongside per-track baselines. Added renderer unit tests that exercise palette normalization and DOM styling both before and after initialization, and verified the suite with `npm test` plus `npm run lint`.

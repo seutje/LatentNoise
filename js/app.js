@@ -297,6 +297,7 @@ if (visibilityState.hidden) {
 const renderParams = { ...RENDER_PARAMS_DEFAULT };
 const simParams = { ...SIM_PARAMS_DEFAULT };
 let activePreset = getDefaultPreset();
+render.setPalette(activePreset?.palette);
 const manualAdjustments = {
   spawnOffset: 0,
   glowOffset: 0,
@@ -497,6 +498,9 @@ function updatePerformanceScaling(averageFps) {
 function applyPresetForTrack(index) {
   const preset = getPreset(index) ?? activePreset ?? getDefaultPreset();
   activePreset = preset;
+  if (preset?.palette) {
+    render.setPalette(preset.palette);
+  }
 
   resetManualAdjustments();
   copyParams(simParams, SIM_PARAMS_DEFAULT);
