@@ -145,3 +145,8 @@
 - Drew thin connective strands between roughly ten percent of the active particles using deterministic pairing so the swarm hints at neural pathways.
 - Tuned stroke color, alpha, and density to stay subtle behind the additive particle blooms while respecting dynamic scale and existing trail fades.
 - Re-verified repository health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Zoom Letterboxing Fix
+- Updated the render projection to scale particle positions independently along each axis so the swarm fills the full canvas even at low zoom levels.
+- Relaxed the renderer zoom clamp to match the application layer and ensured connection lines respect the anisotropic scaling.
+- Validated the change via `npm run lint` and `npm test`.

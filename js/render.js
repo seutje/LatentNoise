@@ -1028,7 +1028,7 @@ function resolveParams(input = {}) {
   PARAM_SCRATCH.hueShift = Number.isFinite(input.hueShift) ? input.hueShift : 0;
   PARAM_SCRATCH.sparkleDensity = clamp(input.sparkleDensity ?? 0.05, 0, 1);
   const zoom = Number.isFinite(input.zoom) ? input.zoom : 1;
-  PARAM_SCRATCH.zoom = clamp(zoom, 0.5, 20);
+  PARAM_SCRATCH.zoom = clamp(zoom, 0.1, 20);
   return PARAM_SCRATCH;
 }
 
@@ -1067,11 +1067,13 @@ function drawParticles(particles, params, dt) {
   const centerX = state.logicalWidth * 0.5;
   const centerY = state.logicalHeight * 0.5;
   const zoom = Number.isFinite(params.zoom) ? params.zoom : 1;
-  const scaleBase = Math.min(
-    state.renderScale / (state.world.width * 0.5),
-    state.renderScale / (state.world.height * 0.5),
-  );
-  const scale = scaleBase * clamp(zoom, 0.5, 20);
+  const zoomClamped = clamp(zoom, 0.1, 20);
+  const halfWorldWidth = Math.max(state.world.width * 0.5, 0.0001);
+  const halfWorldHeight = Math.max(state.world.height * 0.5, 0.0001);
+  const halfScreenWidth = Math.max(state.logicalWidth * 0.5, 0.0001);
+  const halfScreenHeight = Math.max(state.logicalHeight * 0.5, 0.0001);
+  const scaleX = (halfScreenWidth / halfWorldWidth) * zoomClamped;
+  const scaleY = (halfScreenHeight / halfWorldHeight) * zoomClamped;
 
   const jitter = params.sizeJitter;
   const sparkle = params.sparkleDensity;
@@ -1102,8 +1104,8 @@ function drawParticles(particles, params, dt) {
     const px = positionsX[index];
     const py = positionsY[index];
 
-    const sx = centerX + px * scale;
-    const sy = centerY + py * scale;
+    const sx = centerX + px * scaleX;
+    const sy = centerY + py * scaleY;
 
     const max = maxLife[index] || 1;
     const current = life[index] || 0;
@@ -1150,7 +1152,10 @@ function drawParticles(particles, params, dt) {
         ctx.globalAlpha = connectionAlpha;
         ctx.beginPath();
         ctx.moveTo(sx, sy);
-        ctx.lineTo(centerX + positionsX[partnerIndex] * scale, centerY + positionsY[partnerIndex] * scale);
+        ctx.lineTo(
+          centerX + positionsX[partnerIndex] * scaleX,
+          centerY + positionsY[partnerIndex] * scaleY,
+        );
         ctx.stroke();
         connectionsDrawn += 1;
       }
