@@ -15,7 +15,6 @@ const DEFAULT_PALETTE = Object.freeze({
   accents: ['#a78bfa', '#c4b5fd', '#ede9fe'],
   baseHue: DEFAULT_BASE_HUE,
 });
-const DEFAULT_GRID_COLOR = 'rgba(170, 180, 220, 0.08)';
 const VOLUME_MIN = 0;
 const VOLUME_MAX = 1;
 const PARAM_SCRATCH = {
@@ -31,11 +30,6 @@ const CONNECTION_FRACTION = 0.9;
 
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
   fullscreen: false,
-  bloom: true,
-  trails: true,
-  grid: false,
-  safe: false,
-  bypass: false,
 });
 
 const FULLSCREEN_CLASS = 'fullscreen-active';
@@ -216,7 +210,6 @@ const state = {
     fps: /** @type {HTMLElement|null} */ (null),
     volumeSlider: /** @type {HTMLInputElement|null} */ (null),
     volumeDisplay: /** @type {HTMLElement|null} */ (null),
-    toggleInputs: new Map(),
   },
   toggles: { ...TOGGLE_DEFAULTS },
   pixelRatio: 1,
@@ -440,13 +433,6 @@ function applyFullscreenState() {
   }
 }
 
-function applySafeModeClass() {
-  if (typeof document === 'undefined' || !document.body) {
-    return;
-  }
-  document.body.classList.toggle('safe-mode', state.toggles.safe);
-}
-
 function requestFullscreen() {
   if (typeof document === 'undefined') {
     return Promise.reject(new Error('Fullscreen API unavailable'));
@@ -475,10 +461,6 @@ function handleFullscreenChange() {
   const active = Boolean(document.fullscreenElement);
   if (state.toggles.fullscreen !== active) {
     state.toggles.fullscreen = active;
-    const input = state.hud.toggleInputs.get('fullscreen');
-    if (input) {
-      input.checked = active;
-    }
     applyFullscreenState();
     emit('toggle', { name: 'fullscreen', value: active, source: 'system' });
     return;
@@ -503,54 +485,30 @@ function unbindFullscreenChange() {
 }
 
 function handleToggleChange(name, value, source) {
-  if (!(name in state.toggles)) {
+  if (name !== 'fullscreen') {
     return;
   }
   const nextValue = Boolean(value);
-  if (state.toggles[name] === nextValue && source === 'api') {
+  if (state.toggles.fullscreen === nextValue && source === 'api') {
     return;
   }
-  state.toggles[name] = nextValue;
+  state.toggles.fullscreen = nextValue;
 
-  const input = state.hud.toggleInputs.get(name);
-  if (input && input.checked !== nextValue) {
-    input.checked = nextValue;
-  }
-
-  if (name === 'fullscreen') {
-    applyFullscreenState();
-    if (source !== 'system') {
-      if (nextValue) {
-        requestFullscreen().catch((error) => {
-          console.warn('[render] Failed to enter fullscreen', error);
-          handleToggleChange('fullscreen', false, 'system');
-        });
-      } else {
-        exitFullscreen().catch((error) => {
-          console.warn('[render] Failed to exit fullscreen', error);
-        });
-      }
+  applyFullscreenState();
+  if (source !== 'system') {
+    if (nextValue) {
+      requestFullscreen().catch((error) => {
+        console.warn('[render] Failed to enter fullscreen', error);
+        handleToggleChange('fullscreen', false, 'system');
+      });
+    } else {
+      exitFullscreen().catch((error) => {
+        console.warn('[render] Failed to exit fullscreen', error);
+      });
     }
-  } else if (name === 'safe') {
-    applySafeModeClass();
-    emit('safeModeChange', nextValue);
-  } else if (name === 'bypass') {
-    emit('nnBypassChange', nextValue);
   }
 
   emit('toggle', { name, value: nextValue, source });
-}
-
-function handleToggleInput(event) {
-  const target = event.target;
-  if (!(target instanceof HTMLInputElement)) {
-    return;
-  }
-  const name = target.dataset.toggle;
-  if (!name) {
-    return;
-  }
-  handleToggleChange(name, target.checked, 'ui');
 }
 
 function updateFps(frameTimeMs, fpsInstantHint, fpsAverageHint) {
@@ -667,37 +625,6 @@ function fadeGlow(alpha) {
   glowCtx.globalCompositeOperation = 'lighter';
 }
 
-function drawGrid() {
-  if (!state.ctx) {
-    return;
-  }
-  const ctx = state.ctx;
-  const width = state.logicalWidth;
-  const height = state.logicalHeight;
-  const spacing = Math.max(60, Math.min(width, height) / 10);
-
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  ctx.strokeStyle = state.palette.gridColor ?? DEFAULT_GRID_COLOR;
-  ctx.lineWidth = 1;
-
-  for (let x = spacing * 0.5; x < width; x += spacing) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.stroke();
-  }
-
-  for (let y = spacing * 0.5; y < height; y += spacing) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
 function compositeGlow() {
   if (!state.ctx || !state.glow.canvas || !state.glow.ctx) {
     return;
@@ -738,11 +665,7 @@ function handleKeyDown(event) {
       emit('nextTrack');
       break;
     case 'KeyP':
-      if (event.shiftKey) {
-        handleToggleChange('safe', !state.toggles.safe, 'keyboard');
-      } else {
-        emit('prevTrack');
-      }
+      emit('prevTrack');
       break;
     case 'ArrowRight':
       emit('seekForward', { seconds: event.shiftKey ? 10 : 5 });
@@ -752,18 +675,6 @@ function handleKeyDown(event) {
       break;
     case 'KeyF':
       handleToggleChange('fullscreen', !state.toggles.fullscreen, 'keyboard');
-      break;
-    case 'KeyB':
-      handleToggleChange('bloom', !state.toggles.bloom, 'keyboard');
-      break;
-    case 'KeyT':
-      handleToggleChange('trails', !state.toggles.trails, 'keyboard');
-      break;
-    case 'KeyG':
-      handleToggleChange('grid', !state.toggles.grid, 'keyboard');
-      break;
-    case 'KeyK':
-      handleToggleChange('bypass', !state.toggles.bypass, 'keyboard');
       break;
     case 'BracketLeft':
       emit('adjustParticles', { delta: event.shiftKey ? -0.2 : -0.08 });
@@ -874,8 +785,6 @@ export function init(options = {}) {
   const fps = assertElement(options.fps || document.getElementById('hud-fps'), 'HUD FPS element missing.');
   const volumeSlider = assertElement(options.volumeSlider || document.getElementById('volume'), 'Volume slider #volume missing.');
   const volumeDisplay = assertElement(options.volumeDisplay || document.getElementById('volume-display'), 'HUD volume display missing.');
-  const toggleContainer = assertElement(options.toggleContainer || document.getElementById('hud-toggles'), 'HUD toggles container missing.');
-
   state.hud.root = hudRoot;
   state.hud.title = title;
   state.hud.time = time;
@@ -883,23 +792,6 @@ export function init(options = {}) {
   state.hud.fps = fps;
   state.hud.volumeSlider = volumeSlider;
   state.hud.volumeDisplay = volumeDisplay;
-
-  state.hud.toggleInputs.clear();
-  const inputs = toggleContainer.querySelectorAll('input[data-toggle]');
-  inputs.forEach((input) => {
-    if (input instanceof HTMLInputElement) {
-      const name = input.dataset.toggle;
-      if (name) {
-        state.hud.toggleInputs.set(name, input);
-        const defaultValue = name in TOGGLE_DEFAULTS ? TOGGLE_DEFAULTS[name] : input.checked;
-        input.checked = defaultValue;
-        state.toggles[name] = defaultValue;
-      }
-      input.addEventListener('change', handleToggleInput);
-    }
-  });
-
-  toggleContainer.addEventListener('change', handleToggleInput);
 
   volumeSlider.addEventListener('input', () => {
     updateVolumeDisplay(Number(volumeSlider.value));
@@ -911,7 +803,6 @@ export function init(options = {}) {
   bindResize();
   bindFullscreenChange();
   applyFullscreenState();
-  applySafeModeClass();
   updateHudText();
 
   state.initialized = true;
@@ -930,17 +821,6 @@ export function destroy() {
     state.resizeTimerId = 0;
   }
 
-  if (state.hud.toggleInputs.size > 0) {
-    for (const input of state.hud.toggleInputs.values()) {
-      input.removeEventListener('change', handleToggleInput);
-    }
-  }
-  const toggleContainer = state.hud.root ? state.hud.root.querySelector('#hud-toggles') : null;
-  if (toggleContainer) {
-    toggleContainer.removeEventListener('change', handleToggleInput);
-  }
-
-  state.hud.toggleInputs.clear();
   state.initialized = false;
   state.canvas = null;
   state.ctx = null;
@@ -1033,7 +913,7 @@ function resolveParams(input = {}) {
 }
 
 function prepareGlow(glowLevel) {
-  state.glow.enabled = state.toggles.bloom && glowLevel > 0.01;
+  state.glow.enabled = glowLevel > 0.01;
   if (state.glow.enabled) {
     state.glow.strength = clamp(glowLevel * 0.85, 0.1, 0.9);
     ensureGlowCanvas();
@@ -1220,24 +1100,12 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
   updateFps(frameTimeInstant, fpsInstant, fpsAverage);
 
   const params = resolveParams(renderParams);
-  const fadeAlpha = state.toggles.trails ? clamp(1 - params.trailFade, 0.02, 0.35) : 1;
+  const fadeAlpha = clamp(1 - params.trailFade, 0.02, 0.35);
 
-  if (state.toggles.trails) {
-    fadeCanvas(TRAIL_BASE_ALPHA + fadeAlpha * 0.75);
-  } else if (state.ctx && state.canvas) {
-    state.ctx.save();
-    state.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
-    state.ctx.restore();
-    state.ctx.setTransform(state.pixelRatio * state.dynamicScale, 0, 0, state.pixelRatio * state.dynamicScale, 0, 0);
-  }
+  fadeCanvas(TRAIL_BASE_ALPHA + fadeAlpha * 0.75);
 
   prepareGlow(params.glow);
   drawParticles(particles, params, dt);
-
-  if (state.toggles.grid) {
-    drawGrid();
-  }
 
   if (state.glow.enabled) {
     compositeGlow();

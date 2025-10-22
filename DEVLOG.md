@@ -173,3 +173,8 @@
 - Reworked the launch overlay background and panel treatment to reuse the global glass panel palette so its presentation matches the in-app HUD and controls.
 - Updated the play call-to-action to mirror the transport button styling, including shared hover contrast and softened shadows for consistency.
 - Reconfirmed repository health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Control Strip Simplification
+- Retired the HUD checkbox strip (bloom, trails, safe mode, grid, NN bypass) and reworked `render`/`app` logic around a dedicated fullscreen control.
+- Added a fullscreen button to the transport row, updated keyboard handling, and refreshed markup, styles, tests, and docs to reflect the streamlined UX.
+- Verified the refactor with `npm run lint` and `npm test`.

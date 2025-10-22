@@ -208,29 +208,6 @@ body.fullscreen-active #intro-overlay {
   cursor: pointer;
 }
 
-#hud .hud-toggles {
-  flex-wrap: wrap;
-  gap: 0.6rem 1rem;
-  width: 100%;
-  justify-content: flex-start;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-
-#hud .hud-toggles label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  cursor: pointer;
-}
-
-#hud .hud-toggles input[type="checkbox"] {
-  accent-color: var(--accent);
-  transform: translateY(0.5px);
-}
-
 #controls {
   position: fixed;
   bottom: 1.8rem;

@@ -46,21 +46,17 @@ Latent Noise follows the pipeline defined in the design document:
 | Next / previous track | `N` / `P`
 | Seek forward / backward | Right / Left Arrow |
 | Direct track selection | `1`–`0`, `-` |
+| Toggle fullscreen | `F` |
 | Toggle HUD | `H` |
-| Toggle bloom | `B` |
-| Toggle trails | `T` |
-| Toggle grid overlay | `G` |
-| Toggle photosensitive-safe mode | `P` |
-| Toggle neural network bypass | `K` |
 | Adjust particle count | `[` / `]` |
 | Adjust intensity | `;` / `'` |
 | Cycle palette | `,` / `.` |
 
-HUD controls mirror these shortcuts: the volume slider controls the `GainNode` (persisted across sessions), and buttons in the toolbar handle play, pause, previous/next, seeking, and playlist selection.
+HUD controls mirror these shortcuts: the volume slider controls the `GainNode` (persisted across sessions), a dedicated fullscreen button sits before playback controls, and buttons in the toolbar handle play, pause, previous/next, seeking, and playlist selection.
 
 ## Troubleshooting
 - **No audio or visuals?** Ensure you have clicked inside the page (audio contexts must be unlocked by a gesture) and confirm the browser has access to audio output.
-- **Performance dips?** Toggle bloom (`B`), trails (`T`), or enable the photosensitive-safe mode (`P`) to reduce particle density and brightness.
+- **Performance dips?** Let the adaptive quality scaling respond, or nudge particle density and intensity with the bracket and semicolon/quote shortcuts.
 - **Saved settings missing?** The app stores volume, last track, safe mode, and NN bypass in `localStorage`. Clearing site data resets them.
 
 ---
