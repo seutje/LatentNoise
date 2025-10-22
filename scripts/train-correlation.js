@@ -12,6 +12,8 @@ const OUTPUT_SIZE = 11;
 const DEFAULT_EPOCHS = 400;
 const DEFAULT_SAMPLES = 4096;
 const DEFAULT_LEARNING_RATE = 0.01;
+const PRIMARY_WEIGHT = 1;
+const SECONDARY_WEIGHT = 0.5;
 
 const FEATURE_LABELS = Object.freeze([
   'sub',
@@ -89,6 +91,16 @@ const OUTPUT_INDEX_BY_NAME = new Map(
   OUTPUT_LABELS.map((label, index) => [label.toLowerCase(), index]),
 );
 
+const ORIENTATION_TOKENS = new Map([
+  ['direct', { inverse: false, orientation: 'direct', orientationSign: 1 }],
+  ['positive', { inverse: false, orientation: 'direct', orientationSign: 1 }],
+  ['+', { inverse: false, orientation: 'direct', orientationSign: 1 }],
+  ['inverse', { inverse: true, orientation: 'inverse', orientationSign: -1 }],
+  ['invert', { inverse: true, orientation: 'inverse', orientationSign: -1 }],
+  ['negative', { inverse: true, orientation: 'inverse', orientationSign: -1 }],
+  ['-', { inverse: true, orientation: 'inverse', orientationSign: -1 }],
+]);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PROJECT_ROOT = dirname(__dirname);
@@ -145,13 +157,11 @@ function projectTarget(rawValue, featureType, orientationSign) {
 
 /**
  * Generate a synthetic dataset that approximates feature distributions.
- * @param {number} featureIndex
- * @param {'signed'|'positive'} featureType
+ * @param {{featureIndex: number, featureType: 'signed'|'positive', orientationSign: number}[]} correlations
  * @param {number} sampleCount
  * @param {() => number} random
- * @param {number} orientationSign
  */
-function buildDataset(featureIndex, featureType, sampleCount, random, orientationSign) {
+function buildDataset(correlations, sampleCount, random) {
   const samples = new Array(sampleCount);
 
   for (let i = 0; i < sampleCount; i += 1) {
@@ -161,12 +171,22 @@ function buildDataset(featureIndex, featureType, sampleCount, random, orientatio
       const type = FEATURE_TYPES[label] || 'positive';
       features[j] = type === 'signed' ? randomSigned(random) : randomPositive(random);
     }
-    const featureValue = features[featureIndex];
+    const targets = new Float32Array(correlations.length);
+    const featureValues = new Float32Array(correlations.length);
+    correlations.forEach((correlation, index) => {
+      const featureValue = features[correlation.featureIndex];
+      featureValues[index] = featureValue;
+      targets[index] = projectTarget(
+        featureValue,
+        correlation.featureType,
+        correlation.orientationSign,
+      );
+    });
     samples[i] = {
       features,
-      featureValue,
+      featureValues,
       normalized: new Float32Array(INPUT_SIZE),
-      target: projectTarget(featureValue, featureType, orientationSign),
+      targets,
     };
   }
 
@@ -299,16 +319,19 @@ function shuffleIndices(length, random) {
   return indices;
 }
 
-function trainModel(model, samples, outputIndex, options, random) {
+function trainModel(model, samples, correlations, options, random) {
   const { epochs, learningRate } = options;
   const scratch = {
     hiddenLinear: new Float32Array(HIDDEN_SIZE),
     hiddenActivation: new Float32Array(HIDDEN_SIZE),
     outputLinear: new Float32Array(OUTPUT_SIZE),
     outputs: new Float32Array(OUTPUT_SIZE),
-    gradW2: new Float32Array(HIDDEN_SIZE),
+    gradOutput: new Float32Array(OUTPUT_SIZE),
     gradHidden: new Float32Array(HIDDEN_SIZE),
   };
+  const targetedOutputs = Array.from(
+    new Set(correlations.map((correlation) => correlation.outputIndex)),
+  );
 
   let finalLoss = 0;
 
@@ -319,29 +342,48 @@ function trainModel(model, samples, outputIndex, options, random) {
     for (let idx = 0; idx < order.length; idx += 1) {
       const sample = samples[order[idx]];
       const outputs = forwardPass(model, sample.normalized, scratch);
-      const prediction = outputs[outputIndex];
-      const error = prediction - sample.target;
-      epochLoss += 0.5 * error * error;
+      scratch.gradOutput.fill(0);
+      scratch.gradHidden.fill(0);
 
-      const deltaOut = error * (1 - prediction * prediction);
-      const w2Offset = outputIndex * HIDDEN_SIZE;
+      let sampleLoss = 0;
 
-      for (let h = 0; h < HIDDEN_SIZE; h += 1) {
-        scratch.gradW2[h] = deltaOut * scratch.hiddenActivation[h];
-      }
+      correlations.forEach((correlation, correlationIndex) => {
+        const prediction = outputs[correlation.outputIndex];
+        const target = sample.targets[correlationIndex];
+        const error = prediction - target;
+        sampleLoss += 0.5 * correlation.weight * error * error;
+        const deltaOut = correlation.weight * error * (1 - prediction * prediction);
+        scratch.gradOutput[correlation.outputIndex] += deltaOut;
+      });
 
-      for (let h = 0; h < HIDDEN_SIZE; h += 1) {
-        let grad = model.layer2.weights[w2Offset + h] * deltaOut;
-        if (scratch.hiddenLinear[h] <= 0) {
-          grad = 0;
+      targetedOutputs.forEach((outputIndex) => {
+        const deltaOut = scratch.gradOutput[outputIndex];
+        if (deltaOut === 0) {
+          return;
         }
-        scratch.gradHidden[h] = grad;
-      }
+        const w2Offset = outputIndex * HIDDEN_SIZE;
+        for (let h = 0; h < HIDDEN_SIZE; h += 1) {
+          scratch.gradHidden[h] += model.layer2.weights[w2Offset + h] * deltaOut;
+        }
+      });
 
       for (let h = 0; h < HIDDEN_SIZE; h += 1) {
-        model.layer2.weights[w2Offset + h] -= learningRate * scratch.gradW2[h];
+        if (scratch.hiddenLinear[h] <= 0) {
+          scratch.gradHidden[h] = 0;
+        }
       }
-      model.layer2.biases[outputIndex] -= learningRate * deltaOut;
+
+      targetedOutputs.forEach((outputIndex) => {
+        const deltaOut = scratch.gradOutput[outputIndex];
+        if (deltaOut === 0) {
+          return;
+        }
+        const w2Offset = outputIndex * HIDDEN_SIZE;
+        for (let h = 0; h < HIDDEN_SIZE; h += 1) {
+          model.layer2.weights[w2Offset + h] -= learningRate * deltaOut * scratch.hiddenActivation[h];
+        }
+        model.layer2.biases[outputIndex] -= learningRate * deltaOut;
+      });
 
       for (let h = 0; h < HIDDEN_SIZE; h += 1) {
         const grad = scratch.gradHidden[h];
@@ -354,6 +396,8 @@ function trainModel(model, samples, outputIndex, options, random) {
         }
         model.layer1.biases[h] -= learningRate * grad;
       }
+
+      epochLoss += sampleLoss;
     }
 
     finalLoss = epochLoss / samples.length;
@@ -366,7 +410,7 @@ function trainModel(model, samples, outputIndex, options, random) {
   return { loss: finalLoss };
 }
 
-function evaluateModel(model, samples, outputIndex, featureIndex, orientationSign) {
+function evaluateModel(model, samples, correlations) {
   const scratch = {
     hiddenLinear: new Float32Array(HIDDEN_SIZE),
     hiddenActivation: new Float32Array(HIDDEN_SIZE),
@@ -374,42 +418,79 @@ function evaluateModel(model, samples, outputIndex, featureIndex, orientationSig
     outputs: new Float32Array(OUTPUT_SIZE),
   };
 
-  let sumFeature = 0;
-  let sumOutput = 0;
-  let sumFeatureSq = 0;
-  let sumOutputSq = 0;
-  let sumFeatureOutput = 0;
-  let mse = 0;
+  const aggregators = correlations.map(() => ({
+    sumFeature: 0,
+    sumOutput: 0,
+    sumFeatureSq: 0,
+    sumOutputSq: 0,
+    sumFeatureOutput: 0,
+    mse: 0,
+  }));
 
   samples.forEach((sample) => {
     const outputs = forwardPass(model, sample.normalized, scratch);
-    const prediction = outputs[outputIndex];
-    const featureValue = sample.featureValue;
-
-    sumFeature += featureValue;
-    sumOutput += prediction;
-    sumFeatureSq += featureValue * featureValue;
-    sumOutputSq += prediction * prediction;
-    sumFeatureOutput += featureValue * prediction;
-
-    const error = prediction - sample.target;
-    mse += error * error;
+    correlations.forEach((correlation, index) => {
+      const prediction = outputs[correlation.outputIndex];
+      const featureValue = sample.featureValues[index];
+      aggregators[index].sumFeature += featureValue;
+      aggregators[index].sumOutput += prediction;
+      aggregators[index].sumFeatureSq += featureValue * featureValue;
+      aggregators[index].sumOutputSq += prediction * prediction;
+      aggregators[index].sumFeatureOutput += featureValue * prediction;
+      const error = prediction - sample.targets[index];
+      aggregators[index].mse += error * error;
+    });
   });
 
   const n = samples.length || 1;
-  mse /= n;
-  const numerator = n * sumFeatureOutput - sumFeature * sumOutput;
-  const denomFeature = n * sumFeatureSq - sumFeature * sumFeature;
-  const denomOutput = n * sumOutputSq - sumOutput * sumOutput;
-  const denominator = Math.sqrt(Math.max(denomFeature, 0) * Math.max(denomOutput, 0));
-  const correlation = denominator > 0 ? numerator / denominator : 0;
-  const fitness = correlation * orientationSign;
+  const perCorrelation = aggregators.map((aggregator, index) => {
+    const numerator =
+      n * aggregator.sumFeatureOutput - aggregator.sumFeature * aggregator.sumOutput;
+    const denomFeature =
+      n * aggregator.sumFeatureSq - aggregator.sumFeature * aggregator.sumFeature;
+    const denomOutput =
+      n * aggregator.sumOutputSq - aggregator.sumOutput * aggregator.sumOutput;
+    const denominator = Math.sqrt(
+      Math.max(denomFeature, 0) * Math.max(denomOutput, 0),
+    );
+    const correlation = denominator > 0 ? numerator / denominator : 0;
+    const fitness = correlation * correlations[index].orientationSign;
+    return {
+      correlation,
+      fitness,
+      mse: aggregator.mse / n,
+    };
+  });
+
+  const totalWeight = correlations.reduce((sum, correlation) => sum + correlation.weight, 0);
+  const combinedFitness =
+    totalWeight > 0
+      ? perCorrelation.reduce(
+          (sum, metrics, index) => sum + correlations[index].weight * metrics.fitness,
+          0,
+        ) / totalWeight
+      : 0;
+  const averageMse =
+    perCorrelation.reduce((sum, metrics) => sum + metrics.mse, 0) /
+    (perCorrelation.length || 1);
 
   return {
-    correlation,
-    fitness,
-    mse,
+    perCorrelation,
+    combinedFitness,
+    averageMse,
   };
+}
+
+function resolveOrientation(token) {
+  if (token === undefined) {
+    return null;
+  }
+  const normalized = String(token).toLowerCase();
+  const info = ORIENTATION_TOKENS.get(normalized);
+  if (!info) {
+    return null;
+  }
+  return info;
 }
 
 function parseArguments(rawArgs) {
@@ -427,38 +508,64 @@ function parseArguments(rawArgs) {
 
   if (positionals.length < 3) {
     throw new Error(
-      'Usage: node scripts/train-correlation.js <track> <feature> <output> [inverse|direct] [--epochs=400] [--samples=4096] [--rate=0.01] [--seed=42]',
+      'Usage: node scripts/train-correlation.js <track> <feature> <output> [direct|inverse] [<feature> <output> [direct|inverse] ...] [--epochs=400] [--samples=4096] [--rate=0.01] [--seed=42]',
     );
   }
 
-  const [trackRef, featureRef, outputRef] = positionals;
-  const orientationToken = positionals[3] || 'direct';
+  const [trackRef, ...rest] = positionals;
+  if (rest.length < 2) {
+    throw new Error('At least one <feature> <output> pair is required.');
+  }
 
   const track = findTrack(trackRef);
   if (!track) {
     throw new Error(`Unknown track reference "${trackRef}". Available: ${formatTrackList()}`);
   }
 
-  const featureIndex = FEATURE_INDEX_BY_NAME.get(String(featureRef).toLowerCase());
-  if (featureIndex === undefined) {
-    throw new Error(
-      `Unknown feature "${featureRef}". Choose from: ${FEATURE_LABELS.join(', ')}`,
-    );
-  }
-  const featureName = FEATURE_LABELS[featureIndex];
-  const featureType = FEATURE_TYPES[featureName] || 'positive';
+  const correlations = [];
+  let index = 0;
+  while (index < rest.length) {
+    const featureRef = rest[index];
+    const outputRef = rest[index + 1];
+    if (outputRef === undefined) {
+      throw new Error('Each correlation requires <feature> <output> [direct|inverse].');
+    }
 
-  const outputIndex = OUTPUT_INDEX_BY_NAME.get(String(outputRef).toLowerCase());
-  if (outputIndex === undefined) {
-    throw new Error(
-      `Unknown output "${outputRef}". Choose from: ${OUTPUT_LABELS.join(', ')}`,
-    );
-  }
-  const outputName = OUTPUT_LABELS[outputIndex];
+    const featureIndex = FEATURE_INDEX_BY_NAME.get(String(featureRef).toLowerCase());
+    if (featureIndex === undefined) {
+      throw new Error(
+        `Unknown feature "${featureRef}". Choose from: ${FEATURE_LABELS.join(', ')}`,
+      );
+    }
+    const featureName = FEATURE_LABELS[featureIndex];
+    const featureType = FEATURE_TYPES[featureName] || 'positive';
 
-  const orientation = String(orientationToken).toLowerCase();
-  const inverse = orientation === 'inverse' || orientation === 'invert' || orientation === 'negative' || orientation === '-';
-  const orientationSign = inverse ? -1 : 1;
+    const outputIndex = OUTPUT_INDEX_BY_NAME.get(String(outputRef).toLowerCase());
+    if (outputIndex === undefined) {
+      throw new Error(
+        `Unknown output "${outputRef}". Choose from: ${OUTPUT_LABELS.join(', ')}`,
+      );
+    }
+    const outputName = OUTPUT_LABELS[outputIndex];
+
+    const orientationCandidate = resolveOrientation(rest[index + 2]);
+    const orientationInfo = orientationCandidate || ORIENTATION_TOKENS.get('direct');
+    const consumed = orientationCandidate ? 3 : 2;
+
+    correlations.push({
+      featureIndex,
+      featureName,
+      featureType,
+      outputIndex,
+      outputName,
+      inverse: orientationInfo.inverse,
+      orientation: orientationInfo.orientation,
+      orientationSign: orientationInfo.orientationSign,
+      weight: correlations.length === 0 ? PRIMARY_WEIGHT : SECONDARY_WEIGHT,
+    });
+
+    index += consumed;
+  }
 
   const epochs = options.epochs !== undefined ? Number(options.epochs) : DEFAULT_EPOCHS;
   if (!Number.isFinite(epochs) || epochs <= 0) {
@@ -479,13 +586,7 @@ function parseArguments(rawArgs) {
 
   return {
     track,
-    featureIndex,
-    featureName,
-    featureType,
-    outputIndex,
-    outputName,
-    inverse,
-    orientationSign,
+    correlations,
     epochs: Math.trunc(epochs),
     samples: Math.trunc(samples),
     learningRate,
@@ -494,8 +595,10 @@ function parseArguments(rawArgs) {
 }
 
 function serializeModel(model, normalization, track, details, stats) {
-  const { featureName, outputName, inverse, featureType, epochs, samples, learningRate } = details;
+  const { correlations, epochs, samples, learningRate } = details;
   const { loss, evaluation } = stats;
+  const primaryCorrelation = correlations[0];
+  const primaryEvaluation = evaluation.perCorrelation[0];
 
   return {
     input: INPUT_SIZE,
@@ -524,17 +627,33 @@ function serializeModel(model, normalization, track, details, stats) {
       file: track.file,
       trained: new Date().toISOString(),
       training: {
-        feature: featureName,
-        featureType,
-        output: outputName,
-        orientation: inverse ? 'inverse' : 'direct',
+        feature: primaryCorrelation.featureName,
+        featureType: primaryCorrelation.featureType,
+        output: primaryCorrelation.outputName,
+        orientation: primaryCorrelation.inverse ? 'inverse' : 'direct',
+        weight: primaryCorrelation.weight,
         epochs,
         samples,
         learningRate,
         loss: Number(Math.fround(loss)),
-        correlation: Number(Math.fround(evaluation.correlation)),
-        fitness: Number(Math.fround(evaluation.fitness)),
-        mse: Number(Math.fround(evaluation.mse)),
+        correlation: Number(Math.fround(primaryEvaluation?.correlation ?? 0)),
+        fitness: Number(Math.fround(primaryEvaluation?.fitness ?? 0)),
+        mse: Number(Math.fround(primaryEvaluation?.mse ?? 0)),
+        combinedFitness: Number(Math.fround(evaluation.combinedFitness ?? 0)),
+        averageMse: Number(Math.fround(evaluation.averageMse ?? 0)),
+        correlations: correlations.map((correlation, index) => {
+          const metrics = evaluation.perCorrelation[index];
+          return {
+            feature: correlation.featureName,
+            featureType: correlation.featureType,
+            output: correlation.outputName,
+            orientation: correlation.inverse ? 'inverse' : 'direct',
+            weight: correlation.weight,
+            correlation: Number(Math.fround(metrics?.correlation ?? 0)),
+            fitness: Number(Math.fround(metrics?.fitness ?? 0)),
+            mse: Number(Math.fround(metrics?.mse ?? 0)),
+          };
+        }),
       },
     },
   };
@@ -546,41 +665,42 @@ function main() {
     const random = createRandom(args.seed);
 
     console.log(`Training track [${args.track.index}] ${args.track.name}`);
-    console.log(`  Feature → ${args.featureName} (${args.inverse ? 'inverse' : 'direct'})`);
-    console.log(`  Output  → ${args.outputName}`);
+    args.correlations.forEach((correlation, index) => {
+      const label = index === 0 ? 'Primary' : `Secondary #${index}`;
+      console.log(
+        `  ${label} → ${correlation.featureName} → ${correlation.outputName} (${correlation.inverse ? 'inverse' : 'direct'}, weight ${correlation.weight.toFixed(2)})`,
+      );
+    });
     console.log(
       `  Samples: ${args.samples}, Epochs: ${args.epochs}, Learning rate: ${args.learningRate}${
         args.seed !== null ? `, Seed: ${args.seed}` : ''
       }`,
     );
 
-    const dataset = buildDataset(
-      args.featureIndex,
-      args.featureType,
-      args.samples,
-      random,
-      args.orientationSign,
-    );
+    const dataset = buildDataset(args.correlations, args.samples, random);
     const model = initializeModel(random);
     const training = trainModel(
       model,
       dataset.samples,
-      args.outputIndex,
+      args.correlations,
       { epochs: args.epochs, learningRate: args.learningRate },
       random,
     );
-    const evaluation = evaluateModel(
-      model,
-      dataset.samples,
-      args.outputIndex,
-      args.featureIndex,
-      args.orientationSign,
-    );
+    const evaluation = evaluateModel(model, dataset.samples, args.correlations);
 
     console.log(`Final loss: ${training.loss.toFixed(6)}`);
-    console.log(`Correlation: ${evaluation.correlation.toFixed(4)}`);
-    console.log(`Fitness: ${evaluation.fitness.toFixed(4)}`);
-    console.log(`MSE: ${evaluation.mse.toFixed(6)}`);
+    evaluation.perCorrelation.forEach((metrics, index) => {
+      const correlation = args.correlations[index];
+      const label = index === 0 ? 'Primary' : `Secondary #${index}`;
+      console.log(
+        `${label} correlation (${correlation.featureName} → ${correlation.outputName}): ${metrics.correlation.toFixed(4)}`,
+      );
+      console.log(
+        `  Fitness: ${metrics.fitness.toFixed(4)}, MSE: ${metrics.mse.toFixed(6)}`,
+      );
+    });
+    console.log(`Combined fitness: ${evaluation.combinedFitness.toFixed(4)}`);
+    console.log(`Average MSE: ${evaluation.averageMse.toFixed(6)}`);
 
     const definition = serializeModel(model, dataset.normalization, args.track, args, {
       loss: training.loss,
