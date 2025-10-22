@@ -96,6 +96,10 @@
 - Added a playback-silence override so the mapping layer instantly resets spawn rate (and related impulse envelopes) to zero whenever the player is paused or stopped, guaranteeing no new particles appear without audio.
 - Passed a new regression test that asserts the forced-silence path clamps spawn rate to rest and verified the suite with `npm test` plus `npm run lint`.
 
+## 2025-10-25 - README Operations Guide
+- Expanded the README with setup instructions, architecture overview, keyboard shortcuts, and troubleshooting notes so newcomers can run and understand the visualizer without digging into DESIGN.md.
+- No code changes required verification; documentation only.
+
 ## 2025-10-24 - Idle Spawn Reset
 - When loading a track without autoplay, run the mapper through a forced-silence update and reset the physics pool so the simulation starts from a clean slate with zero particles until playback begins.
 - Re-verified the suite via `npm test` and `npm run lint`.
