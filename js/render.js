@@ -27,7 +27,7 @@ const PARAM_SCRATCH = {
   zoom: 1,
 };
 
-const CONNECTION_FRACTION = 0.1;
+const CONNECTION_FRACTION = 0.9;
 
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
   fullscreen: false,
