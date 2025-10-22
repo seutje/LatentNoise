@@ -201,6 +201,16 @@
 
 ---
 
+## Phase 16 — Immersive Intro Overlay
+- [x] Introduce a launch overlay with the specified heading, narrative copy, and call-to-action button to gate playback.
+- [x] Style the overlay to blanket the viewport with responsive typography, glassmorphism accents, and motion-safe transitions.
+- [x] Bind the overlay play action to request fullscreen, suppress HUD chrome, and start audio playback immediately.
+
+**Acceptance:**
+- [x] On initial load the overlay is visible until Play is pressed, at which point fullscreen engages, HUD elements hide, and playback begins without manual intervention.
+
+---
+
 ## Appendix — Quick Agent Bootstrap
 - [x] Generate stubs for every module with exported functions + TODOs.
 - [x] Insert minimal CSS for layout; render FPS counter to confirm loop.

@@ -163,3 +163,8 @@
 - Extended the training CLI to accept multiple feature/output pairs so secondary correlations can be optimized alongside the primary objective with weighted losses.
 - Added detailed evaluation and metadata output for each requested correlation, including combined fitness reporting for multi-objective runs.
 - Confirmed stability with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Immersive Launch Overlay
+- Added a full-viewport intro overlay with the Latent Noise heading, supporting copy, and a prominent play call-to-action to frame the experience before playback begins.
+- Styled the overlay with responsive typography, glassy panel treatments, and motion-safe transitions while ensuring it hides alongside HUD chrome in fullscreen.
+- Wired the play control to trigger fullscreen, dismiss the overlay, and kick off audio playback; validated the flow with `npm run lint` and `npm test`.

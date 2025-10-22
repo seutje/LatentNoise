@@ -286,6 +286,16 @@ const playButton = document.getElementById('play');
 const prevButton = document.getElementById('prev');
 const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
+const introOverlay = document.getElementById('intro-overlay');
+const introPlayButton = document.getElementById('intro-play');
+
+function dismissIntroOverlay() {
+  if (!introOverlay || introOverlay.dataset.hidden === 'true') {
+    return;
+  }
+  introOverlay.dataset.hidden = 'true';
+  introOverlay.setAttribute('aria-hidden', 'true');
+}
 
 if (!playlistSelect || !audioElement || !volumeSlider || !playButton || !prevButton || !nextButton || !seekSlider) {
   throw new Error('Required controls missing from DOM (playlist, audio, volume, play, prev, next, or seek).');
@@ -847,12 +857,22 @@ function prevTrack(options = {}) {
 }
 
 function togglePlayback() {
+  dismissIntroOverlay();
   if (audioElement.paused) {
     audioElement.play().catch((error) => {
       console.warn('[app] Playback start blocked', error);
     });
   } else {
     audioElement.pause();
+  }
+}
+
+function startExperience() {
+  render.setToggle('fullscreen', true);
+  if (audioElement.paused) {
+    togglePlayback();
+  } else {
+    dismissIntroOverlay();
   }
 }
 
@@ -879,6 +899,12 @@ volumeSlider.value = initialVolume.toFixed(2);
 audio.setVolume(initialVolume);
 render.updateVolume(initialVolume);
 updatePlayButtonUi();
+
+if (introPlayButton) {
+  introPlayButton.addEventListener('click', () => {
+    startExperience();
+  });
+}
 
 volumeSlider.addEventListener('input', () => {
   const nextVolume = Number(volumeSlider.value);
@@ -977,6 +1003,7 @@ render.setToggle('safe', storedSafeMode);
 render.setToggle('bypass', storedBypass);
 
 audioElement.addEventListener('play', () => {
+  dismissIntroOverlay();
   clearAutoAdvanceTimer();
   playback.status = 'Playing';
   updateStatus(physics.getMetrics());
