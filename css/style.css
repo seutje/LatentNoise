@@ -23,6 +23,12 @@ body {
   position: relative;
 }
 
+body.fullscreen-active #hud,
+body.fullscreen-active #controls,
+body.fullscreen-active #debug-overlay {
+  display: none !important;
+}
+
 #c {
   position: fixed;
   inset: 0;
@@ -182,17 +188,6 @@ body {
 #controls input[type="checkbox"] {
   accent-color: var(--accent);
   transform: translateY(0.5px);
-}
-
-#hud.hud-collapsed {
-  gap: 0.25rem;
-  padding: 0.6rem 0.9rem;
-}
-
-#hud.hud-collapsed .hud-top,
-#hud.hud-collapsed .hud-stats,
-#hud.hud-collapsed .hud-volume {
-  display: none;
 }
 
 #player {

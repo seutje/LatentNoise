@@ -131,3 +131,8 @@
 - Added a Node.js training utility that optimizes a per-track model for a requested feature/output correlation with optional inverse mode, deterministic seeding, and tunable training hyperparameters.
 - Shared the track registry across generator and trainer scripts to avoid duplication and ensure consistent metadata lookups.
 - Verified repository health with `npm run lint` and `npm test` after generating a sample session.
+
+## 2025-10-25 - Fullscreen Toggle
+- Replaced the HUD visibility checkbox with a fullscreen toggle that hides HUD, transport controls, and the debug overlay while requesting browser fullscreen.
+- Added body-level fullscreen styling and accessibility attributes so UI chrome stays suppressed until fullscreen exits, including via keyboard shortcuts.
+- Confirmed the refactor passes `npm run lint` and `npm test`.
