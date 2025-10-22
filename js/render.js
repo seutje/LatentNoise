@@ -27,6 +27,20 @@ const PARAM_SCRATCH = {
   zoom: 1,
 };
 
+const CONNECTION_RATIO = 0.1;
+const CONNECTION_DEFAULT_CAPACITY = 512;
+
+const CONNECTION_BUFFER = {
+  capacity: CONNECTION_DEFAULT_CAPACITY,
+  x: new Float32Array(CONNECTION_DEFAULT_CAPACITY),
+  y: new Float32Array(CONNECTION_DEFAULT_CAPACITY),
+  hue: new Float32Array(CONNECTION_DEFAULT_CAPACITY),
+  saturation: new Float32Array(CONNECTION_DEFAULT_CAPACITY),
+  light: new Float32Array(CONNECTION_DEFAULT_CAPACITY),
+  alpha: new Float32Array(CONNECTION_DEFAULT_CAPACITY),
+  rng: new Float32Array(CONNECTION_DEFAULT_CAPACITY),
+};
+
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
   fullscreen: false,
   bloom: true,
@@ -196,6 +210,58 @@ function applyPaletteToDom() {
   if (state.canvas) {
     state.canvas.style.background = state.palette.canvasBackground;
   }
+}
+
+function ensureConnectionCapacity(minCapacity) {
+  if (minCapacity <= CONNECTION_BUFFER.capacity) {
+    return;
+  }
+  let nextCapacity = CONNECTION_BUFFER.capacity || CONNECTION_DEFAULT_CAPACITY;
+  while (nextCapacity < minCapacity) {
+    nextCapacity *= 2;
+  }
+  CONNECTION_BUFFER.capacity = nextCapacity;
+  CONNECTION_BUFFER.x = new Float32Array(nextCapacity);
+  CONNECTION_BUFFER.y = new Float32Array(nextCapacity);
+  CONNECTION_BUFFER.hue = new Float32Array(nextCapacity);
+  CONNECTION_BUFFER.saturation = new Float32Array(nextCapacity);
+  CONNECTION_BUFFER.light = new Float32Array(nextCapacity);
+  CONNECTION_BUFFER.alpha = new Float32Array(nextCapacity);
+  CONNECTION_BUFFER.rng = new Float32Array(nextCapacity);
+}
+
+function drawConnections(ctx, connectionCount, lineWidth) {
+  if (!ctx || connectionCount < 2) {
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const maxOffset = Math.min(6, connectionCount - 1);
+
+  for (let i = 0; i < connectionCount; i += 1) {
+    const baseHue = CONNECTION_BUFFER.hue[i];
+    const partnerOffset = 1 + Math.floor(CONNECTION_BUFFER.rng[i] * maxOffset);
+    const partnerIndex = (i + partnerOffset) % connectionCount;
+
+    const hue = (baseHue + CONNECTION_BUFFER.hue[partnerIndex]) * 0.5;
+    const saturation = (CONNECTION_BUFFER.saturation[i] + CONNECTION_BUFFER.saturation[partnerIndex]) * 0.5;
+    const light = clamp((CONNECTION_BUFFER.light[i] + CONNECTION_BUFFER.light[partnerIndex]) * 0.5 + 8, 0, 100);
+    const alpha = clamp((CONNECTION_BUFFER.alpha[i] + CONNECTION_BUFFER.alpha[partnerIndex]) * 0.5, 0.02, 0.28);
+
+    ctx.strokeStyle = `hsla(${Math.round(wrapHue360(hue))}, ${Math.round(saturation)}%, ${Math.round(light)}%, ${alpha})`;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(CONNECTION_BUFFER.x[i], CONNECTION_BUFFER.y[i]);
+    ctx.lineTo(CONNECTION_BUFFER.x[partnerIndex], CONNECTION_BUFFER.y[partnerIndex]);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 const listeners = new Map();
@@ -1071,6 +1137,21 @@ function drawParticles(particles, params, dt) {
   );
   const scale = scaleBase * clamp(zoom, 0.5, 20);
 
+  const connectionTarget = Math.floor(count * CONNECTION_RATIO);
+  const connectionsEnabled = connectionTarget >= 2;
+  let connectionStride = 0;
+  let connectionPhase = 0;
+  let connectionLineWidth = 0.45;
+  let connectionCount = 0;
+  if (connectionsEnabled) {
+    ensureConnectionCapacity(connectionTarget + 2);
+    connectionStride = Math.max(1, Math.round(count / connectionTarget));
+    connectionPhase = connectionStride > 0
+      ? Math.floor((state.frameSeed * 23) % connectionStride)
+      : 0;
+    connectionLineWidth = clamp(Math.sqrt(scale) * 0.35, 0.25, 0.85);
+  }
+
   const jitter = params.sizeJitter;
   const sparkle = params.sparkleDensity;
   const palette = state.palette;
@@ -1143,6 +1224,24 @@ function drawParticles(particles, params, dt) {
       ctx.arc(sx, sy, radius * 0.45, 0, TAU);
       ctx.fill();
     }
+
+    if (connectionsEnabled
+      && ((i + connectionPhase) % connectionStride === 0)
+      && connectionCount < CONNECTION_BUFFER.capacity) {
+      const slot = connectionCount;
+      CONNECTION_BUFFER.x[slot] = sx;
+      CONNECTION_BUFFER.y[slot] = sy;
+      CONNECTION_BUFFER.hue[slot] = hue;
+      CONNECTION_BUFFER.saturation[slot] = saturation;
+      CONNECTION_BUFFER.light[slot] = bodyLight;
+      CONNECTION_BUFFER.alpha[slot] = clamp(alpha * 0.4, 0.02, 0.25);
+      CONNECTION_BUFFER.rng[slot] = rng;
+      connectionCount += 1;
+    }
+  }
+
+  if (connectionsEnabled) {
+    drawConnections(ctx, connectionCount, connectionLineWidth);
   }
 
   ctx.restore();
