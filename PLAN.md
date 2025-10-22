@@ -132,7 +132,7 @@
 - [x] DPR‑aware canvas sizing; adaptive downscale on frame drops.
 - [x] Trail pass via alpha decay; particles rendered additive.
 - [x] Optional glow (2-pass box blur to temp canvas).
-- [x] HUD: FPS, track title/time, **volume slider**, toggles (HUD, Bloom, Trails, Grid, Safe, NN Bypass).
+- [x] HUD: FPS, track title/time, **volume slider**, toggles (Fullscreen, Bloom, Trails, Grid, Safe, NN Bypass).
 - [x] Keyboard shortcuts per DESIGN.md.
 
 **Acceptance:**
@@ -154,7 +154,7 @@
 - [x] In `js/app.js`, import modules and bootstrap audio, NN, map, physics, render, presets, playlist.
 - [x] Implement main loop: `features → model.forward → map → physics → render` via `requestAnimationFrame`.
 - [x] Implement handlers for play/pause/prev/next/seek; playlist change loads audio+model+preset.
-- [x] Persist UI state: last track, volume, safe mode, HUD visibility.
+- [x] Persist UI state: last track, volume, safe mode, NN bypass; fullscreen resets per session because the browser requires a user gesture.
 
 **Acceptance:**
 - [x] End-to-end system runs continuously with no memory growth.

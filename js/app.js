@@ -24,7 +24,6 @@ const MODEL_FILES = Object.freeze([
 const STORAGE_KEYS = Object.freeze({
   TRACK_INDEX: 'ln.lastTrack',
   SAFE_MODE: 'ln.safeMode',
-  HUD_VISIBLE: 'ln.hudVisible',
   NN_BYPASS: 'ln.nnBypass',
 });
 
@@ -369,7 +368,6 @@ if (MODEL_FILES.length !== tracks.length) {
 
 const initialTrackIndex = readStoredInt(STORAGE_KEYS.TRACK_INDEX, 0, 0, tracks.length - 1);
 const storedSafeMode = readStoredBoolean(STORAGE_KEYS.SAFE_MODE, false);
-const storedHudVisible = readStoredBoolean(STORAGE_KEYS.HUD_VISIBLE, true);
 const storedBypass = readStoredBoolean(STORAGE_KEYS.NN_BYPASS, false);
 
 let safeModeEnabled = storedSafeMode;
@@ -975,13 +973,6 @@ render.on('nnBypassChange', (enabled) => {
     lastModelOutputs = FALLBACK_NN_OUTPUTS;
   }
 });
-render.on('toggle', ({ name, value }) => {
-  if (name === 'hud') {
-    writeStoredBoolean(STORAGE_KEYS.HUD_VISIBLE, Boolean(value));
-  }
-});
-
-render.setToggle('hud', storedHudVisible);
 render.setToggle('safe', storedSafeMode);
 render.setToggle('bypass', storedBypass);
 

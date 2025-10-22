@@ -28,13 +28,15 @@ const PARAM_SCRATCH = {
 };
 
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
-  hud: true,
+  fullscreen: false,
   bloom: true,
   trails: true,
   grid: false,
   safe: false,
   bypass: false,
 });
+
+const FULLSCREEN_CLASS = 'fullscreen-active';
 
 const KEY_PLAYLIST_MAP = {
   Digit1: 0,
@@ -250,6 +252,7 @@ const state = {
   keyHandlersBound: false,
   resizeHandlerBound: false,
   resizeTimerId: 0,
+  fullscreenChangeBound: false,
   frameSeed: 0,
   palette: paletteState,
 };
@@ -401,17 +404,100 @@ function updateVolumeDisplay(value) {
   }
 }
 
-function applyHudVisibility() {
-  if (!state.hud.root) {
-    return;
+function getControlsElement() {
+  if (typeof document === 'undefined') {
+    return null;
   }
-  const collapsed = !state.toggles.hud;
-  state.hud.root.classList.toggle('hud-collapsed', collapsed);
-  state.hud.root.setAttribute('aria-hidden', collapsed ? 'true' : 'false');
+  const controls = document.getElementById('controls');
+  return controls instanceof HTMLElement ? controls : null;
+}
+
+function getDebugOverlayElement() {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  const overlay = document.getElementById('debug-overlay');
+  return overlay instanceof HTMLElement ? overlay : null;
+}
+
+function applyFullscreenState() {
+  const active = Boolean(state.toggles.fullscreen);
+  if (typeof document !== 'undefined' && document.body) {
+    document.body.classList.toggle(FULLSCREEN_CLASS, active);
+  }
+  if (state.hud.root) {
+    state.hud.root.setAttribute('aria-hidden', active ? 'true' : 'false');
+  }
+  const controls = getControlsElement();
+  if (controls) {
+    controls.setAttribute('aria-hidden', active ? 'true' : 'false');
+  }
+  const overlay = getDebugOverlayElement();
+  if (overlay) {
+    overlay.setAttribute('aria-hidden', active ? 'true' : 'false');
+  }
 }
 
 function applySafeModeClass() {
+  if (typeof document === 'undefined' || !document.body) {
+    return;
+  }
   document.body.classList.toggle('safe-mode', state.toggles.safe);
+}
+
+function requestFullscreen() {
+  if (typeof document === 'undefined') {
+    return Promise.reject(new Error('Fullscreen API unavailable'));
+  }
+  const target = document.documentElement;
+  if (target && typeof target.requestFullscreen === 'function') {
+    return target.requestFullscreen();
+  }
+  return Promise.reject(new Error('Fullscreen API not supported'));
+}
+
+function exitFullscreen() {
+  if (typeof document === 'undefined' || typeof document.exitFullscreen !== 'function') {
+    return Promise.resolve();
+  }
+  if (!document.fullscreenElement) {
+    return Promise.resolve();
+  }
+  return document.exitFullscreen();
+}
+
+function handleFullscreenChange() {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const active = Boolean(document.fullscreenElement);
+  if (state.toggles.fullscreen !== active) {
+    state.toggles.fullscreen = active;
+    const input = state.hud.toggleInputs.get('fullscreen');
+    if (input) {
+      input.checked = active;
+    }
+    applyFullscreenState();
+    emit('toggle', { name: 'fullscreen', value: active, source: 'system' });
+    return;
+  }
+  applyFullscreenState();
+}
+
+function bindFullscreenChange() {
+  if (state.fullscreenChangeBound || typeof document === 'undefined') {
+    return;
+  }
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
+  state.fullscreenChangeBound = true;
+}
+
+function unbindFullscreenChange() {
+  if (!state.fullscreenChangeBound || typeof document === 'undefined') {
+    return;
+  }
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  state.fullscreenChangeBound = false;
 }
 
 function handleToggleChange(name, value, source) {
@@ -429,8 +515,20 @@ function handleToggleChange(name, value, source) {
     input.checked = nextValue;
   }
 
-  if (name === 'hud') {
-    applyHudVisibility();
+  if (name === 'fullscreen') {
+    applyFullscreenState();
+    if (source !== 'system') {
+      if (nextValue) {
+        requestFullscreen().catch((error) => {
+          console.warn('[render] Failed to enter fullscreen', error);
+          handleToggleChange('fullscreen', false, 'system');
+        });
+      } else {
+        exitFullscreen().catch((error) => {
+          console.warn('[render] Failed to exit fullscreen', error);
+        });
+      }
+    }
   } else if (name === 'safe') {
     applySafeModeClass();
     emit('safeModeChange', nextValue);
@@ -650,8 +748,8 @@ function handleKeyDown(event) {
     case 'ArrowLeft':
       emit('seekBackward', { seconds: event.shiftKey ? 10 : 5 });
       break;
-    case 'KeyH':
-      handleToggleChange('hud', !state.toggles.hud, 'keyboard');
+    case 'KeyF':
+      handleToggleChange('fullscreen', !state.toggles.fullscreen, 'keyboard');
       break;
     case 'KeyB':
       handleToggleChange('bloom', !state.toggles.bloom, 'keyboard');
@@ -809,7 +907,8 @@ export function init(options = {}) {
   ensureCanvasSize(true);
   bindKeyboard();
   bindResize();
-  applyHudVisibility();
+  bindFullscreenChange();
+  applyFullscreenState();
   applySafeModeClass();
   updateHudText();
 
@@ -823,6 +922,7 @@ export function destroy() {
   }
   unbindKeyboard();
   unbindResize();
+  unbindFullscreenChange();
   if (state.resizeTimerId) {
     window.clearTimeout(state.resizeTimerId);
     state.resizeTimerId = 0;
