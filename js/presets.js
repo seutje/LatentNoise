@@ -122,7 +122,7 @@ const PRESET_DATA = /** @type {const} */ ([
       baseHue: 26,
     },
     sim: {
-      spawnRate: { scale: 0.9 },
+      spawnRate: { scale: 0.1 },
       fieldStrength: { scale: 1.15 },
       cohesion: { scale: 1.2 },
       repelImpulse: { scale: 0.9 },
