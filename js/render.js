@@ -1066,12 +1066,14 @@ function drawParticles(particles, params, dt) {
 
   const centerX = state.logicalWidth * 0.5;
   const centerY = state.logicalHeight * 0.5;
-  const zoom = Number.isFinite(params.zoom) ? params.zoom : 1;
-  const scaleBase = Math.min(
-    state.renderScale / (state.world.width * 0.5),
-    state.renderScale / (state.world.height * 0.5),
-  );
-  const scale = scaleBase * clamp(zoom, 0.5, 20);
+  const zoomRaw = Number.isFinite(params.zoom) ? params.zoom : 1;
+  const zoom = clamp(zoomRaw, 0.5, 20);
+  const halfWorldWidth = Math.max(state.world.width * 0.5, 1e-3);
+  const halfWorldHeight = Math.max(state.world.height * 0.5, 1e-3);
+  const widthScale = (state.logicalWidth * 0.5) / halfWorldWidth;
+  const heightScale = (state.logicalHeight * 0.5) / halfWorldHeight;
+  const scaleBase = Math.max(widthScale, heightScale);
+  const scale = scaleBase * (zoom >= 1 ? zoom : 1);
 
   const jitter = params.sizeJitter;
   const sparkle = params.sparkleDensity;
