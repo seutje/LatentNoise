@@ -163,8 +163,8 @@ body.fullscreen-active #debug-overlay {
 
 #controls select {
   padding-right: 2.5rem;
-  background: rgba(20, 22, 35, 0.9);
-  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 #controls select option {
