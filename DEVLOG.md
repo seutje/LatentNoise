@@ -154,3 +154,7 @@
 ## 2025-10-25 - Keyboard Skip Delay
 - Routed keyboard next/previous shortcuts through the one-second autoplay delay so transitions match the particle intermission window.
 - Confirmed parity with button handlers and ensured repository health via `npm run lint` and `npm test`.
+
+## 2025-10-25 - Playlist Select Styling
+- Updated the playlist dropdown background and border to match the transport buttons so the control row has a unified visual treatment.
+- Re-verified repository health with `npm run lint` and `npm test`.
