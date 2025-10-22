@@ -326,6 +326,13 @@ const manualAdjustments = {
   sparkleOffset: 0,
   hueOffset: 0,
 };
+const nnOffsets = {
+  spawnOffset: 0,
+  glowOffset: 0,
+  sparkleOffset: 0,
+  hueOffset: 0,
+  repelImpulse: 0,
+};
 
 
 function resetManualAdjustments() {
@@ -333,6 +340,14 @@ function resetManualAdjustments() {
   manualAdjustments.glowOffset = 0;
   manualAdjustments.sparkleOffset = 0;
   manualAdjustments.hueOffset = 0;
+}
+
+function resetNnOffsets() {
+  nnOffsets.spawnOffset = 0;
+  nnOffsets.glowOffset = 0;
+  nnOffsets.sparkleOffset = 0;
+  nnOffsets.hueOffset = 0;
+  nnOffsets.repelImpulse = 0;
 }
 
 function constrainManualAdjustmentsForSafeMode(enabled) {
@@ -529,6 +544,7 @@ function applyPresetForTrack(index, options = {}) {
   const forceSilence = options.forceSilence === true;
 
   resetManualAdjustments();
+  resetNnOffsets();
   copyParams(simParams, SIM_PARAMS_DEFAULT);
   copyParams(renderParams, RENDER_PARAMS_DEFAULT);
 
@@ -640,6 +656,12 @@ function applyMappedParams(mapped) {
   const sparkleBase = Number.isFinite(mapped.sparkleDensity) ? mapped.sparkleDensity : RENDER_PARAMS_DEFAULT.sparkleDensity;
   const zoomBase = Number.isFinite(mapped.zoom) ? mapped.zoom : RENDER_PARAMS_DEFAULT.zoom;
   const zoomScaled = zoomBase * 2.5;
+
+  nnOffsets.spawnOffset = Number.isFinite(mapped.spawnOffset) ? mapped.spawnOffset : 0;
+  nnOffsets.glowOffset = Number.isFinite(mapped.glowOffset) ? mapped.glowOffset : 0;
+  nnOffsets.sparkleOffset = Number.isFinite(mapped.sparkleOffset) ? mapped.sparkleOffset : 0;
+  nnOffsets.hueOffset = Number.isFinite(mapped.hueOffset) ? mapped.hueOffset : 0;
+  nnOffsets.repelImpulse = clamp(repelBase, 0, 1);
 
   const spawnMin = 0;
   const spawnMax = safe ? 0.8 : 1.2;
@@ -1115,10 +1137,18 @@ function frame(now) {
       hueShift: renderParams.hueShift,
       sparkleDensity: renderParams.sparkleDensity,
       zoom: renderParams.zoom,
-      spawnOffset: manualAdjustments.spawnOffset,
-      glowOffset: manualAdjustments.glowOffset,
-      sparkleOffset: manualAdjustments.sparkleOffset,
-      hueOffset: manualAdjustments.hueOffset,
+      spawnOffset: manualAdjustments.spawnOffset + nnOffsets.spawnOffset,
+      glowOffset: manualAdjustments.glowOffset + nnOffsets.glowOffset,
+      sparkleOffset: manualAdjustments.sparkleOffset + nnOffsets.sparkleOffset,
+      hueOffset: wrapHue(nnOffsets.hueOffset + manualAdjustments.hueOffset),
+      nnSpawnOffset: nnOffsets.spawnOffset,
+      nnGlowOffset: nnOffsets.glowOffset,
+      nnSparkleOffset: nnOffsets.sparkleOffset,
+      nnHueOffset: wrapHue(nnOffsets.hueOffset),
+      manualSpawnOffset: manualAdjustments.spawnOffset,
+      manualGlowOffset: manualAdjustments.glowOffset,
+      manualSparkleOffset: manualAdjustments.sparkleOffset,
+      manualHueOffset: manualAdjustments.hueOffset,
       safeMode: safeModeEnabled ? 1 : 0,
       nnBypass: nnBypass ? 1 : 0,
     },
