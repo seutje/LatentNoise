@@ -923,8 +923,8 @@ playlistSelect.addEventListener('change', (event) => {
 });
 
 render.on('playToggle', togglePlayback);
-render.on('nextTrack', () => nextTrack(1));
-render.on('prevTrack', prevTrack);
+render.on('nextTrack', () => nextTrack(1, { autoplayDelayMs: TRACK_INTERMISSION_MS }));
+render.on('prevTrack', () => prevTrack({ autoplayDelayMs: TRACK_INTERMISSION_MS }));
 render.on('seekForward', ({ seconds }) => {
   seekBy(Math.abs(Number.isFinite(seconds) ? seconds : 5));
 });
