@@ -25,8 +25,105 @@ body {
 
 body.fullscreen-active #hud,
 body.fullscreen-active #controls,
-body.fullscreen-active #debug-overlay {
+body.fullscreen-active #debug-overlay,
+body.fullscreen-active #intro-overlay {
   display: none !important;
+}
+
+#intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  flex-direction: column;
+  padding: clamp(3rem, 12vh, 9rem) 1.5rem 2rem;
+  text-align: center;
+  color: var(--text);
+  background: radial-gradient(circle at 40% 20%, rgba(69, 51, 120, 0.55), rgba(5, 5, 8, 0.95));
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  transition: opacity 0.6s ease, visibility 0.6s ease;
+}
+
+#intro-overlay[data-hidden='true'] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.intro-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: min(90vw, 36rem);
+  padding: 2.5rem clamp(1.75rem, 6vw, 3.5rem);
+  border-radius: 1.75rem;
+  background: rgba(12, 14, 24, 0.82);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55);
+}
+
+.intro-heading {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.intro-text {
+  margin: 0;
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.intro-button {
+  font: inherit;
+  font-size: clamp(1rem, 2.4vw, 1.1rem);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 0.85rem 2.8rem;
+  color: var(--text);
+  background: linear-gradient(120deg, rgba(167, 139, 250, 0.95), rgba(99, 102, 241, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  box-shadow: 0 24px 44px rgba(82, 64, 150, 0.5);
+}
+
+.intro-button:hover,
+.intro-button:focus-visible {
+  outline: none;
+  transform: translateY(-2px);
+  box-shadow: 0 26px 52px rgba(82, 64, 150, 0.65);
+  background: linear-gradient(120deg, rgba(167, 139, 250, 1), rgba(99, 102, 241, 1));
+}
+
+@media (max-width: 600px) {
+  .intro-content {
+    gap: 1.25rem;
+    padding: 2.25rem 1.5rem;
+    border-radius: 1.25rem;
+  }
+
+  .intro-button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #intro-overlay {
+    transition: none;
+  }
+
+  .intro-button {
+    transition: none;
+  }
 }
 
 #c {
