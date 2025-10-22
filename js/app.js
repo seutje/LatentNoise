@@ -1092,6 +1092,13 @@ function frame(now) {
   });
   applyMappedParams(mappedParams);
 
+  const shouldRenderFrame = Boolean(
+    audioElement
+    && !audioElement.paused
+    && !audioElement.ended
+    && audioElement.readyState >= 2,
+  );
+
   const intermissionActive = particleIntermissionUntil > now;
   if (intermissionActive) {
     simParams.spawnRate = 0;
@@ -1099,20 +1106,7 @@ function frame(now) {
     particleIntermissionUntil = 0;
   }
 
-  physics.step(simParams, { dt: dtSeconds, frameTime: frameTimeMs, frameTimeAvg: averageFrameTime });
-  const particles = physics.getParticles();
-  const metrics = physics.getMetrics();
-
-  render.renderFrame(particles, renderParams, {
-    dt: dtSeconds,
-    frameTime: frameTimeMs,
-    frameTimeAvg: averageFrameTime,
-    fps: instantaneousFps,
-    fpsAvg: averageFps,
-  });
-  updateStatus(metrics);
-
-  updateDebugOverlay({
+  const debugPayload = {
     fps: instantaneousFps,
     fpsAvg: averageFps,
     activity,
@@ -1146,7 +1140,29 @@ function frame(now) {
       safeMode: safeModeEnabled ? 1 : 0,
       nnBypass: nnBypass ? 1 : 0,
     },
+  };
+
+  if (!shouldRenderFrame) {
+    updateStatus(physics.getMetrics());
+    updateDebugOverlay(debugPayload);
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  physics.step(simParams, { dt: dtSeconds, frameTime: frameTimeMs, frameTimeAvg: averageFrameTime });
+  const particles = physics.getParticles();
+  const metrics = physics.getMetrics();
+
+  render.renderFrame(particles, renderParams, {
+    dt: dtSeconds,
+    frameTime: frameTimeMs,
+    frameTimeAvg: averageFrameTime,
+    fps: instantaneousFps,
+    fpsAvg: averageFps,
   });
+  updateStatus(metrics);
+
+  updateDebugOverlay(debugPayload);
 
   if (!audioElement.paused && audioElement.readyState >= 1) {
     const { currentTime, duration } = audioElement;

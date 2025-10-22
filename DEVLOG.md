@@ -154,3 +154,8 @@
 ## 2025-10-25 - Keyboard Skip Delay
 - Routed keyboard next/previous shortcuts through the one-second autoplay delay so transitions match the particle intermission window.
 - Confirmed parity with button handlers and ensured repository health via `npm run lint` and `npm test`.
+
+## 2025-10-25 - Pause Rendering with Playback
+- Gated the animation loop so physics stepping and frame rendering short-circuit while the audio transport is paused, keeping the last visual state frozen instead of continuing to fade.
+- Reused the existing debug overlay data path while early-returning to maintain UI status updates without advancing the simulation during pauses.
+- Revalidated with `npm run lint` and `npm test`.
