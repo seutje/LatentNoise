@@ -832,17 +832,20 @@ function nextTrack(step = 1, options = {}) {
   }
   const nextIndex = (currentTrackIndex + step + tracks.length) % tracks.length;
   const autoplay = options.autoplay ?? !audioElement.paused;
+  const autoplayDelayMs = Number.isFinite(options.autoplayDelayMs)
+    ? Math.max(0, options.autoplayDelayMs)
+    : 0;
   if (!options.skipIntermission && nextIndex !== currentTrackIndex && currentTrackIndex >= 0) {
     const duration = Number.isFinite(options.intermissionDuration)
       ? options.intermissionDuration
       : TRACK_INTERMISSION_MS;
     startParticleIntermission(duration);
   }
-  setTrack(nextIndex, { autoplay });
+  setTrack(nextIndex, { autoplay, autoplayDelayMs });
 }
 
-function prevTrack() {
-  nextTrack(-1);
+function prevTrack(options = {}) {
+  nextTrack(-1, options);
 }
 
 function togglePlayback() {
@@ -893,11 +896,11 @@ playButton.addEventListener('click', () => {
 });
 
 prevButton.addEventListener('click', () => {
-  prevTrack();
+  prevTrack({ autoplayDelayMs: TRACK_INTERMISSION_MS });
 });
 
 nextButton.addEventListener('click', () => {
-  nextTrack(1);
+  nextTrack(1, { autoplayDelayMs: TRACK_INTERMISSION_MS });
 });
 
 seekSlider.addEventListener('input', handleSeekInput);
