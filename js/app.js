@@ -249,10 +249,6 @@ function readStoredBoolean(key, defaultValue) {
   return stored === '1' || stored.toLowerCase() === 'true';
 }
 
-function writeStoredBoolean(key, value) {
-  writeStorage(key, value ? '1' : '0');
-}
-
 function readStoredInt(key, defaultValue, min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER) {
   const stored = readStorage(key);
   if (stored === null) {
@@ -286,6 +282,7 @@ const playButton = document.getElementById('play');
 const prevButton = document.getElementById('prev');
 const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
+const fullscreenButton = document.getElementById('fullscreen');
 const introOverlay = document.getElementById('intro-overlay');
 const introPlayButton = document.getElementById('intro-play');
 
@@ -297,13 +294,25 @@ function dismissIntroOverlay() {
   introOverlay.setAttribute('aria-hidden', 'true');
 }
 
-if (!playlistSelect || !audioElement || !volumeSlider || !playButton || !prevButton || !nextButton || !seekSlider) {
-  throw new Error('Required controls missing from DOM (playlist, audio, volume, play, prev, next, or seek).');
+if (
+  !playlistSelect ||
+  !audioElement ||
+  !volumeSlider ||
+  !playButton ||
+  !prevButton ||
+  !nextButton ||
+  !seekSlider ||
+  !fullscreenButton
+) {
+  throw new Error(
+    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, or fullscreen).',
+  );
 }
 
 render.init();
 render.setWorldSize(2, 2);
 render.setStatus('Idle · Particles 0');
+updateFullscreenButtonUi(render.getToggles().fullscreen);
 
 physics.configure({
   bounds: { width: 2, height: 2, mode: 'wrap' },
@@ -380,8 +389,8 @@ const initialTrackIndex = readStoredInt(STORAGE_KEYS.TRACK_INDEX, 0, 0, tracks.l
 const storedSafeMode = readStoredBoolean(STORAGE_KEYS.SAFE_MODE, false);
 const storedBypass = readStoredBoolean(STORAGE_KEYS.NN_BYPASS, false);
 
-let safeModeEnabled = storedSafeMode;
-let nnBypass = storedBypass;
+const safeModeEnabled = storedSafeMode;
+const nnBypass = storedBypass;
 let lastModelOutputs = FALLBACK_NN_OUTPUTS;
 
 map.configure({ safeMode: safeModeEnabled });
@@ -617,6 +626,15 @@ function updatePlayButtonUi() {
     return;
   }
   playButton.textContent = audioElement.paused ? 'Play' : 'Pause';
+}
+
+function updateFullscreenButtonUi(active) {
+  if (!fullscreenButton) {
+    return;
+  }
+  const pressed = Boolean(active);
+  fullscreenButton.textContent = pressed ? 'Exit Fullscreen' : 'Fullscreen';
+  fullscreenButton.setAttribute('aria-pressed', pressed ? 'true' : 'false');
 }
 
 function updateSeekUi(currentSeconds, durationSeconds) {
@@ -915,6 +933,11 @@ volumeSlider.addEventListener('input', () => {
   render.updateVolume(nextVolume);
 });
 
+fullscreenButton.addEventListener('click', () => {
+  const toggles = render.getToggles();
+  render.setToggle('fullscreen', !toggles.fullscreen);
+});
+
 playButton.addEventListener('click', () => {
   togglePlayback();
 });
@@ -986,21 +1009,11 @@ render.on('cyclePalette', ({ direction }) => {
   const dir = direction >= 0 ? 1 : -1;
   manualAdjustments.hueOffset = wrapHue(manualAdjustments.hueOffset + dir * 20);
 });
-render.on('safeModeChange', (enabled) => {
-  safeModeEnabled = Boolean(enabled);
-  map.setSafeMode(safeModeEnabled);
-  writeStoredBoolean(STORAGE_KEYS.SAFE_MODE, safeModeEnabled);
-  constrainManualAdjustmentsForSafeMode(safeModeEnabled);
-});
-render.on('nnBypassChange', (enabled) => {
-  nnBypass = Boolean(enabled);
-  writeStoredBoolean(STORAGE_KEYS.NN_BYPASS, nnBypass);
-  if (nnBypass) {
-    lastModelOutputs = FALLBACK_NN_OUTPUTS;
+render.on('toggle', ({ name, value }) => {
+  if (name === 'fullscreen') {
+    updateFullscreenButtonUi(Boolean(value));
   }
 });
-render.setToggle('safe', storedSafeMode);
-render.setToggle('bypass', storedBypass);
 
 audioElement.addEventListener('play', () => {
   dismissIntroOverlay();

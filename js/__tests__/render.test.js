@@ -2,8 +2,6 @@ import { jest } from '@jest/globals';
 
 import { destroy, init, setPalette } from '../render.js';
 
-const TOGGLES = ['hud', 'bloom', 'trails', 'grid', 'safe', 'bypass'];
-
 beforeAll(() => {
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     configurable: true,
@@ -45,9 +43,6 @@ afterEach(() => {
 });
 
 function setupRenderDom() {
-  const togglesMarkup = TOGGLES.map(
-    (toggle) => `<label><input type="checkbox" data-toggle="${toggle}" /></label>`,
-  ).join('');
   document.body.innerHTML = `
     <canvas id="c"></canvas>
     <div id="hud" class="ui">
@@ -59,7 +54,6 @@ function setupRenderDom() {
         <label>Volume <span id="volume-display"></span></label>
         <input id="volume" type="range" value="0.7" />
       </div>
-      <div id="hud-toggles">${togglesMarkup}</div>
     </div>
   `;
 }

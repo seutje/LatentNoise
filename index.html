@@ -29,14 +29,6 @@
         <label for="volume">Volume <span id="volume-display">70%</span></label>
         <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7">
       </div>
-      <div class="hud-row hud-toggles" id="hud-toggles">
-        <label><input type="checkbox" id="toggle-fullscreen" data-toggle="fullscreen"> Fullscreen</label>
-        <label><input type="checkbox" id="toggle-bloom" data-toggle="bloom" checked> Bloom</label>
-        <label><input type="checkbox" id="toggle-trails" data-toggle="trails" checked> Trails</label>
-        <label><input type="checkbox" id="toggle-grid" data-toggle="grid"> Grid</label>
-        <label><input type="checkbox" id="toggle-safe" data-toggle="safe"> Safe</label>
-        <label><input type="checkbox" id="bypass" data-toggle="bypass"> NN Bypass</label>
-      </div>
     </div>
     <div id="controls" class="ui">
       <button id="prev">Prev</button>
@@ -44,6 +36,7 @@
       <button id="next">Next</button>
       <input id="seek" type="range" min="0" max="100" value="0">
       <select id="playlist"></select>
+      <button id="fullscreen" type="button">Fullscreen</button>
     </div>
     <audio id="player" preload="metadata"></audio>
     <script type="module" src="js/app.js"></script>
