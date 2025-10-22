@@ -126,3 +126,8 @@
 - Added an optional autoplay delay to the next/prev handlers so button clicks wait one second before resuming playback, matching the existing particle intermission window.
 - Threaded the delay through the shared track-loading path while preserving immediate transitions for auto-advance and diagnostic controls.
 - Reconfirmed repository health via `npm run lint` and `npm test`.
+
+## 2025-10-25 - Correlation Training CLI
+- Added a Node.js training utility that optimizes a per-track model for a requested feature/output correlation with optional inverse mode, deterministic seeding, and tunable training hyperparameters.
+- Shared the track registry across generator and trainer scripts to avoid duplication and ensure consistent metadata lookups.
+- Verified repository health with `npm run lint` and `npm test` after generating a sample session.
