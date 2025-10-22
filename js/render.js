@@ -27,6 +27,10 @@ const PARAM_SCRATCH = {
   zoom: 1,
 };
 
+const MIN_RENDER_ZOOM = 0.1;
+const MAX_RENDER_ZOOM = 20;
+const LOW_ZOOM_FILL = 1.75;
+
 const CONNECTION_FRACTION = 0.9;
 
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
@@ -1028,7 +1032,7 @@ function resolveParams(input = {}) {
   PARAM_SCRATCH.hueShift = Number.isFinite(input.hueShift) ? input.hueShift : 0;
   PARAM_SCRATCH.sparkleDensity = clamp(input.sparkleDensity ?? 0.05, 0, 1);
   const zoom = Number.isFinite(input.zoom) ? input.zoom : 1;
-  PARAM_SCRATCH.zoom = clamp(zoom, 0.5, 20);
+  PARAM_SCRATCH.zoom = clamp(zoom, MIN_RENDER_ZOOM, MAX_RENDER_ZOOM);
   return PARAM_SCRATCH;
 }
 
@@ -1067,11 +1071,16 @@ function drawParticles(particles, params, dt) {
   const centerX = state.logicalWidth * 0.5;
   const centerY = state.logicalHeight * 0.5;
   const zoom = Number.isFinite(params.zoom) ? params.zoom : 1;
-  const zoomFactor = clamp(zoom, 0.5, 20);
+  const zoomFactor = clamp(zoom, MIN_RENDER_ZOOM, MAX_RENDER_ZOOM);
   const worldWidth = Math.max(state.world.width, 1e-3);
   const worldHeight = Math.max(state.world.height, 1e-3);
-  const scaleX = (state.logicalWidth / worldWidth) * zoomFactor;
-  const scaleY = (state.logicalHeight / worldHeight) * zoomFactor;
+  const baseScaleX = state.logicalWidth / worldWidth;
+  const baseScaleY = state.logicalHeight / worldHeight;
+  const lowZoomT = clamp(1 - zoomFactor, 0, 1);
+  const fillZoom = 1 + lowZoomT * (LOW_ZOOM_FILL - 1);
+  const effectiveZoom = Math.max(zoomFactor, fillZoom);
+  const scaleX = baseScaleX * effectiveZoom;
+  const scaleY = baseScaleY * effectiveZoom;
 
   const jitter = params.sizeJitter;
   const sparkle = params.sparkleDensity;

@@ -149,3 +149,7 @@
 ## 2025-10-26 - Full Viewport Particle Scaling
 - Updated the renderer's particle projection to scale independently across the canvas width and height so low zoom values no longer restrict drawing to a square in the center of the screen.
 - Confirmed the visualization still renders cleanly after the change by running `npm run lint` and `npm test`.
+
+## 2025-10-27 - Expanded Low-Zoom Coverage
+- Adjusted the renderer's zoom clamping and scaling curve so extremely low zoom values overscan beyond the viewport, eliminating the faint border that remained at the canvas edges.
+- Revalidated the update with `npm run lint` and `npm test`.
