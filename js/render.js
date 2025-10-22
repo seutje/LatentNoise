@@ -27,6 +27,8 @@ const PARAM_SCRATCH = {
   zoom: 1,
 };
 
+const CONNECTION_FRACTION = 0.9;
+
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
   fullscreen: false,
   bloom: true,
@@ -1077,11 +1079,19 @@ function drawParticles(particles, params, dt) {
   const accentCount = palette.accentHsl.length;
   const hueBase = wrapHue360((palette.baseHue ?? DEFAULT_BASE_HUE) + params.hueShift);
 
+  const maxConnections =
+    CONNECTION_FRACTION > 0 ? Math.min(Math.floor(count * CONNECTION_FRACTION * 0.5), count) : 0;
+  const connectionStride = maxConnections > 0 ? Math.max(1, Math.round(count / maxConnections)) : count + 1;
+  const pixelScale = Math.max(0.001, state.pixelRatio * state.dynamicScale);
+  const connectionLineWidth = clamp(0.7 / pixelScale, 0.25, 1.15);
+  let connectionsDrawn = 0;
+
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
 
   const sparkleThreshold = 1 - sparkle * 0.6;
   const fadeBoost = dt ? Math.exp(-dt * 1.6) : 1;
+  const connectionAlphaBase = clamp(0.08 + (1 - params.trailFade) * 0.22, 0.06, 0.35) * fadeBoost;
 
   for (let i = 0; i < count; i += 1) {
     const index = indices[i];
@@ -1118,6 +1128,33 @@ function drawParticles(particles, params, dt) {
       sparkleLight = clamp(bodyLight + 14, 0, 100);
     }
     const alpha = clamp(0.25 + (1 - lifeT) * 0.55, 0.1, 0.85) * fadeBoost;
+
+    if (
+      maxConnections > 0 &&
+      connectionsDrawn < maxConnections &&
+      (i % connectionStride === 0 || connectionsDrawn < maxConnections * 0.4)
+    ) {
+      const partnerSeed = fract(rng * 97.417 + i * 0.611 + state.frameSeed * 0.733);
+      let partnerSlot = Math.floor(partnerSeed * count);
+      if (partnerSlot === i) {
+        partnerSlot = (partnerSlot + 1) % count;
+      }
+      const partnerIndex = indices[partnerSlot];
+      if (partnerIndex !== index && (!alive || alive[partnerIndex] !== 0)) {
+        const connectionAlpha = clamp(connectionAlphaBase * (1.15 - lifeT * 0.6), 0.025, 0.38);
+        const connectionHue = wrapHue360(hue + (partnerSeed - 0.5) * 18);
+        const connectionSat = Math.round(clamp(saturation * 0.6 + 18, 10, 95));
+        const connectionLight = Math.round(clamp(bodyLight * 0.82 + 12, 12, 92));
+        ctx.lineWidth = connectionLineWidth;
+        ctx.strokeStyle = `hsl(${Math.round(connectionHue)}, ${connectionSat}%, ${connectionLight}%)`;
+        ctx.globalAlpha = connectionAlpha;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(centerX + positionsX[partnerIndex] * scale, centerY + positionsY[partnerIndex] * scale);
+        ctx.stroke();
+        connectionsDrawn += 1;
+      }
+    }
 
     ctx.fillStyle = `hsl(${Math.round(hue)}, ${Math.round(saturation)}%, ${Math.round(bodyLight)}%)`;
     ctx.globalAlpha = alpha;

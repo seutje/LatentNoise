@@ -140,3 +140,8 @@
 - Replaced the HUD visibility checkbox with a fullscreen toggle that hides HUD, transport controls, and the debug overlay while requesting browser fullscreen.
 - Added body-level fullscreen styling and accessibility attributes so UI chrome stays suppressed until fullscreen exits, including via keyboard shortcuts.
 - Confirmed the refactor passes `npm run lint` and `npm test`.
+
+## 2025-10-25 - Neural Link Rendering
+- Drew thin connective strands between roughly ten percent of the active particles using deterministic pairing so the swarm hints at neural pathways.
+- Tuned stroke color, alpha, and density to stay subtle behind the additive particle blooms while respecting dynamic scale and existing trail fades.
+- Re-verified repository health with `npm run lint` and `npm test`.
