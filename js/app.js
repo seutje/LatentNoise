@@ -286,6 +286,8 @@ const playButton = document.getElementById('play');
 const prevButton = document.getElementById('prev');
 const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
+const loadingOverlay = document.getElementById('loading-overlay');
+const overlayPlayButton = document.getElementById('overlay-play');
 
 if (!playlistSelect || !audioElement || !volumeSlider || !playButton || !prevButton || !nextButton || !seekSlider) {
   throw new Error('Required controls missing from DOM (playlist, audio, volume, play, prev, next, or seek).');
@@ -856,6 +858,19 @@ function togglePlayback() {
   }
 }
 
+function hideLoadingOverlay() {
+  if (!loadingOverlay) {
+    return;
+  }
+  if (!loadingOverlay.classList.contains('overlay-hidden')) {
+    loadingOverlay.classList.add('overlay-hidden');
+    loadingOverlay.setAttribute('aria-hidden', 'true');
+    if (overlayPlayButton) {
+      overlayPlayButton.blur();
+    }
+  }
+}
+
 function seekBy(seconds) {
   if (!Number.isFinite(seconds)) {
     return;
@@ -892,6 +907,18 @@ volumeSlider.addEventListener('input', () => {
 playButton.addEventListener('click', () => {
   togglePlayback();
 });
+
+if (overlayPlayButton) {
+  overlayPlayButton.addEventListener('click', () => {
+    hideLoadingOverlay();
+    if (!render.getToggles().fullscreen) {
+      render.setToggle('fullscreen', true);
+    }
+    if (audioElement.paused) {
+      togglePlayback();
+    }
+  });
+}
 
 prevButton.addEventListener('click', () => {
   prevTrack({ autoplayDelayMs: TRACK_INTERMISSION_MS });
@@ -977,6 +1004,7 @@ render.setToggle('safe', storedSafeMode);
 render.setToggle('bypass', storedBypass);
 
 audioElement.addEventListener('play', () => {
+  hideLoadingOverlay();
   clearAutoAdvanceTimer();
   playback.status = 'Playing';
   updateStatus(physics.getMetrics());

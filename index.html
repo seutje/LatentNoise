@@ -8,6 +8,20 @@
   </head>
   <body>
     <canvas id="c"></canvas>
+    <div
+      id="loading-overlay"
+      role="dialog"
+      aria-labelledby="overlay-title"
+      aria-describedby="overlay-description overlay-secondary"
+      aria-modal="true"
+    >
+      <div class="overlay-panel">
+        <h1 id="overlay-title">Latent Noise</h1>
+        <p id="overlay-description">Everything you see and hear is AI generated.</p>
+        <p id="overlay-secondary">Press play to start the excursion into the model's inner workings.</p>
+        <button id="overlay-play" type="button">Play</button>
+      </div>
+    </div>
     <div id="hud" class="ui">
       <div class="hud-row hud-top">
         <span id="track-title">Latent Noise</span>
