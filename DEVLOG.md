@@ -150,3 +150,7 @@
 - Expanded the particle render scale to match the larger screen dimension and clamp the minimum zoomed-out footprint so low zoom values fill the full viewport instead of a central box.
 - Kept zoom-in behavior intact by applying the new baseline before the zoom multiplier so higher zoom values still magnify the swarm responsively.
 - Confirmed stability with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Keyboard Skip Delay
+- Routed keyboard next/previous shortcuts through the one-second autoplay delay so transitions match the particle intermission window.
+- Confirmed parity with button handlers and ensured repository health via `npm run lint` and `npm test`.
