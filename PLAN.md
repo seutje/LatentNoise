@@ -155,6 +155,7 @@
 - [x] Implement main loop: `features → model.forward → map → physics → render` via `requestAnimationFrame`.
 - [x] Implement handlers for play/pause/prev/next/seek; playlist change loads audio+model+preset.
 - [x] Persist UI state: last track, volume, safe mode, NN bypass; fullscreen resets per session because the browser requires a user gesture.
+- [x] Add a startup overlay that requires a play gesture, enters fullscreen, and begins playback while hiding HUD chrome.
 
 **Acceptance:**
 - [x] End-to-end system runs continuously with no memory growth.

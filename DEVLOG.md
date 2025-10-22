@@ -163,3 +163,8 @@
 - Extended the training CLI to accept multiple feature/output pairs so secondary correlations can be optimized alongside the primary objective with weighted losses.
 - Added detailed evaluation and metadata output for each requested correlation, including combined fitness reporting for multi-objective runs.
 - Confirmed stability with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Immersive Startup Overlay
+- Added a launch overlay that frames the experience copy, locks controls, and invites the user to begin the session.
+- Wired the overlay play button to trigger fullscreen, hide HUD chrome, and start playback through the existing audio pipeline.
+- Re-ran `npm run lint` and `npm test` to verify the integration.

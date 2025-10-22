@@ -286,9 +286,15 @@ const playButton = document.getElementById('play');
 const prevButton = document.getElementById('prev');
 const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
+const introOverlay = document.getElementById('intro-overlay');
+const introPlayButton = document.getElementById('intro-play');
 
 if (!playlistSelect || !audioElement || !volumeSlider || !playButton || !prevButton || !nextButton || !seekSlider) {
   throw new Error('Required controls missing from DOM (playlist, audio, volume, play, prev, next, or seek).');
+}
+
+if (!introOverlay || !introPlayButton) {
+  throw new Error('Intro overlay elements missing from DOM (#intro-overlay or #intro-play).');
 }
 
 render.init();
@@ -403,6 +409,44 @@ const playback = {
   status: 'Idle',
   lastStatusText: '',
 };
+
+let introOverlayDismissed = false;
+
+function dismissIntroOverlay() {
+  if (!introOverlay || introOverlayDismissed) {
+    return;
+  }
+  introOverlayDismissed = true;
+  introOverlay.classList.add('is-hidden');
+  introOverlay.setAttribute('aria-hidden', 'true');
+  if (introPlayButton) {
+    introPlayButton.disabled = true;
+  }
+}
+
+async function beginExperienceFromOverlay() {
+  if (!introOverlay || !introPlayButton) {
+    return;
+  }
+
+  if (!audioElement.paused) {
+    render.setToggle('fullscreen', true);
+    dismissIntroOverlay();
+    return;
+  }
+
+  introPlayButton.disabled = true;
+  render.setToggle('fullscreen', true);
+
+  try {
+    await audioElement.play();
+    dismissIntroOverlay();
+  } catch (error) {
+    console.warn('[app] Unable to begin playback from intro overlay.', error);
+    introPlayButton.disabled = false;
+    render.setToggle('fullscreen', false);
+  }
+}
 
 let autoAdvanceTimer = 0;
 let pendingPlayTimer = 0;
@@ -889,6 +933,11 @@ volumeSlider.addEventListener('input', () => {
   render.updateVolume(nextVolume);
 });
 
+introPlayButton.addEventListener('click', (event) => {
+  event.preventDefault();
+  void beginExperienceFromOverlay();
+});
+
 playButton.addEventListener('click', () => {
   togglePlayback();
 });
@@ -977,6 +1026,7 @@ render.setToggle('safe', storedSafeMode);
 render.setToggle('bypass', storedBypass);
 
 audioElement.addEventListener('play', () => {
+  dismissIntroOverlay();
   clearAutoAdvanceTimer();
   playback.status = 'Playing';
   updateStatus(physics.getMetrics());

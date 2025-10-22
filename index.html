@@ -7,6 +7,21 @@
     <link rel="stylesheet" href="css/style.css">
   </head>
   <body>
+    <div
+      id="intro-overlay"
+      class="intro-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="intro-overlay-title"
+      aria-hidden="false"
+    >
+      <div class="intro-overlay__content">
+        <h1 id="intro-overlay-title">Latent Noise</h1>
+        <p>Everything you see and hear is AI generated.</p>
+        <p>Press play to start the excursion into the model's inner workings.</p>
+        <button id="intro-play" type="button" class="intro-overlay__button">Play</button>
+      </div>
+    </div>
     <canvas id="c"></canvas>
     <div id="hud" class="ui">
       <div class="hud-row hud-top">

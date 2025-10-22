@@ -23,9 +23,96 @@ body {
   position: relative;
 }
 
+.intro-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem;
+  background: radial-gradient(circle at 50% 35%, rgba(15, 16, 32, 0.94), rgba(3, 4, 12, 0.94) 65%);
+  text-align: center;
+  z-index: 999;
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+
+.intro-overlay.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.intro-overlay__content {
+  max-width: 32rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 2.5rem 2.75rem;
+  border-radius: 1.5rem;
+  background: rgba(8, 10, 18, 0.78);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+.intro-overlay__content h1 {
+  margin: 0;
+  font-size: clamp(2.5rem, 4vw, 3.5rem);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.intro-overlay__content p {
+  margin: 0;
+  font-size: clamp(1rem, 2.2vw, 1.2rem);
+  line-height: 1.55;
+  color: rgba(245, 247, 255, 0.82);
+}
+
+.intro-overlay__button {
+  align-self: center;
+  font: inherit;
+  font-size: 1.1rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 0.9rem 3.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.9), rgba(99, 102, 241, 0.8));
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease;
+  box-shadow: 0 20px 40px rgba(88, 85, 196, 0.35);
+}
+
+.intro-overlay__button:hover,
+.intro-overlay__button:focus-visible {
+  outline: none;
+  transform: translateY(-2px);
+  box-shadow: 0 28px 55px rgba(88, 85, 196, 0.45);
+  filter: brightness(1.05);
+}
+
+.intro-overlay__button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+@media (max-width: 600px) {
+  .intro-overlay__content {
+    padding: 2rem 1.75rem;
+    gap: 1.25rem;
+  }
+
+  .intro-overlay__button {
+    width: 100%;
+  }
+}
+
 body.fullscreen-active #hud,
 body.fullscreen-active #controls,
-body.fullscreen-active #debug-overlay {
+body.fullscreen-active #debug-overlay,
+body.fullscreen-active #intro-overlay {
   display: none !important;
 }
 
