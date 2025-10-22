@@ -145,3 +145,8 @@
 - Drew thin connective strands between roughly ten percent of the active particles using deterministic pairing so the swarm hints at neural pathways.
 - Tuned stroke color, alpha, and density to stay subtle behind the additive particle blooms while respecting dynamic scale and existing trail fades.
 - Re-verified repository health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Low Zoom Coverage
+- Expanded the particle render scale to match the larger screen dimension and clamp the minimum zoomed-out footprint so low zoom values fill the full viewport instead of a central box.
+- Kept zoom-in behavior intact by applying the new baseline before the zoom multiplier so higher zoom values still magnify the swarm responsively.
+- Confirmed stability with `npm run lint` and `npm test`.
