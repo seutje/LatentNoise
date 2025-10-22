@@ -981,6 +981,7 @@ audioElement.addEventListener('play', () => {
   playback.status = 'Playing';
   updateStatus(physics.getMetrics());
   updatePlayButtonUi();
+  startAnimationLoop();
 });
 
 audioElement.addEventListener('pause', () => {
@@ -993,6 +994,7 @@ audioElement.addEventListener('pause', () => {
   }
   updateStatus(physics.getMetrics());
   updatePlayButtonUi();
+  stopAnimationLoop();
 });
 
 audioElement.addEventListener('ended', () => {
@@ -1005,6 +1007,7 @@ audioElement.addEventListener('ended', () => {
     autoAdvanceTimer = 0;
     nextTrack(1, { autoplay: true, skipIntermission: true });
   }, TRACK_INTERMISSION_MS);
+  stopAnimationLoop();
 });
 
 const updateTrackTime = () => {
@@ -1039,8 +1042,41 @@ document.addEventListener('visibilitychange', () => {
 });
 
 let lastFrameTime = performance.now();
+let animationHandle = 0;
+let animationActive = false;
+
+function scheduleNextFrame() {
+  if (!animationActive) {
+    animationHandle = 0;
+    return;
+  }
+  animationHandle = requestAnimationFrame(frame);
+}
+
+function startAnimationLoop() {
+  if (animationActive) {
+    return;
+  }
+  animationActive = true;
+  lastFrameTime = performance.now();
+  scheduleNextFrame();
+}
+
+function stopAnimationLoop() {
+  if (!animationActive) {
+    return;
+  }
+  animationActive = false;
+  if (animationHandle) {
+    cancelAnimationFrame(animationHandle);
+    animationHandle = 0;
+  }
+}
 
 function frame(now) {
+  if (!animationActive) {
+    return;
+  }
   const dtMsRaw = now - lastFrameTime;
   lastFrameTime = now;
   const dtSeconds = clamp(dtMsRaw / 1000, 1 / 240, 1 / 20);
@@ -1154,7 +1190,9 @@ function frame(now) {
     updateSeekUi(currentTime, duration);
   }
 
-  requestAnimationFrame(frame);
+  scheduleNextFrame();
 }
 
-requestAnimationFrame(frame);
+if (!audioElement.paused) {
+  startAnimationLoop();
+}

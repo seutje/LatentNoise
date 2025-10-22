@@ -154,3 +154,8 @@
 ## 2025-10-25 - Keyboard Skip Delay
 - Routed keyboard next/previous shortcuts through the one-second autoplay delay so transitions match the particle intermission window.
 - Confirmed parity with button handlers and ensured repository health via `npm run lint` and `npm test`.
+
+## 2025-10-25 - Pause Rendering with Playback
+- Guarded the animation loop with explicit start/stop helpers so requestAnimationFrame scheduling halts whenever playback pauses or ends and resumes on play.
+- Preserved frame timing by resetting the loop clock when resuming to avoid large delta spikes.
+- Verified stability with `npm run lint` and `npm test`.
