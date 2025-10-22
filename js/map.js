@@ -364,6 +364,15 @@ function createRestParams() {
   return rests;
 }
 
+const OFFSET_DEFAULTS = Object.freeze({
+  spawnOffset: 0,
+  glowOffset: 0,
+  sparkleOffset: 0,
+  hueOffset: 0,
+  repelImpulse: 0,
+});
+const OFFSET_KEYS = Object.freeze(Object.keys(OFFSET_DEFAULTS));
+
 const state = {
   params: createDefaultParams(),
   baselines: createDefaultParams(),
@@ -374,7 +383,26 @@ const state = {
   silenceThreshold: DEFAULT_SILENCE_THRESHOLD,
   lastTimestamp: 0,
   lastOutputs: new Float32Array(PARAM_NAMES.length),
+  offsets: { ...OFFSET_DEFAULTS },
+  result: null,
 };
+
+function resetOffsets() {
+  state.offsets = { ...OFFSET_DEFAULTS };
+}
+
+function ensureResultObject() {
+  if (!state.result) {
+    state.result = {};
+    for (const name of PARAM_NAMES) {
+      state.result[name] = state.params[name];
+    }
+    for (const key of OFFSET_KEYS) {
+      state.result[key] = state.offsets[key];
+    }
+  }
+  return state.result;
+}
 
 function getSmoother(name, spec) {
   let smoother = state.smoothers.get(name);
@@ -458,6 +486,7 @@ export function configure(options = {}) {
 export function reset(params) {
   state.lastTimestamp = 0;
   state.lastOutputs.fill(0);
+  state.result = null;
   for (const name of PARAM_NAMES) {
     const spec = PARAM_SPECS[name];
     const { min, max } = resolveBounds(spec, state.safeMode);
@@ -481,6 +510,7 @@ export function reset(params) {
       impulse.hold = 0;
     }
   }
+  resetOffsets();
 }
 
 export function update(outputs, options = {}) {
@@ -525,7 +555,29 @@ export function update(outputs, options = {}) {
     }
   }
 
-  return state.params;
+  const result = ensureResultObject();
+  for (const name of PARAM_NAMES) {
+    result[name] = state.params[name];
+  }
+
+  const spawnBaseline = state.baselines.spawnRate ?? PARAM_SPECS.spawnRate.baseline;
+  const glowBaseline = state.baselines.glow ?? PARAM_SPECS.glow.baseline;
+  const sparkleBaseline = state.baselines.sparkleDensity ?? PARAM_SPECS.sparkleDensity.baseline;
+  const hueBaseline = state.baselines.hueShift ?? PARAM_SPECS.hueShift.baseline;
+
+  state.offsets.spawnOffset = state.params.spawnRate - spawnBaseline;
+  state.offsets.glowOffset = state.params.glow - glowBaseline;
+  state.offsets.sparkleOffset = state.params.sparkleDensity - sparkleBaseline;
+  state.offsets.hueOffset = state.params.hueShift - hueBaseline;
+  state.offsets.repelImpulse = state.params.repelImpulse;
+
+  result.spawnOffset = state.offsets.spawnOffset;
+  result.glowOffset = state.offsets.glowOffset;
+  result.sparkleOffset = state.offsets.sparkleOffset;
+  result.hueOffset = state.offsets.hueOffset;
+  result.repelImpulse = state.offsets.repelImpulse;
+
+  return result;
 }
 
 export function getParams() {

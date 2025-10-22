@@ -116,3 +116,8 @@
 - Introduced a guarded autoplay timer so playlist dropdown changes wait one second before resuming playback, aligning the audio start with the existing particle intermission.
 - Cancelled any pending autoplay attempt when switching tracks again to avoid stale resume calls and reuse the intermission constant for consistency.
 - Verified with `npm run lint` and `npm test`.
+
+## 2025-10-24 - Neural Offset Telemetry
+- Extended the mapper to expose NN-driven offsets for spawn, glow, sparkle, and hue while surfacing the repeller envelope so diagnostics reflect real-time network modulation.
+- Wired the application layer to track those offsets separately from manual tweaks and expanded the debug overlay to show both NN and manual contributions.
+- Added unit coverage to confirm offsets respect custom baselines and follow raw network outputs; validated with `npm run lint` and `npm test`.
