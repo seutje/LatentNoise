@@ -158,3 +158,8 @@
 ## 2025-10-25 - Playlist Select Styling
 - Updated the playlist dropdown background and border to match the transport buttons so the control row has a unified visual treatment.
 - Re-verified repository health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Multi-Correlation Training
+- Extended the training CLI to accept multiple feature/output pairs so secondary correlations can be optimized alongside the primary objective with weighted losses.
+- Added detailed evaluation and metadata output for each requested correlation, including combined fitness reporting for multi-objective runs.
+- Confirmed stability with `npm run lint` and `npm test`.
