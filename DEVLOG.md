@@ -168,3 +168,8 @@
 - Added a full-viewport intro overlay with the Latent Noise heading, supporting copy, and a prominent play call-to-action to frame the experience before playback begins.
 - Styled the overlay with responsive typography, glassy panel treatments, and motion-safe transitions while ensuring it hides alongside HUD chrome in fullscreen.
 - Wired the play control to trigger fullscreen, dismiss the overlay, and kick off audio playback; validated the flow with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Intro Overlay Harmonization
+- Reworked the launch overlay background and panel treatment to reuse the global glass panel palette so its presentation matches the in-app HUD and controls.
+- Updated the play call-to-action to mirror the transport button styling, including shared hover contrast and softened shadows for consistency.
+- Reconfirmed repository health with `npm run lint` and `npm test`.
