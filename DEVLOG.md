@@ -145,3 +145,7 @@
 - Drew thin connective strands between roughly ten percent of the active particles using deterministic pairing so the swarm hints at neural pathways.
 - Tuned stroke color, alpha, and density to stay subtle behind the additive particle blooms while respecting dynamic scale and existing trail fades.
 - Re-verified repository health with `npm run lint` and `npm test`.
+
+## 2025-10-26 - Full Viewport Particle Scaling
+- Updated the renderer's particle projection to scale independently across the canvas width and height so low zoom values no longer restrict drawing to a square in the center of the screen.
+- Confirmed the visualization still renders cleanly after the change by running `npm run lint` and `npm test`.
