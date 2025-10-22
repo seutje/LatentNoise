@@ -392,6 +392,8 @@ const playback = {
 };
 
 let autoAdvanceTimer = 0;
+let pendingPlayTimer = 0;
+let pendingPlayToken = 0;
 
 function clearAutoAdvanceTimer() {
   if (autoAdvanceTimer) {
@@ -739,8 +741,16 @@ function setTrack(index, options = {}) {
     console.warn('[app] Ignoring out-of-range track index', index);
     return;
   }
+  if (pendingPlayTimer) {
+    window.clearTimeout(pendingPlayTimer);
+    pendingPlayTimer = 0;
+  }
+  const playToken = ++pendingPlayToken;
   const target = tracks[index];
   const autoplay = options.autoplay ?? !audioElement.paused;
+  const autoplayDelayMs = Number.isFinite(options.autoplayDelayMs)
+    ? Math.max(0, options.autoplayDelayMs)
+    : 0;
 
   if (index === currentTrackIndex && activeModelIndex === index) {
     return;
@@ -765,16 +775,30 @@ function setTrack(index, options = {}) {
 
   void prepareModel(index);
 
-  if (!autoplay) {
+  if (!autoplay || autoplayDelayMs > 0) {
     audioElement.pause();
   }
 
   if (autoplay) {
-    audioElement.play().catch((error) => {
-      playback.status = 'Idle';
-      updateStatus(physics.getMetrics());
-      console.warn('[app] Autoplay blocked', error);
-    });
+    if (autoplayDelayMs > 0) {
+      pendingPlayTimer = window.setTimeout(() => {
+        pendingPlayTimer = 0;
+        if (playToken !== pendingPlayToken || currentTrackIndex !== index) {
+          return;
+        }
+        audioElement.play().catch((error) => {
+          playback.status = 'Idle';
+          updateStatus(physics.getMetrics());
+          console.warn('[app] Autoplay blocked', error);
+        });
+      }, autoplayDelayMs);
+    } else {
+      audioElement.play().catch((error) => {
+        playback.status = 'Idle';
+        updateStatus(physics.getMetrics());
+        console.warn('[app] Autoplay blocked', error);
+      });
+    }
   }
 
   updatePlayButtonUi();
@@ -869,7 +893,10 @@ playlistSelect.addEventListener('change', (event) => {
   if (selected !== currentTrackIndex && currentTrackIndex >= 0) {
     startParticleIntermission(TRACK_INTERMISSION_MS);
   }
-  setTrack(selected, { autoplay: !audioElement.paused });
+  setTrack(selected, {
+    autoplay: !audioElement.paused,
+    autoplayDelayMs: TRACK_INTERMISSION_MS,
+  });
 });
 
 render.on('playToggle', togglePlayback);

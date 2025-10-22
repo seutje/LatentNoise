@@ -111,3 +111,8 @@
 ## 2025-10-24 - Track Transition Intermission
 - Added a reusable track-transition intermission in `app.js` that resets the physics pool and suppresses spawning for one second whenever tracks change or auto-advance, guaranteeing an empty field between songs.
 - Updated playlist, HUD, and auto-advance handlers to trigger the intermission and verified the behavior with `npm run lint` and `npm test`.
+
+## 2025-10-24 - Dropdown Track Delay
+- Introduced a guarded autoplay timer so playlist dropdown changes wait one second before resuming playback, aligning the audio start with the existing particle intermission.
+- Cancelled any pending autoplay attempt when switching tracks again to avoid stale resume calls and reuse the intermission constant for consistency.
+- Verified with `npm run lint` and `npm test`.
