@@ -7,7 +7,8 @@
     "start": "http-server . -p 8000",
     "lint": "eslint .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "models": "node scripts/generate-models.js"
+    "models": "node scripts/generate-models.js",
+    "train": "node scripts/train-correlation.js"
   },
   "keywords": [],
   "author": "AI Agents",

@@ -3,25 +3,13 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
+import { TRACK_MODELS } from './tracks.js';
+
 const INPUT_SIZE = 24;
 const HIDDEN_SIZE = 16;
 const OUTPUT_SIZE = 11;
 const WEIGHT_SCALE = 0.35;
 const BIAS_SCALE = 0.25;
-
-const TRACK_MODELS = Object.freeze([
-  { index: 0, name: 'Meditation', slug: 'meditation', file: 'meditation.json' },
-  { index: 1, name: 'Built on the Steppers', slug: 'built-on-the-steppers', file: 'built-on-the-steppers.json' },
-  { index: 2, name: 'Unsound', slug: 'unsound', file: 'unsound.json' },
-  { index: 3, name: 'System.js', slug: 'system-js', file: 'system-js.json' },
-  { index: 4, name: 'Binary Mirage', slug: 'binary-mirage', file: 'binary-mirage.json' },
-  { index: 5, name: 'Traffic Jam', slug: 'traffic-jam', file: 'traffic-jam.json' },
-  { index: 6, name: 'Backpack', slug: 'backpack', file: 'backpack.json' },
-  { index: 7, name: 'Last Pack', slug: 'last-pack', file: 'last-pack.json' },
-  { index: 8, name: 'Cloud', slug: 'cloud', file: 'cloud.json' },
-  { index: 9, name: 'Ease Up', slug: 'ease-up', file: 'ease-up.json' },
-  { index: 10, name: 'Epoch ∞', slug: 'epoch-infinity', file: 'epoch-infinity.json' },
-]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
