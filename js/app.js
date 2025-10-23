@@ -892,11 +892,34 @@ function startExperience() {
       // Mobile Safari may throw when attempting to unlock before the context exists.
     });
   render.setToggle('fullscreen', true);
-  if (audioElement.paused) {
-    togglePlayback();
-  } else {
+  if (!audioElement.paused) {
     dismissIntroOverlay();
+    return;
   }
+
+  dismissIntroOverlay();
+
+  if (pendingPlayTimer) {
+    window.clearTimeout(pendingPlayTimer);
+    pendingPlayTimer = 0;
+  }
+
+  const playToken = ++pendingPlayToken;
+  const introDelayMs = TRACK_INTERMISSION_MS;
+  playback.status = 'Buffering';
+  updateStatus(physics.getMetrics());
+
+  pendingPlayTimer = window.setTimeout(() => {
+    pendingPlayTimer = 0;
+    if (playToken !== pendingPlayToken || !audioElement.paused) {
+      return;
+    }
+    audioElement.play().catch((error) => {
+      playback.status = 'Idle';
+      updateStatus(physics.getMetrics());
+      console.warn('[app] Playback start blocked', error);
+    });
+  }, introDelayMs);
 }
 
 function handleIntroStart(event) {
