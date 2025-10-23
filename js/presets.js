@@ -146,15 +146,15 @@ const PRESET_DATA = /** @type {const} */ ([
       baseHue: 136,
     },
     sim: {
-      spawnRate: { scale: 0.82 },
-      fieldStrength: { scale: 1.3 },
+      spawnRate: { scale: 0.25 },
+      fieldStrength: { scale: 1.4 },
       cohesion: { scale: 0.98 },
       repelImpulse: { scale: 1.1 },
       vortexAmount: { scale: 0.75 },
     },
     render: {
       trailFade: { scale: 0.9 },
-      glow: { scale: 0.95 },
+      glow: { scale: 1.2 },
       sizeJitter: { scale: 0.7 },
       hueShift: { offset: 14 },
       sparkleDensity: { scale: 1.05 },
