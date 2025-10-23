@@ -10,7 +10,7 @@ const RENDER_LIMITS = /** @type {const} */ ({
   trailFade: { min: 0.2, max: 0.98 },
   glow: { min: 0, max: 1 },
   sizeJitter: { min: 0, max: 0.8 },
-  hueShift: { min: -180, max: 180 },
+  hueShift: { min: -90, max: 90 },
   sparkleDensity: { min: 0, max: 1 },
   zoom: { min: 0.5, max: 20 },
 });
@@ -47,10 +47,10 @@ const PRESET_DATA = /** @type {const} */ ([
     palette: {
       background: '#03261c',
       accents: ['#f94144', '#ff7f11', '#ffd166'],
-      baseHue: 140,
+      baseHue: 80,
     },
     sim: {
-      spawnRate: { scale: 1.1 },
+      spawnRate: { scale: 3.1 },
       fieldStrength: { scale: 1.2 },
       cohesion: { scale: 1.05 },
       repelImpulse: { scale: 0.75 },
@@ -58,7 +58,7 @@ const PRESET_DATA = /** @type {const} */ ([
     },
     render: {
       trailFade: { scale: 0.95 },
-      glow: { scale: 0.9 },
+      glow: { scale: 1.5 },
       sizeJitter: { scale: 0.8 },
       hueShift: { offset: 8 },
       sparkleDensity: { scale: 0.6 },
@@ -170,15 +170,15 @@ const PRESET_DATA = /** @type {const} */ ([
       baseHue: 44,
     },
     sim: {
-      spawnRate: { scale: 1.08 },
-      fieldStrength: { scale: 1.05 },
+      spawnRate: { scale: 1.5 },
+      fieldStrength: { scale: 0.85 },
       cohesion: { scale: 0.85 },
       repelImpulse: { scale: 1.25 },
       vortexAmount: { scale: 0.9 },
     },
     render: {
       trailFade: { scale: 0.86 },
-      glow: { scale: 1.05 },
+      glow: { scale: 1.5 },
       sizeJitter: { scale: 1.2 },
       hueShift: { offset: -18 },
       sparkleDensity: { scale: 1.15 },
@@ -274,7 +274,7 @@ const PRESET_DATA = /** @type {const} */ ([
     },
     render: {
       trailFade: { scale: 1.22 },
-      glow: { scale: 0.85 },
+      glow: { scale: 1 },
       sizeJitter: { scale: 1.05 },
       hueShift: { offset: 64 },
       sparkleDensity: { scale: 0.5 },
