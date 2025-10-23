@@ -78,6 +78,15 @@ const performanceState = {
 let lastAppliedCap = BASE_PARTICLE_CAP;
 let particleIntermissionUntil = 0;
 
+const ZOOM_SPEC = map.getParamSpec('zoom') ?? {};
+const DEFAULT_ZOOM_SOURCE_MIN = 0.05;
+const DEFAULT_ZOOM_SOURCE_MAX = 20;
+const ZOOM_SOURCE_MIN = Number.isFinite(ZOOM_SPEC.min) ? ZOOM_SPEC.min : DEFAULT_ZOOM_SOURCE_MIN;
+const ZOOM_SOURCE_MAX = Number.isFinite(ZOOM_SPEC.max) ? ZOOM_SPEC.max : DEFAULT_ZOOM_SOURCE_MAX;
+const ZOOM_SOURCE_RANGE = Math.max(ZOOM_SOURCE_MAX - ZOOM_SOURCE_MIN, 1e-6);
+const ZOOM_OUTPUT_MIN = 0.1;
+const ZOOM_OUTPUT_MAX = 20;
+
 const fpsMonitor = (() => {
   const samples = new Float32Array(PERFORMANCE_SAMPLE_WINDOW);
   let index = 0;
@@ -681,7 +690,9 @@ function applyMappedParams(mapped) {
   const hueBase = Number.isFinite(mapped.hueShift) ? mapped.hueShift : RENDER_PARAMS_DEFAULT.hueShift;
   const sparkleBase = Number.isFinite(mapped.sparkleDensity) ? mapped.sparkleDensity : RENDER_PARAMS_DEFAULT.sparkleDensity;
   const zoomBase = Number.isFinite(mapped.zoom) ? mapped.zoom : RENDER_PARAMS_DEFAULT.zoom;
-  const zoomScaled = zoomBase * 2.5;
+  const zoomBaseClamped = clamp(zoomBase, ZOOM_SOURCE_MIN, ZOOM_SOURCE_MAX);
+  const zoomNormalized = (zoomBaseClamped - ZOOM_SOURCE_MIN) / ZOOM_SOURCE_RANGE;
+  const zoomScaled = ZOOM_OUTPUT_MIN + (ZOOM_OUTPUT_MAX - ZOOM_OUTPUT_MIN) * zoomNormalized;
 
   nnOffsets.spawnOffset = Number.isFinite(mapped.spawnOffset) ? mapped.spawnOffset : 0;
   nnOffsets.glowOffset = Number.isFinite(mapped.glowOffset) ? mapped.glowOffset : 0;
@@ -693,8 +704,8 @@ function applyMappedParams(mapped) {
   const spawnMax = safe ? 0.8 : 1.2;
   const glowMax = safe ? 0.6 : 1;
   const sparkleMax = safe ? 0.65 : 1;
-  const zoomMin = 0.1;
-  const zoomMax = safe ? 1.5 : 10;
+  const zoomMin = ZOOM_OUTPUT_MIN;
+  const zoomMax = safe ? 1.5 : ZOOM_OUTPUT_MAX;
 
   const spawnAdjusted = spawnBase + manualAdjustments.spawnOffset;
   const glowAdjusted = glowBase + manualAdjustments.glowOffset;

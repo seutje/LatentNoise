@@ -198,3 +198,7 @@
 - Added `scripts/check-correlations.js` plus an `npm run check` shortcut to sample model behavior and surface the strongest feature/output correlations for a given track.
 - Verified the CLI against the Meditation track and documented usage through the new command help text.
 - Re-ran the standard `npm run lint` and `npm test` suite to confirm repository health.
+
+## 2025-10-25 - Zoom Mapping Calibration
+- Reinterpreted the mapped zoom channel in `app.js` so neural outputs of -1 and 1 now correspond to render zoom values of 0.1 and 20, respectively, before safe-mode clamping.
+- Confirmed the adjustment keeps the renderer bounds intact by running `npm run lint` and `npm test`.
