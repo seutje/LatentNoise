@@ -193,3 +193,8 @@
 - Added a one-second delayed autoplay when starting from the intro overlay so fullscreen activation completes before audio resumes.
 - Reused the existing intermission timer guards to cancel stale intro timers and keep status text in sync during the delay.
 - Confirmed repository health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Zoom Normalization
+- Retuned the mapping specs so NN zoom outputs now span 0.125 at -1 up through 20 at +1 while respecting safe-mode clamps.
+- Updated the application and renderer clamps to honor the wider zoom window and support downscaled (sub-1.0) zoom values.
+- Revalidated the project with `npm run lint` and `npm test`.

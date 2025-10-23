@@ -908,7 +908,7 @@ function resolveParams(input = {}) {
   PARAM_SCRATCH.hueShift = Number.isFinite(input.hueShift) ? input.hueShift : 0;
   PARAM_SCRATCH.sparkleDensity = clamp(input.sparkleDensity ?? 0.05, 0, 1);
   const zoom = Number.isFinite(input.zoom) ? input.zoom : 1;
-  PARAM_SCRATCH.zoom = clamp(zoom, 0.5, 20);
+  PARAM_SCRATCH.zoom = clamp(zoom, 0.125, 20);
   return PARAM_SCRATCH;
 }
 
@@ -947,13 +947,13 @@ function drawParticles(particles, params, dt) {
   const centerX = state.logicalWidth * 0.5;
   const centerY = state.logicalHeight * 0.5;
   const zoomRaw = Number.isFinite(params.zoom) ? params.zoom : 1;
-  const zoom = clamp(zoomRaw, 0.5, 20);
+  const zoom = clamp(zoomRaw, 0.125, 20);
   const halfWorldWidth = Math.max(state.world.width * 0.5, 1e-3);
   const halfWorldHeight = Math.max(state.world.height * 0.5, 1e-3);
   const widthScale = (state.logicalWidth * 0.5) / halfWorldWidth;
   const heightScale = (state.logicalHeight * 0.5) / halfWorldHeight;
   const scaleBase = Math.max(widthScale, heightScale);
-  const scale = scaleBase * (zoom >= 1 ? zoom : 1);
+  const scale = scaleBase * zoom;
 
   const jitter = params.sizeJitter;
   const sparkle = params.sparkleDensity;

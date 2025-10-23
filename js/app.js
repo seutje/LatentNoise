@@ -681,7 +681,7 @@ function applyMappedParams(mapped) {
   const hueBase = Number.isFinite(mapped.hueShift) ? mapped.hueShift : RENDER_PARAMS_DEFAULT.hueShift;
   const sparkleBase = Number.isFinite(mapped.sparkleDensity) ? mapped.sparkleDensity : RENDER_PARAMS_DEFAULT.sparkleDensity;
   const zoomBase = Number.isFinite(mapped.zoom) ? mapped.zoom : RENDER_PARAMS_DEFAULT.zoom;
-  const zoomScaled = zoomBase * 2.5;
+  const zoomScaled = zoomBase;
 
   nnOffsets.spawnOffset = Number.isFinite(mapped.spawnOffset) ? mapped.spawnOffset : 0;
   nnOffsets.glowOffset = Number.isFinite(mapped.glowOffset) ? mapped.glowOffset : 0;
@@ -693,8 +693,8 @@ function applyMappedParams(mapped) {
   const spawnMax = safe ? 0.8 : 1.2;
   const glowMax = safe ? 0.6 : 1;
   const sparkleMax = safe ? 0.65 : 1;
-  const zoomMin = 0.1;
-  const zoomMax = safe ? 1.5 : 10;
+  const zoomMin = 0.125;
+  const zoomMax = safe ? 1.5 : 20;
 
   const spawnAdjusted = spawnBase + manualAdjustments.spawnOffset;
   const glowAdjusted = glowBase + manualAdjustments.glowOffset;
