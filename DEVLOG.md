@@ -179,6 +179,11 @@
 - Added a fullscreen button to the transport row, updated keyboard handling, and refreshed markup, styles, tests, and docs to reflect the streamlined UX.
 - Verified the refactor with `npm run lint` and `npm test`.
 
+## 2025-10-26 - Correlation Cap Controls
+- Added per-correlation max value parsing to the training/tuning CLIs with a default cap of 0.5.
+- Persisted the configured maxima into generated model metadata for downstream tooling visibility.
+- Re-ran `npm run lint` and `npm test` to confirm repository health after the CLI update.
+
 ## 2025-10-25 - Correlation Tuning CLI
 - Extracted shared correlation training utilities into `scripts/correlation-common.js` for reuse across tooling.
 - Introduced `scripts/tune-correlation.js` plus an `npm run tune` entry to fine-tune existing models with multi-correlation support and metadata preservation.

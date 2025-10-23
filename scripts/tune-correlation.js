@@ -145,6 +145,7 @@ function serializeTunedModel(
     output: primaryCorrelation.outputName,
     orientation: primaryCorrelation.inverse ? 'inverse' : 'direct',
     weight: primaryCorrelation.weight,
+    maxCorrelation: primaryCorrelation.maxCorrelation,
     epochs,
     samples,
     learningRate,
@@ -162,6 +163,7 @@ function serializeTunedModel(
         output: correlation.outputName,
         orientation: correlation.inverse ? 'inverse' : 'direct',
         weight: correlation.weight,
+        maxCorrelation: correlation.maxCorrelation,
         correlation: Number(Math.fround(metrics?.correlation ?? 0)),
         fitness: Number(Math.fround(metrics?.fitness ?? 0)),
         mse: Number(Math.fround(metrics?.mse ?? 0)),
@@ -201,7 +203,7 @@ function main() {
   try {
     const args = parseCorrelationArguments(process.argv.slice(2), {
       usage:
-        'Usage: node scripts/tune-correlation.js <track> <feature> <output> [direct|inverse] [<feature> <output> [direct|inverse] ...] [--epochs=400] [--samples=4096] [--rate=0.01] [--seed=42]',
+        'Usage: node scripts/tune-correlation.js <track> <feature> <output> [direct|inverse] [max=<0-1>] [<feature> <output> [direct|inverse] [max=<0-1>] ...] [--epochs=400] [--samples=4096] [--rate=0.01] [--seed=42]',
     });
     const random = createRandom(args.seed);
 
@@ -212,7 +214,7 @@ function main() {
     args.correlations.forEach((correlation, index) => {
       const label = index === 0 ? 'Primary' : `Secondary #${index}`;
       console.log(
-        `  ${label} → ${correlation.featureName} → ${correlation.outputName} (${correlation.inverse ? 'inverse' : 'direct'}, weight ${correlation.weight.toFixed(2)})`,
+        `  ${label} → ${correlation.featureName} → ${correlation.outputName} (${correlation.inverse ? 'inverse' : 'direct'}, weight ${correlation.weight.toFixed(2)}, max ${correlation.maxCorrelation.toFixed(2)})`,
       );
     });
     console.log(

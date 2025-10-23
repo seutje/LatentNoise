@@ -9,6 +9,7 @@ export const DEFAULT_SAMPLES = 4096;
 export const DEFAULT_LEARNING_RATE = 0.01;
 export const PRIMARY_WEIGHT = 1;
 export const SECONDARY_WEIGHT = 0.5;
+export const DEFAULT_MAX_CORRELATION = 0.5;
 
 export const FEATURE_LABELS = Object.freeze([
   'sub',
@@ -474,6 +475,7 @@ export function parseCorrelationArguments(
     defaultEpochs = DEFAULT_EPOCHS,
     defaultSamples = DEFAULT_SAMPLES,
     defaultRate = DEFAULT_LEARNING_RATE,
+    defaultMaxCorrelation = DEFAULT_MAX_CORRELATION,
   } = {},
 ) {
   const positionals = [];
@@ -511,7 +513,7 @@ export function parseCorrelationArguments(
     const featureRef = rest[index];
     const outputRef = rest[index + 1];
     if (outputRef === undefined) {
-      throw new Error('Each correlation requires <feature> <output> [direct|inverse].');
+      throw new Error('Each correlation requires <feature> <output> [direct|inverse] [max=<0-1>].');
     }
 
     const featureIndex = FEATURE_INDEX_BY_NAME.get(String(featureRef).toLowerCase());
@@ -531,9 +533,23 @@ export function parseCorrelationArguments(
     }
     const outputName = OUTPUT_LABELS[outputIndex];
 
-    const orientationCandidate = resolveOrientation(rest[index + 2]);
-    const orientationInfo = orientationCandidate || ORIENTATION_TOKENS.get('direct');
-    const consumed = orientationCandidate ? 3 : 2;
+    let orientationInfo = ORIENTATION_TOKENS.get('direct');
+    let consumed = 2;
+    const orientationCandidate = resolveOrientation(rest[index + consumed]);
+    if (orientationCandidate) {
+      orientationInfo = orientationCandidate;
+      consumed += 1;
+    }
+
+    let maxCorrelation = defaultMaxCorrelation;
+    const maxCandidate = rest[index + consumed];
+    if (maxCandidate !== undefined) {
+      const parsed = parseMaxCorrelation(maxCandidate);
+      if (parsed !== null) {
+        maxCorrelation = parsed;
+        consumed += 1;
+      }
+    }
 
     correlations.push({
       featureIndex,
@@ -545,6 +561,7 @@ export function parseCorrelationArguments(
       orientation: orientationInfo.orientation,
       orientationSign: orientationInfo.orientationSign,
       weight: correlations.length === 0 ? PRIMARY_WEIGHT : SECONDARY_WEIGHT,
+      maxCorrelation,
     });
 
     index += consumed;
@@ -575,4 +592,39 @@ export function parseCorrelationArguments(
     learningRate,
     seed,
   };
+}
+
+export function parseMaxCorrelation(token) {
+  if (token === undefined || token === null) {
+    return null;
+  }
+
+  const normalized = String(token).trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  let valueString = normalized;
+  if (normalized.includes('=')) {
+    const [key, value] = normalized.split('=');
+    if (key.toLowerCase() !== 'max' && key.toLowerCase() !== 'maxcorr') {
+      return null;
+    }
+    valueString = value;
+  } else if (normalized.startsWith('max:')) {
+    valueString = normalized.slice(4);
+  } else if (normalized.toLowerCase().startsWith('max')) {
+    valueString = normalized.slice(3);
+  }
+
+  const value = Number(valueString);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  if (value <= 0 || value > 1) {
+    throw new Error(`Max correlation must be between 0 and 1, received ${token}.`);
+  }
+
+  return value;
 }
