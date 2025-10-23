@@ -193,3 +193,8 @@
 - Added a one-second delayed autoplay when starting from the intro overlay so fullscreen activation completes before audio resumes.
 - Reused the existing intermission timer guards to cancel stale intro timers and keep status text in sync during the delay.
 - Confirmed repository health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Correlation Checker Script
+- Added `scripts/check-correlations.js` plus an `npm run check` shortcut to sample model behavior and surface the strongest feature/output correlations for a given track.
+- Verified the CLI against the Meditation track and documented usage through the new command help text.
+- Re-ran the standard `npm run lint` and `npm test` suite to confirm repository health.
