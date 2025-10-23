@@ -188,3 +188,8 @@
 - Patched the launch overlay flow so the play CTA listens for pointer/touch-up gestures, unlocking audio and avoiding duplicate toggles on mobile browsers.
 - Ensured the intro experience always resumes the audio context and improved tap responsiveness with `touch-action: manipulation` styling.
 - Revalidated the build with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Intro Playback Delay
+- Added a one-second delayed autoplay when starting from the intro overlay so fullscreen activation completes before audio resumes.
+- Reused the existing intermission timer guards to cancel stale intro timers and keep status text in sync during the delay.
+- Confirmed repository health with `npm run lint` and `npm test`.
