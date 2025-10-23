@@ -8,7 +8,8 @@
     "lint": "eslint .",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "models": "node scripts/generate-models.js",
-    "train": "node scripts/train-correlation.js"
+    "train": "node scripts/train-correlation.js",
+    "tune": "node scripts/tune-correlation.js"
   },
   "keywords": [],
   "author": "AI Agents",

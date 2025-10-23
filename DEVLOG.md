@@ -178,3 +178,8 @@
 - Retired the HUD checkbox strip (bloom, trails, safe mode, grid, NN bypass) and reworked `render`/`app` logic around a dedicated fullscreen control.
 - Added a fullscreen button to the transport row, updated keyboard handling, and refreshed markup, styles, tests, and docs to reflect the streamlined UX.
 - Verified the refactor with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Correlation Tuning CLI
+- Extracted shared correlation training utilities into `scripts/correlation-common.js` for reuse across tooling.
+- Introduced `scripts/tune-correlation.js` plus an `npm run tune` entry to fine-tune existing models with multi-correlation support and metadata preservation.
+- Confirmed tooling health with `npm run lint` and `npm test`.
