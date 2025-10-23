@@ -183,3 +183,8 @@
 - Extracted shared correlation training utilities into `scripts/correlation-common.js` for reuse across tooling.
 - Introduced `scripts/tune-correlation.js` plus an `npm run tune` entry to fine-tune existing models with multi-correlation support and metadata preservation.
 - Confirmed tooling health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - Intro Play Mobile Unlock
+- Patched the launch overlay flow so the play CTA listens for pointer/touch-up gestures, unlocking audio and avoiding duplicate toggles on mobile browsers.
+- Ensured the intro experience always resumes the audio context and improved tap responsiveness with `touch-action: manipulation` styling.
+- Revalidated the build with `npm run lint` and `npm test`.

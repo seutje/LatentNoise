@@ -886,12 +886,27 @@ function togglePlayback() {
 }
 
 function startExperience() {
+  audio
+    .unlock()
+    .catch(() => {
+      // Mobile Safari may throw when attempting to unlock before the context exists.
+    });
   render.setToggle('fullscreen', true);
   if (audioElement.paused) {
     togglePlayback();
   } else {
     dismissIntroOverlay();
   }
+}
+
+function handleIntroStart(event) {
+  if (event && typeof event.preventDefault === 'function' && event.type !== 'click') {
+    event.preventDefault();
+  }
+  if (introOverlay && introOverlay.dataset.hidden === 'true' && !audioElement.paused) {
+    return;
+  }
+  startExperience();
 }
 
 function seekBy(seconds) {
@@ -919,9 +934,13 @@ render.updateVolume(initialVolume);
 updatePlayButtonUi();
 
 if (introPlayButton) {
-  introPlayButton.addEventListener('click', () => {
-    startExperience();
-  });
+  const supportsPointer = typeof window !== 'undefined' && 'PointerEvent' in window;
+  if (supportsPointer) {
+    introPlayButton.addEventListener('pointerup', handleIntroStart, { passive: false });
+  } else {
+    introPlayButton.addEventListener('touchend', handleIntroStart, { passive: false });
+  }
+  introPlayButton.addEventListener('click', handleIntroStart);
 }
 
 volumeSlider.addEventListener('input', () => {
