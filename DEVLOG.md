@@ -184,6 +184,11 @@
 - Persisted the configured maxima into generated model metadata for downstream tooling visibility.
 - Re-ran `npm run lint` and `npm test` to confirm repository health after the CLI update.
 
+## 2025-10-26 - Correlation Cap Enforcement
+- Added a shared guard that rejects training/tuning runs when evaluated correlations exceed their configured maxima.
+- Updated the CLI scripts to surface the violation details and exit without writing models when caps are breached.
+- Validated the guard by running `npm run lint` and `npm test`.
+
 ## 2025-10-25 - Correlation Tuning CLI
 - Extracted shared correlation training utilities into `scripts/correlation-common.js` for reuse across tooling.
 - Introduced `scripts/tune-correlation.js` plus an `npm run tune` entry to fine-tune existing models with multi-correlation support and metadata preservation.

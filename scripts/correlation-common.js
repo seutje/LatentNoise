@@ -456,6 +456,48 @@ export function evaluateModel(model, samples, correlations) {
   };
 }
 
+export function enforceCorrelationCaps(correlations, evaluation, tolerance = 1e-4) {
+  if (!evaluation?.perCorrelation) {
+    return;
+  }
+
+  const violations = [];
+
+  evaluation.perCorrelation.forEach((metrics, index) => {
+    const correlation = correlations[index];
+    if (!correlation) {
+      return;
+    }
+
+    const limit = correlation.maxCorrelation ?? DEFAULT_MAX_CORRELATION;
+    const magnitude = Math.abs(metrics?.correlation ?? 0);
+
+    if (Number.isFinite(limit) && limit > 0 && magnitude - limit > tolerance) {
+      violations.push({
+        featureName: correlation.featureName,
+        outputName: correlation.outputName,
+        limit,
+        magnitude,
+      });
+    }
+  });
+
+  if (violations.length === 0) {
+    return;
+  }
+
+  const details = violations
+    .map(
+      (violation) =>
+        `${violation.featureName} → ${violation.outputName}: |correlation| ${violation.magnitude.toFixed(4)} > max ${violation.limit.toFixed(4)}`,
+    )
+    .join('\n');
+
+  const error = new Error(`Model correlations exceed configured maxima.\n${details}`);
+  error.violations = violations;
+  throw error;
+}
+
 export function resolveOrientation(token) {
   if (token === undefined) {
     return null;

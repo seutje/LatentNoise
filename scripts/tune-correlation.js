@@ -9,6 +9,7 @@ import {
   OUTPUT_SIZE,
   buildDataset,
   createRandom,
+  enforceCorrelationCaps,
   evaluateModel,
   parseCorrelationArguments,
   trainModel,
@@ -251,6 +252,8 @@ function main() {
     });
     console.log(`Combined fitness: ${evaluation.combinedFitness.toFixed(4)}`);
     console.log(`Average MSE: ${evaluation.averageMse.toFixed(6)}`);
+
+    enforceCorrelationCaps(args.correlations, evaluation);
 
     const definition = serializeTunedModel(
       context.model,
