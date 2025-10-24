@@ -209,8 +209,8 @@ const PRESET_DATA = /** @type {const} */ ([
     },
   },
   {
-    id: 'cloud',
-    title: 'Cloud',
+    id: 'clouds',
+    title: 'Clouds',
     description: 'Soft buoyant plumes with dense bloom and muted sparkle.',
     palette: {
       background: '#061019',

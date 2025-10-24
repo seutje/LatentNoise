@@ -139,7 +139,7 @@ js/app.js (ESM)
 6. Traffic Jam — stop‑go gating; lane flows.  
 7. Backpack — transient focus; short life.  
 8. Last Pack — flock alignment; arcs.  
-9. Cloud — buoyant; soft bloom.  
+9. Clouds — buoyant; soft bloom.
 10. Ease Up — sway; long trails.  
 11. Epoch ∞ — sparse; slow hue drift.
 

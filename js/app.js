@@ -16,7 +16,7 @@ const MODEL_FILES = Object.freeze([
   'models/traffic-jam.json',
   'models/backpack.json',
   'models/last-pack.json',
-  'models/cloud.json',
+  'models/clouds.json',
   'models/ease-up.json',
   'models/epoch-infinity.json',
 ]);
