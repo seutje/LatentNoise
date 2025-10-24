@@ -7,6 +7,7 @@ import { applyPreset as applyPresetScaling, getDefaultPreset, getPreset } from '
 import { getList, resolveUrl } from './playlist.js';
 import { initDebugOverlay, runStartupDiagnostics, updateDebugOverlay } from './diagnostics.js';
 import * as byom from './byom.js';
+import { createController as createTrainingController } from './training.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -408,6 +409,113 @@ byom.mount({
   drawer: byomDrawer,
   toggle: byomToggleButton,
   modelOptions,
+});
+
+let latestTrainingResult = null;
+
+const trainingController = createTrainingController({
+  onStatus: ({ status, detail }) => {
+    const update = detail ? { ...detail } : {};
+    if (status === 'preparing') {
+      update.progress = 0;
+      if (!update.message) {
+        update.message = 'Preparing training…';
+      }
+    } else if (status === 'completed') {
+      update.progress = 1;
+    } else if (status === 'cancelled') {
+      update.progress = 0;
+      update.message = update.message ?? 'Training cancelled.';
+    } else if (status === 'error') {
+      update.error = update.error ?? detail;
+      if (!update.message && detail) {
+        update.message = detail.message ?? String(detail);
+      }
+      update.progress = 0;
+    }
+    byom.setTrainingStatus(status, update);
+  },
+  onProgress: (payload) => {
+    byom.updateTrainingProgress(payload);
+  },
+  onComplete: ({ modelDefinition, stats, warmup }) => {
+    latestTrainingResult = { modelDefinition, stats, warmup };
+    console.info('[byom] training completed', stats);
+    if (warmup?.outputs) {
+      console.info('[byom] warm-up outputs', warmup.outputs);
+    }
+    if (typeof window !== 'undefined') {
+      window.__LN_LAST_TRAINING__ = latestTrainingResult;
+    }
+  },
+  onCancelled: (detail) => {
+    byom.setTrainingStatus('cancelled', {
+      progress: 0,
+      message: detail?.reason === 'cancelled-before-start' ? 'Training cancelled.' : 'Training cancelled.',
+    });
+  },
+  onError: (error) => {
+    console.error('[byom] training error', error);
+    byom.setTrainingStatus('error', {
+      error,
+      message: error?.message ?? 'Training failed.',
+      progress: 0,
+    });
+  },
+  onWarmup: (warmup) => {
+    if (warmup?.outputs) {
+      console.debug('[byom] warm-up sample outputs', warmup.outputs);
+    }
+  },
+});
+
+byom.setHandlers({
+  onTrain: ({ dataset, summary, model, hyperparameters }) => {
+    if (!dataset || !model) {
+      byom.setTrainingStatus('error', { message: 'Training aborted — dataset is unavailable.', progress: 0 });
+      return;
+    }
+    byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
+    trainingController
+      .start({
+        dataset,
+        summary,
+        modelUrl: model,
+        hyperparameters,
+      })
+      .catch((error) => {
+        console.error('[byom] training start failed', error);
+        byom.setTrainingStatus('error', {
+          error,
+          message: error?.message ?? 'Training could not start.',
+          progress: 0,
+        });
+      });
+  },
+  onCancel: ({ training }) => {
+    if (training) {
+      const cancelled = trainingController.cancel();
+      if (cancelled) {
+        byom.setTrainingStatus('cancelling', { message: 'Stopping training…' });
+        return true;
+      }
+      return false;
+    }
+    trainingController.cancel();
+    return false;
+  },
+  onPause: () => {
+    const paused = trainingController.pause();
+    if (paused) {
+      byom.setTrainingStatus('paused');
+    }
+  },
+  onResume: () => {
+    const resumed = trainingController.resume();
+    if (resumed) {
+      byom.setTrainingStatus('running');
+    }
+  },
 });
 
 const initialTrackIndex = readStoredInt(STORAGE_KEYS.TRACK_INDEX, 0, 0, tracks.length - 1);

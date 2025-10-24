@@ -212,3 +212,8 @@
 - Refactored audio feature extraction into a shared helper and built an offline BYOM intake pipeline that decodes MP3s, streams 60 Hz feature frames, and clones baseline model targets into split datasets.
 - Upgraded the BYOM drawer with drag/drop uploads, analysis lifecycle management, dataset summaries with warnings, and debug overlay logging while ensuring cancelation resets object URLs and form state cleanly.
 - Revalidated the repository with `npm run lint`.
+
+## 2025-10-25 - Phase 19
+- Introduced the BYOM training controller and status callbacks that bridge the UI to a dedicated worker with start/pause/resume/cancel lifecycle management and dataset cloning.
+- Implemented the worker-side gradient descent loop with mini-batch updates, learning-rate decay, gradient clipping, validation tracking, and progress/ETA messaging back to the main thread.
+- Extended the BYOM drawer to surface live training telemetry, button state transitions, and warm-up validation, then confirmed the updates with `npm run lint`.

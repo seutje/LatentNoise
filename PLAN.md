@@ -239,14 +239,14 @@
 ---
 
 ## Phase 19 — Web Worker Training Pipeline
-- [ ] Implement `training.js` coordinator to spawn `workers/train-worker.js`, transfer datasets, and manage lifecycle (start/pause/cancel).
-- [ ] Build worker gradient descent loop with learning-rate decay, gradient clipping, validation loss tracking, and progress messaging.
-- [ ] Update UI with live progress, estimated time remaining, and allow cancelling/resuming; ensure UI remains responsive.
-- [ ] Validate trained weights by running warm-up inference on the main thread and clamping outputs before activation.
+- [x] Implement `training.js` coordinator to spawn `workers/train-worker.js`, transfer datasets, and manage lifecycle (start/pause/cancel).
+- [x] Build worker gradient descent loop with learning-rate decay, gradient clipping, validation loss tracking, and progress messaging.
+- [x] Update UI with live progress, estimated time remaining, and allow cancelling/resuming; ensure UI remains responsive.
+- [x] Validate trained weights by running warm-up inference on the main thread and clamping outputs before activation.
 
 **Acceptance:**
-- [ ] Training completes on a reference MP3 in < 2 minutes on mid-tier hardware, emitting loss curves in console or overlay.
-- [ ] Cancelling training terminates the worker promptly and frees transferred buffers.
+- [x] Training completes on a reference MP3 in < 2 minutes on mid-tier hardware, emitting loss curves in console or overlay.
+- [x] Cancelling training terminates the worker promptly and frees transferred buffers.
 
 ---
 

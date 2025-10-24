@@ -36,6 +36,31 @@ const STATUS_MESSAGES = {
   [STATUS.ERROR]: (ctx) => ctx.errorMessage ?? 'Analysis failed. Adjust inputs and try again.',
 };
 
+const TRAINING_STATUS = Object.freeze({
+  IDLE: 'idle',
+  PREPARING: 'preparing',
+  RUNNING: 'running',
+  PAUSED: 'paused',
+  CANCELLING: 'cancelling',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+  ERROR: 'error',
+});
+
+const ACTIVE_TRAINING_STATUSES = new Set([
+  TRAINING_STATUS.PREPARING,
+  TRAINING_STATUS.RUNNING,
+  TRAINING_STATUS.PAUSED,
+  TRAINING_STATUS.CANCELLING,
+]);
+
+const DEFAULT_HYPERPARAMETERS = Object.freeze({
+  epochs: 40,
+  learningRate: 0.001,
+  batchSize: 256,
+  l2: 0,
+});
+
 const FOCUSABLE_SELECTORS = [
   'a[href]',
   'button:not([disabled])',
@@ -72,6 +97,19 @@ const state = {
   analysisToken: 0,
   analysisActive: false,
   lastError: null,
+  training: {
+    status: TRAINING_STATUS.IDLE,
+    active: false,
+    progress: 0,
+    epoch: 0,
+    epochs: 0,
+    etaMs: 0,
+    trainLoss: null,
+    valLoss: null,
+    learningRate: null,
+    message: '',
+    error: null,
+  },
   elements: {
     drawer: null,
     toggle: null,
@@ -94,6 +132,8 @@ const state = {
   handlers: {
     onTrain: null,
     onCancel: null,
+    onPause: null,
+    onResume: null,
   },
   lastFocusedElement: null,
 };
@@ -118,9 +158,12 @@ function getFocusableElements() {
 }
 
 function updateStatusMessage() {
-  const messageFactory = STATUS_MESSAGES[state.status] ?? STATUS_MESSAGES[STATUS.IDLE];
-  if (state.elements.statusText) {
-    state.elements.statusText.textContent = messageFactory({
+  let message = '';
+  if (state.training.status !== TRAINING_STATUS.IDLE) {
+    message = formatTrainingStatusMessage();
+  } else {
+    const messageFactory = STATUS_MESSAGES[state.status] ?? STATUS_MESSAGES[STATUS.IDLE];
+    message = messageFactory({
       fileName: state.fileName,
       summary: state.datasetSummary,
       errorMessage: state.lastError && typeof state.lastError.message === 'string'
@@ -130,15 +173,27 @@ function updateStatusMessage() {
           : undefined,
     });
   }
+  if (state.elements.statusText) {
+    state.elements.statusText.textContent = message;
+  }
   updateSummaryDisplay();
 }
 
 function updateTrainAvailability() {
-  const ready = state.status === STATUS.READY;
-  if (state.elements.trainButton) {
-    state.elements.trainButton.disabled = !ready;
-    state.elements.trainButton.setAttribute('aria-disabled', ready ? 'false' : 'true');
+  if (!state.elements.trainButton) {
+    return;
   }
+  if (state.training.status !== TRAINING_STATUS.IDLE &&
+    state.training.status !== TRAINING_STATUS.COMPLETED &&
+    state.training.status !== TRAINING_STATUS.CANCELLED &&
+    state.training.status !== TRAINING_STATUS.ERROR) {
+    renderTrainingControls();
+    return;
+  }
+  const ready = state.status === STATUS.READY;
+  state.elements.trainButton.disabled = !ready;
+  state.elements.trainButton.setAttribute('aria-disabled', ready ? 'false' : 'true');
+  renderTrainingControls();
 }
 
 function updateSummaryDisplay() {
@@ -162,6 +217,263 @@ function updateSummaryDisplay() {
   summaryEl.textContent = warnings.map((warning) => `⚠︎ ${warning}`).join(' ');
 }
 
+function formatLoss(value) {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+  if (Math.abs(value) >= 1) {
+    return value.toFixed(3);
+  }
+  return value.toFixed(4);
+}
+
+function formatEta(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return '';
+  }
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function isTrainingBusy() {
+  return ACTIVE_TRAINING_STATUSES.has(state.training.status);
+}
+
+function applyTrainingDetail(detail = {}) {
+  if (detail.message !== undefined) {
+    state.training.message = detail.message;
+  }
+  if (Number.isFinite(detail.progress)) {
+    state.training.progress = clampProgress(detail.progress);
+  }
+  if (Number.isFinite(detail.epoch)) {
+    state.training.epoch = detail.epoch;
+  }
+  if (Number.isFinite(detail.epochs)) {
+    state.training.epochs = detail.epochs;
+  }
+  if (Number.isFinite(detail.etaMs)) {
+    state.training.etaMs = Math.max(detail.etaMs, 0);
+  }
+  if (Number.isFinite(detail.trainLoss)) {
+    state.training.trainLoss = detail.trainLoss;
+  }
+  if (Number.isFinite(detail.valLoss)) {
+    state.training.valLoss = detail.valLoss;
+  }
+  if (Number.isFinite(detail.learningRate)) {
+    state.training.learningRate = detail.learningRate;
+  }
+  if (detail.error !== undefined) {
+    state.training.error = detail.error;
+  }
+}
+
+function setTrainingStatusInternal(status, detail = {}) {
+  if (!Object.values(TRAINING_STATUS).includes(status)) {
+    return;
+  }
+  state.training.status = status;
+  state.training.active = ACTIVE_TRAINING_STATUSES.has(status);
+  applyTrainingDetail(detail);
+  if (state.training.active) {
+    setInputsDisabled(true);
+  } else if (!state.analysisActive) {
+    setInputsDisabled(false);
+  }
+  if (Number.isFinite(state.training.progress)) {
+    updateProgress(state.training.progress);
+  }
+  updateStatusMessage();
+  renderTrainingControls();
+}
+
+function updateTrainingProgressState(progress = {}) {
+  applyTrainingDetail(progress);
+  if (Number.isFinite(state.training.progress)) {
+    updateProgress(state.training.progress);
+  }
+  updateStatusMessage();
+  renderTrainingControls();
+}
+
+function resetTrainingState() {
+  state.training.status = TRAINING_STATUS.IDLE;
+  state.training.active = false;
+  state.training.progress = 0;
+  state.training.epoch = 0;
+  state.training.epochs = 0;
+  state.training.etaMs = 0;
+  state.training.trainLoss = null;
+  state.training.valLoss = null;
+  state.training.learningRate = null;
+  state.training.message = '';
+  state.training.error = null;
+  if (!state.analysisActive) {
+    setInputsDisabled(false);
+  }
+  updateProgress(state.dataset ? 1 : 0);
+  updateStatusMessage();
+  renderTrainingControls();
+}
+
+function renderTrainingControls() {
+  const trainButton = state.elements.trainButton;
+  const cancelButton = state.elements.cancelButton;
+  if (!trainButton || !cancelButton) {
+    return;
+  }
+
+  const { status } = state.training;
+  const readyForNewRun =
+    status === TRAINING_STATUS.IDLE ||
+    status === TRAINING_STATUS.COMPLETED ||
+    status === TRAINING_STATUS.CANCELLED ||
+    status === TRAINING_STATUS.ERROR;
+  const datasetReady = state.status === STATUS.READY;
+
+  let trainLabel = 'Train Model';
+  let trainDisabled = !datasetReady;
+  let cancelLabel = 'Cancel';
+  let cancelDisabled = false;
+
+  if (status === TRAINING_STATUS.PREPARING) {
+    trainLabel = 'Initializing…';
+    trainDisabled = true;
+    cancelLabel = 'Stop';
+    cancelDisabled = false;
+  } else if (status === TRAINING_STATUS.RUNNING) {
+    trainLabel = 'Pause';
+    trainDisabled = false;
+    cancelLabel = 'Stop';
+    cancelDisabled = false;
+  } else if (status === TRAINING_STATUS.PAUSED) {
+    trainLabel = 'Resume';
+    trainDisabled = false;
+    cancelLabel = 'Stop';
+    cancelDisabled = false;
+  } else if (status === TRAINING_STATUS.CANCELLING) {
+    trainLabel = 'Pause';
+    trainDisabled = true;
+    cancelLabel = 'Stopping…';
+    cancelDisabled = true;
+  } else if (status === TRAINING_STATUS.COMPLETED) {
+    trainLabel = 'Train Again';
+    trainDisabled = !datasetReady;
+    cancelLabel = 'Close';
+    cancelDisabled = false;
+  } else if (!readyForNewRun) {
+    trainDisabled = true;
+  }
+
+  trainButton.textContent = trainLabel;
+  trainButton.disabled = trainDisabled;
+  trainButton.setAttribute('aria-disabled', trainDisabled ? 'true' : 'false');
+
+  cancelButton.textContent = cancelLabel;
+  cancelButton.disabled = cancelDisabled;
+  cancelButton.setAttribute('aria-disabled', cancelDisabled ? 'true' : 'false');
+}
+
+function formatTrainingStatusMessage() {
+  const training = state.training;
+  if (typeof training.message === 'string' && training.message.length > 0) {
+    return training.message;
+  }
+  switch (training.status) {
+    case TRAINING_STATUS.PREPARING:
+      return 'Preparing training…';
+    case TRAINING_STATUS.RUNNING: {
+      const segments = [];
+      if (training.epochs > 0) {
+        const epoch = Math.max(1, Math.min(training.epoch, training.epochs));
+        segments.push(`Epoch ${epoch}/${training.epochs}`);
+      } else if (training.epoch > 0) {
+        segments.push(`Epoch ${training.epoch}`);
+      }
+      const metrics = [];
+      if (Number.isFinite(training.trainLoss)) {
+        metrics.push(`loss ${formatLoss(training.trainLoss)}`);
+      }
+      if (Number.isFinite(training.valLoss)) {
+        metrics.push(`val ${formatLoss(training.valLoss)}`);
+      }
+      if (Number.isFinite(training.learningRate)) {
+        metrics.push(`lr ${formatLoss(training.learningRate)}`);
+      }
+      if (metrics.length > 0) {
+        segments.push(metrics.join(' · '));
+      }
+      const etaText = formatEta(training.etaMs);
+      if (etaText) {
+        segments.push(`ETA ${etaText}`);
+      }
+      if (segments.length === 0) {
+        return 'Training in progress…';
+      }
+      return `Training ${segments.join(' — ')}`;
+    }
+    case TRAINING_STATUS.PAUSED: {
+      const epoch = training.epochs > 0 ? `${Math.max(1, Math.min(training.epoch, training.epochs))}/${training.epochs}` : `${training.epoch}`;
+      return `Training paused at epoch ${epoch}.`;
+    }
+    case TRAINING_STATUS.CANCELLING:
+      return 'Stopping training…';
+    case TRAINING_STATUS.COMPLETED: {
+      const metrics = [];
+      if (Number.isFinite(training.trainLoss)) {
+        metrics.push(`loss ${formatLoss(training.trainLoss)}`);
+      }
+      if (Number.isFinite(training.valLoss)) {
+        metrics.push(`val ${formatLoss(training.valLoss)}`);
+      }
+      return metrics.length > 0
+        ? `Training complete — ${metrics.join(' · ')}`
+        : 'Training complete.';
+    }
+    case TRAINING_STATUS.CANCELLED:
+      return 'Training cancelled.';
+    case TRAINING_STATUS.ERROR: {
+      if (training.error && typeof training.error.message === 'string') {
+        return `Training failed — ${training.error.message}`;
+      }
+      if (typeof training.error === 'string' && training.error.length > 0) {
+        return `Training failed — ${training.error}`;
+      }
+      return 'Training failed.';
+    }
+    default:
+      return STATUS_MESSAGES[state.status]?.({
+        fileName: state.fileName,
+        summary: state.datasetSummary,
+      }) ?? STATUS_MESSAGES[STATUS.IDLE]({ fileName: state.fileName, summary: state.datasetSummary });
+  }
+}
+
+function collectHyperparameters() {
+  const form = state.elements.form;
+  if (!(form instanceof HTMLFormElement)) {
+    return { ...DEFAULT_HYPERPARAMETERS };
+  }
+  const getNumber = (selector, fallback) => {
+    const el = form.querySelector(selector);
+    if (!(el instanceof HTMLInputElement)) {
+      return fallback;
+    }
+    const value = Number(el.value);
+    return Number.isFinite(value) ? value : fallback;
+  };
+
+  return {
+    epochs: getNumber('#byom-epochs', DEFAULT_HYPERPARAMETERS.epochs),
+    learningRate: getNumber('#byom-lr', DEFAULT_HYPERPARAMETERS.learningRate),
+    batchSize: getNumber('#byom-batch', DEFAULT_HYPERPARAMETERS.batchSize),
+    l2: getNumber('#byom-l2', DEFAULT_HYPERPARAMETERS.l2),
+  };
+}
+
 function releaseObjectUrl() {
   if (state.objectUrl) {
     URL.revokeObjectURL(state.objectUrl);
@@ -173,6 +485,7 @@ function clearDataset() {
   state.dataset = null;
   state.datasetSummary = null;
   state.datasetContext = null;
+  resetTrainingState();
   updateProgress(0);
   updateSummaryDisplay();
   logByomDataset(null);
@@ -221,11 +534,12 @@ function getFileSignature(file) {
 
 function setInputsDisabled(disabled) {
   const targets = [state.elements.fileInput, state.elements.presetSelect, state.elements.modelSelect];
+  const lock = disabled || state.training.active;
   targets.forEach((el) => {
     if (!el) {
       return;
     }
-    if (disabled) {
+    if (lock) {
       el.setAttribute('aria-disabled', 'true');
       el.disabled = true;
     } else {
@@ -580,16 +894,42 @@ function handleDrop(event) {
 
 function handleCancel(event) {
   event.preventDefault();
+  const wasTraining = isTrainingBusy();
+  if (wasTraining) {
+    const handled = typeof state.handlers.onCancel === 'function'
+      ? state.handlers.onCancel({ training: true, status: state.training.status })
+      : undefined;
+    if (handled !== false) {
+      return;
+    }
+  }
+  const previousStatus = state.training.status;
   resetForm();
   if (typeof state.handlers.onCancel === 'function') {
-    state.handlers.onCancel();
+    state.handlers.onCancel({ training: false, status: previousStatus });
   }
   closeDrawer();
 }
 
 function handleTrain(event) {
   event.preventDefault();
-  if (state.status !== STATUS.READY) {
+  const trainingStatus = state.training.status;
+  if (trainingStatus === TRAINING_STATUS.RUNNING) {
+    if (typeof state.handlers.onPause === 'function') {
+      state.handlers.onPause();
+    }
+    return;
+  }
+  if (trainingStatus === TRAINING_STATUS.PAUSED) {
+    if (typeof state.handlers.onResume === 'function') {
+      state.handlers.onResume();
+    }
+    return;
+  }
+  if (trainingStatus === TRAINING_STATUS.PREPARING || trainingStatus === TRAINING_STATUS.CANCELLING) {
+    return;
+  }
+  if (state.status !== STATUS.READY || !state.dataset) {
     return;
   }
   if (typeof state.handlers.onTrain === 'function') {
@@ -600,6 +940,7 @@ function handleTrain(event) {
       model: state.elements.modelSelect?.value ?? '',
       dataset: state.dataset,
       summary: state.datasetSummary,
+      hyperparameters: collectHyperparameters(),
     });
   } else {
     console.info(
@@ -830,9 +1171,19 @@ export function setModelOptions(modelOptions) {
   updateStatusFromInputs();
 }
 
-export function setHandlers({ onTrain, onCancel } = {}) {
+export function setHandlers({ onTrain, onCancel, onPause, onResume } = {}) {
   state.handlers.onTrain = typeof onTrain === 'function' ? onTrain : null;
   state.handlers.onCancel = typeof onCancel === 'function' ? onCancel : null;
+  state.handlers.onPause = typeof onPause === 'function' ? onPause : null;
+  state.handlers.onResume = typeof onResume === 'function' ? onResume : null;
+}
+
+export function setTrainingStatus(status, detail) {
+  setTrainingStatusInternal(status, detail);
+}
+
+export function updateTrainingProgress(progress) {
+  updateTrainingProgressState(progress);
 }
 
 export function reset() {
