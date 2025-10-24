@@ -6,6 +6,7 @@ import * as render from './render.js';
 import { applyPreset as applyPresetScaling, getDefaultPreset, getPreset } from './presets.js';
 import { getList, resolveUrl } from './playlist.js';
 import { initDebugOverlay, runStartupDiagnostics, updateDebugOverlay } from './diagnostics.js';
+import * as byom from './byom.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -294,6 +295,8 @@ const seekSlider = document.getElementById('seek');
 const fullscreenButton = document.getElementById('fullscreen');
 const introOverlay = document.getElementById('intro-overlay');
 const introPlayButton = document.getElementById('intro-play');
+const byomToggleButton = document.getElementById('byom-toggle');
+const byomDrawer = document.getElementById('byom-drawer');
 
 function dismissIntroOverlay() {
   if (!introOverlay || introOverlay.dataset.hidden === 'true') {
@@ -311,10 +314,12 @@ if (
   !prevButton ||
   !nextButton ||
   !seekSlider ||
-  !fullscreenButton
+  !fullscreenButton ||
+  !byomToggleButton ||
+  !byomDrawer
 ) {
   throw new Error(
-    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, or fullscreen).',
+    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, fullscreen, or BYOM).',
   );
 }
 
@@ -393,6 +398,17 @@ if (tracks.length === 0) {
 if (MODEL_FILES.length !== tracks.length) {
   throw new Error('Model placeholder count mismatch with playlist length.');
 }
+
+const modelOptions = tracks.map((track, index) => ({
+  id: MODEL_FILES[index],
+  label: track.title ?? MODEL_FILES[index],
+}));
+
+byom.mount({
+  drawer: byomDrawer,
+  toggle: byomToggleButton,
+  modelOptions,
+});
 
 const initialTrackIndex = readStoredInt(STORAGE_KEYS.TRACK_INDEX, 0, 0, tracks.length - 1);
 const storedSafeMode = readStoredBoolean(STORAGE_KEYS.SAFE_MODE, false);

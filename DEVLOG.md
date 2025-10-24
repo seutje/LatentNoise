@@ -199,6 +199,11 @@
 - Verified the CLI against the Meditation track and documented usage through the new command help text.
 - Re-ran the standard `npm run lint` and `npm test` suite to confirm repository health.
 
+## 2025-10-25 - Phase 17
+- Added a BYOM HUD toggle wired to a focus-managed drawer that responds to the `Y` hotkey, backdrop clicks, cancel, and escape.
+- Scaffolded the BYOM form with file input, baseline preset/model dropdowns, manual tweak placeholders, hyperparameter controls, and progress messaging styled per the glassmorphism UI.
+- Implemented `js/byom.js` with an `idle → picking → ready` state machine, validation-driven Train button gating, and stubbed training/cancel handlers; confirmed regression-free status via `npm test -- --runInBand`.
+
 ## 2025-10-25 - Zoom Mapping Calibration
 - Reinterpreted the mapped zoom channel in `app.js` so neural outputs of -1 and 1 now correspond to render zoom values of 0.1 and 20, respectively, before safe-mode clamping.
 - Confirmed the adjustment keeps the renderer bounds intact by running `npm run lint` and `npm test`.

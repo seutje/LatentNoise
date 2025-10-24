@@ -215,14 +215,14 @@
 ---
 
 ## Phase 17 — BYOM Mode UI Scaffold
-- [ ] Add BYOM toggle button (HUD + `Y` hotkey) that opens/closes a dedicated drawer/dialog.
-- [ ] Lay out BYOM form sections: file picker, preset/model dropdowns, manual tweak group, hyperparameter inputs, progress bar.
-- [ ] Wire basic state machine in `byom.js` (`idle → picking → ready`) with inert stubs for training hooks.
-- [ ] Ensure drawer is keyboard accessible, trap focus while open, and closes on escape/cancel.
+- [x] Add BYOM toggle button (HUD + `Y` hotkey) that opens/closes a dedicated drawer/dialog.
+- [x] Lay out BYOM form sections: file picker, preset/model dropdowns, manual tweak group, hyperparameter inputs, progress bar.
+- [x] Wire basic state machine in `byom.js` (`idle → picking → ready`) with inert stubs for training hooks.
+- [x] Ensure drawer is keyboard accessible, trap focus while open, and closes on escape/cancel.
 
 **Acceptance:**
-- [ ] BYOM drawer opens/closes smoothly on button/hotkey; focus management passes accessibility smoke checks.
-- [ ] Form inputs validate required selections before enabling the Train CTA.
+- [x] BYOM drawer opens/closes smoothly on button/hotkey; focus management passes accessibility smoke checks.
+- [x] Form inputs validate required selections before enabling the Train CTA.
 
 ---
 

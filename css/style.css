@@ -26,7 +26,8 @@ body {
 body.fullscreen-active #hud,
 body.fullscreen-active #controls,
 body.fullscreen-active #debug-overlay,
-body.fullscreen-active #intro-overlay {
+body.fullscreen-active #intro-overlay,
+body.fullscreen-active #byom-drawer {
   display: none !important;
 }
 
@@ -209,6 +210,31 @@ body.fullscreen-active #intro-overlay {
   cursor: pointer;
 }
 
+#hud .hud-actions {
+  justify-content: flex-end;
+}
+
+#hud .hud-button {
+  font: inherit;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  padding: 0.45rem 1.1rem;
+  border-radius: 999px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+
+#hud .hud-button:hover,
+#hud .hud-button:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
 #controls {
   position: fixed;
   bottom: 1.8rem;
@@ -272,6 +298,257 @@ body.fullscreen-active #intro-overlay {
 
 #player {
   display: none;
+}
+
+#byom-drawer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  z-index: 900;
+}
+
+#byom-drawer[data-state='open'] {
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+}
+
+.byom-backdrop {
+  flex: 1 1 auto;
+  background: rgba(5, 5, 8, 0.65);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+#byom-drawer[data-state='open'] .byom-backdrop {
+  opacity: 1;
+}
+
+.byom-panel {
+  position: relative;
+  width: min(34rem, 92vw);
+  max-width: 34rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(12, 14, 24, 0.95);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: -18px 0 32px rgba(0, 0, 0, 0.55);
+  transform: translateX(100%);
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+#byom-drawer[data-state='open'] .byom-panel {
+  transform: translateX(0);
+}
+
+.byom-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.4rem 1.6rem 1rem;
+}
+
+.byom-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.byom-close {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 999px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.byom-close:hover,
+.byom-close:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+#byom-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  padding: 0 1.6rem 2rem;
+  overflow-y: auto;
+}
+
+.byom-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.byom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.byom-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.byom-heading {
+  margin: 0;
+  font-size: 0.82rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(245, 247, 255, 0.7);
+}
+
+.byom-field select,
+.byom-field input,
+#byom-form input[type='number'],
+#byom-form select,
+#byom-form input[type='range'] {
+  font: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  appearance: none;
+}
+
+#byom-form input[type='file'] {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+#byom-form input[type='file']::file-selector-button {
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+  margin-right: 0.8rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  cursor: pointer;
+}
+
+#byom-form input[type='file']:focus-visible,
+.byom-field select:focus-visible,
+.byom-field input:focus-visible,
+#byom-form input[type='number']:focus-visible,
+#byom-form select:focus-visible,
+#byom-form input[type='range']:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 2px;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.byom-manual-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.byom-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+}
+
+.byom-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  color: rgba(245, 247, 255, 0.55);
+}
+
+#byom-progress {
+  width: 100%;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+#byom-progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+#byom-progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+#byom-progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.byom-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-bottom: 1.5rem;
+}
+
+.byom-primary,
+.byom-secondary {
+  font: inherit;
+  padding: 0.65rem 1.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.byom-secondary {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.byom-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.byom-primary:hover:not(:disabled),
+.byom-primary:focus-visible,
+.byom-secondary:hover,
+.byom-secondary:focus-visible {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
 }
 
 #debug-overlay {
@@ -364,5 +641,19 @@ body.fullscreen-active #intro-overlay {
   #seek,
   #hud .hud-volume input[type="range"] {
     width: 100%;
+  }
+
+  #byom-drawer {
+    justify-content: center;
+  }
+
+  .byom-panel {
+    width: 100%;
+    transform: translateY(100%);
+    transition: transform 0.32s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  #byom-drawer[data-state='open'] .byom-panel {
+    transform: translateY(0);
   }
 }

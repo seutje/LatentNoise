@@ -30,6 +30,18 @@
         <label for="volume">Volume <span id="volume-display">70%</span></label>
         <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7">
       </div>
+      <div class="hud-row hud-actions">
+        <button
+          id="byom-toggle"
+          class="hud-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="byom-drawer"
+        >
+          BYOM Mode
+        </button>
+      </div>
     </div>
     <div id="controls" class="ui">
       <button id="prev">Prev</button>
@@ -38,6 +50,104 @@
       <input id="seek" type="range" min="0" max="100" value="0">
       <select id="playlist"></select>
       <button id="fullscreen" type="button">Fullscreen</button>
+    </div>
+    <div
+      id="byom-drawer"
+      class="byom-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="byom-title"
+      aria-hidden="true"
+      data-state="closed"
+    >
+      <div class="byom-backdrop" data-action="close"></div>
+      <div class="byom-panel" role="document">
+        <header class="byom-header">
+          <h2 id="byom-title">Bring Your Own Music</h2>
+          <button type="button" id="byom-close" class="byom-close" aria-label="Close BYOM drawer">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </header>
+        <form id="byom-form" novalidate>
+          <section class="byom-section byom-upload">
+            <label class="byom-label" for="byom-file">
+              Source Audio
+              <input
+                id="byom-file"
+                name="file"
+                type="file"
+                accept="audio/mpeg"
+                required
+                aria-describedby="byom-file-hint"
+              />
+            </label>
+            <p id="byom-file-hint" class="byom-hint">
+              Load a local MP3 file to begin training your own model.
+            </p>
+          </section>
+          <section class="byom-section byom-baseline" aria-labelledby="byom-baseline-heading">
+            <h3 id="byom-baseline-heading" class="byom-heading">Baseline</h3>
+            <div class="byom-field">
+              <label class="byom-label" for="byom-preset">Preset</label>
+              <select id="byom-preset" name="preset" required></select>
+            </div>
+            <div class="byom-field">
+              <label class="byom-label" for="byom-model">Model</label>
+              <select id="byom-model" name="model" required></select>
+            </div>
+          </section>
+          <section class="byom-section byom-manual" aria-labelledby="byom-manual-heading">
+            <h3 id="byom-manual-heading" class="byom-heading">Manual Tweaks</h3>
+            <details id="byom-manual">
+              <summary>Advanced parameters</summary>
+              <div class="byom-manual-group">
+                <label class="byom-label" for="byom-tweak-cohesion">
+                  Cohesion
+                  <input id="byom-tweak-cohesion" type="range" min="0" max="1" step="0.01" value="0.5">
+                </label>
+                <label class="byom-label" for="byom-tweak-vortex">
+                  Vortex
+                  <input id="byom-tweak-vortex" type="range" min="0" max="1" step="0.01" value="0.4">
+                </label>
+                <label class="byom-label" for="byom-tweak-trails">
+                  Trail Fade
+                  <input id="byom-tweak-trails" type="range" min="0" max="1" step="0.01" value="0.6">
+                </label>
+              </div>
+            </details>
+          </section>
+          <section class="byom-section byom-hyper" aria-labelledby="byom-hyper-heading">
+            <h3 id="byom-hyper-heading" class="byom-heading">Hyperparameters</h3>
+            <div class="byom-grid">
+              <label class="byom-label" for="byom-epochs">
+                Epochs
+                <input id="byom-epochs" name="epochs" type="number" min="1" max="500" step="1" value="40" required>
+              </label>
+              <label class="byom-label" for="byom-lr">
+                Learning Rate
+                <input id="byom-lr" name="learningRate" type="number" min="0.00005" max="0.1" step="0.0001" value="0.001" required>
+              </label>
+              <label class="byom-label" for="byom-batch">
+                Batch Size
+                <input id="byom-batch" name="batchSize" type="number" min="32" max="1024" step="32" value="256" required>
+              </label>
+              <label class="byom-label" for="byom-l2">
+                L2 Regularization
+                <input id="byom-l2" name="l2" type="number" min="0" max="0.01" step="0.0001" value="0.0005">
+              </label>
+            </div>
+          </section>
+          <section class="byom-section byom-progress">
+            <label class="byom-label" for="byom-progress">Progress</label>
+            <progress id="byom-progress" value="0" max="1">0%</progress>
+            <p id="byom-status" class="byom-hint" role="status">Select a file to begin.</p>
+          </section>
+          <footer class="byom-actions">
+            <button type="button" id="byom-cancel" class="byom-secondary">Cancel</button>
+            <button type="button" id="byom-train" class="byom-primary" disabled>Train Model</button>
+          </footer>
+        </form>
+      </div>
     </div>
     <audio id="player" preload="metadata"></audio>
     <script type="module" src="js/app.js"></script>
