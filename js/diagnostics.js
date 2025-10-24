@@ -11,6 +11,7 @@ const diagnosticsState = {
     outputs: null,
     params: null,
     tests: null,
+    byom: null,
   },
   testsRan: false,
   testResults: [],
@@ -83,8 +84,16 @@ function ensureOverlay() {
   const outputs = createSection('NN Outputs');
   const params = createSection('Parameters');
   const tests = createSection('Startup Tests');
+  const byom = createSection('BYOM Dataset');
 
-  root.append(metrics.container, features.container, outputs.container, params.container, tests.container);
+  root.append(
+    metrics.container,
+    features.container,
+    outputs.container,
+    params.container,
+    tests.container,
+    byom.container,
+  );
   document.body.append(root);
 
   diagnosticsState.sections.metrics = metrics.content;
@@ -92,6 +101,7 @@ function ensureOverlay() {
   diagnosticsState.sections.outputs = outputs.content;
   diagnosticsState.sections.params = params.content;
   diagnosticsState.sections.tests = tests.content;
+  diagnosticsState.sections.byom = byom.content;
   diagnosticsState.overlay = root;
 
   renderTestResults();
@@ -274,6 +284,51 @@ export function updateDebugOverlay(payload = {}) {
   if (params) {
     params.textContent = formatParams(payload.params);
   }
+}
+
+export function logByomDataset(summary) {
+  if (!diagnosticsState.debugEnabled) {
+    return;
+  }
+  ensureOverlay();
+  const target = diagnosticsState.sections.byom;
+  if (!target) {
+    return;
+  }
+  if (!summary) {
+    target.textContent = 'No BYOM dataset.';
+    return;
+  }
+  const lines = [];
+  lines.push(`File: ${summary.fileName ?? '—'}`);
+  if (summary.durationFormatted || Number.isFinite(summary.durationSeconds)) {
+    const durationText = summary.durationFormatted ?? `${formatNumber(summary.durationSeconds ?? 0, 2)} s`;
+    lines.push(`Duration: ${durationText}`);
+  }
+  if (Number.isFinite(summary.frameCount)) {
+    lines.push(`Frames: ${summary.frameCount}`);
+  }
+  if (
+    Number.isFinite(summary.trainFrames) ||
+    Number.isFinite(summary.validationFrames)
+  ) {
+    lines.push(
+      `Train / Val: ${summary.trainFrames ?? 0} / ${summary.validationFrames ?? 0}`,
+    );
+  }
+  if (Number.isFinite(summary.sampleRate)) {
+    lines.push(`Sample Rate: ${summary.sampleRate} Hz`);
+  }
+  if (Number.isFinite(summary.hopMs)) {
+    lines.push(`Hop: ${formatNumber(summary.hopMs, 2)} ms`);
+  }
+  if (Array.isArray(summary.warnings) && summary.warnings.length > 0) {
+    lines.push('', 'Warnings:');
+    summary.warnings.forEach((warning) => {
+      lines.push(`- ${warning}`);
+    });
+  }
+  target.textContent = lines.join('\n');
 }
 
 export async function runStartupDiagnostics(context = {}) {

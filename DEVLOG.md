@@ -207,3 +207,8 @@
 ## 2025-10-25 - Zoom Mapping Calibration
 - Reinterpreted the mapped zoom channel in `app.js` so neural outputs of -1 and 1 now correspond to render zoom values of 0.1 and 20, respectively, before safe-mode clamping.
 - Confirmed the adjustment keeps the renderer bounds intact by running `npm run lint` and `npm test`.
+
+## 2025-10-25 - Phase 18
+- Refactored audio feature extraction into a shared helper and built an offline BYOM intake pipeline that decodes MP3s, streams 60 Hz feature frames, and clones baseline model targets into split datasets.
+- Upgraded the BYOM drawer with drag/drop uploads, analysis lifecycle management, dataset summaries with warnings, and debug overlay logging while ensuring cancelation resets object URLs and form state cleanly.
+- Revalidated the repository with `npm run lint`.

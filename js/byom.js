@@ -1,9 +1,13 @@
 import { listPresets } from './presets.js';
+import { analyzeFile } from './byom-intake.js';
+import { logByomDataset } from './diagnostics.js';
 
 const STATUS = Object.freeze({
   IDLE: 'idle',
   PICKING: 'picking',
+  ANALYZING: 'analyzing',
   READY: 'ready',
+  ERROR: 'error',
 });
 
 const STATUS_MESSAGES = {
@@ -12,10 +16,24 @@ const STATUS_MESSAGES = {
     ctx.fileName
       ? `${ctx.fileName} selected. Choose a baseline preset and model to continue.`
       : 'Choose a baseline preset and model to continue.',
-  [STATUS.READY]: (ctx) =>
-    ctx.fileName
+  [STATUS.ANALYZING]: (ctx) =>
+    ctx.fileName ? `Analyzing ${ctx.fileName}…` : 'Analyzing audio…',
+  [STATUS.READY]: (ctx) => {
+    if (ctx.summary) {
+      const parts = [
+        `${ctx.summary.durationFormatted}`,
+        `${ctx.summary.frameCount} frames`,
+      ];
+      if (ctx.summary.trainFrames !== undefined && ctx.summary.validationFrames !== undefined) {
+        parts.push(`train ${ctx.summary.trainFrames} / val ${ctx.summary.validationFrames}`);
+      }
+      return `Dataset ready — ${parts.join(' · ')}`;
+    }
+    return ctx.fileName
       ? `${ctx.fileName} is staged. Review settings then start training when ready.`
-      : 'Inputs ready. Review settings then start training when ready.',
+      : 'Inputs ready. Review settings then start training when ready.';
+  },
+  [STATUS.ERROR]: (ctx) => ctx.errorMessage ?? 'Analysis failed. Adjust inputs and try again.',
 };
 
 const FOCUSABLE_SELECTORS = [
@@ -46,6 +64,14 @@ const state = {
   support: detectSupport(),
   file: null,
   fileName: '',
+  objectUrl: '',
+  dataset: null,
+  datasetSummary: null,
+  datasetContext: null,
+  analysisController: null,
+  analysisToken: 0,
+  analysisActive: false,
+  lastError: null,
   elements: {
     drawer: null,
     toggle: null,
@@ -59,6 +85,8 @@ const state = {
     progress: null,
     form: null,
     backdrop: null,
+    uploadSection: null,
+    summary: null,
   },
   options: {
     modelOptions: [],
@@ -94,8 +122,15 @@ function updateStatusMessage() {
   if (state.elements.statusText) {
     state.elements.statusText.textContent = messageFactory({
       fileName: state.fileName,
+      summary: state.datasetSummary,
+      errorMessage: state.lastError && typeof state.lastError.message === 'string'
+        ? state.lastError.message
+        : typeof state.lastError === 'string'
+          ? state.lastError
+          : undefined,
     });
   }
+  updateSummaryDisplay();
 }
 
 function updateTrainAvailability() {
@@ -104,6 +139,197 @@ function updateTrainAvailability() {
     state.elements.trainButton.disabled = !ready;
     state.elements.trainButton.setAttribute('aria-disabled', ready ? 'false' : 'true');
   }
+}
+
+function updateSummaryDisplay() {
+  const summaryEl = state.elements.summary;
+  if (!summaryEl) {
+    return;
+  }
+  const summary = state.datasetSummary;
+  if (!summary) {
+    summaryEl.textContent = '';
+    summaryEl.hidden = true;
+    return;
+  }
+  const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+  if (warnings.length === 0) {
+    summaryEl.textContent = '';
+    summaryEl.hidden = true;
+    return;
+  }
+  summaryEl.hidden = false;
+  summaryEl.textContent = warnings.map((warning) => `⚠︎ ${warning}`).join(' ');
+}
+
+function releaseObjectUrl() {
+  if (state.objectUrl) {
+    URL.revokeObjectURL(state.objectUrl);
+    state.objectUrl = '';
+  }
+}
+
+function clearDataset() {
+  state.dataset = null;
+  state.datasetSummary = null;
+  state.datasetContext = null;
+  updateProgress(0);
+  updateSummaryDisplay();
+  logByomDataset(null);
+}
+
+function abortAnalysis() {
+  if (state.analysisController) {
+    state.analysisController.abort();
+    state.analysisController = null;
+  }
+  state.analysisActive = false;
+  setInputsDisabled(false);
+}
+
+function selectFile(file) {
+  abortAnalysis();
+  clearDataset();
+  releaseObjectUrl();
+  state.file = file ?? null;
+  state.fileName = file ? file.name : '';
+  state.lastError = null;
+  if (file) {
+    try {
+      state.objectUrl = URL.createObjectURL(file);
+    } catch {
+      state.objectUrl = '';
+    }
+  }
+}
+
+function getSelectedPresetId() {
+  return state.elements.presetSelect?.value ?? '';
+}
+
+function getSelectedModelId() {
+  return state.elements.modelSelect?.value ?? '';
+}
+
+function getFileSignature(file) {
+  if (!file) {
+    return '';
+  }
+  const modified = Number.isFinite(file.lastModified) ? file.lastModified : 0;
+  return `${file.name}:${file.size}:${modified}`;
+}
+
+function setInputsDisabled(disabled) {
+  const targets = [state.elements.fileInput, state.elements.presetSelect, state.elements.modelSelect];
+  targets.forEach((el) => {
+    if (!el) {
+      return;
+    }
+    if (disabled) {
+      el.setAttribute('aria-disabled', 'true');
+      el.disabled = true;
+    } else {
+      el.removeAttribute('aria-disabled');
+      el.disabled = false;
+    }
+  });
+}
+
+function ensureDataset() {
+  if (!state.support) {
+    return;
+  }
+  if (!state.file) {
+    abortAnalysis();
+    clearDataset();
+    return;
+  }
+  const presetId = getSelectedPresetId();
+  const modelId = getSelectedModelId();
+  if (!presetId || !modelId) {
+    abortAnalysis();
+    clearDataset();
+    return;
+  }
+  const signature = getFileSignature(state.file);
+  if (
+    state.dataset &&
+    state.datasetContext &&
+    state.datasetContext.fileSignature === signature &&
+    state.datasetContext.presetId === presetId &&
+    state.datasetContext.modelId === modelId
+  ) {
+    return;
+  }
+  startAnalysis({ file: state.file, presetId, modelId, fileSignature: signature });
+}
+
+function startAnalysis({ file, presetId, modelId, fileSignature }) {
+  abortAnalysis();
+  clearDataset();
+  state.analysisToken += 1;
+  const token = state.analysisToken;
+  const controller = new AbortController();
+  state.analysisController = controller;
+  state.analysisActive = true;
+  state.lastError = null;
+  setInputsDisabled(true);
+  setStatus(STATUS.ANALYZING);
+
+  analyzeFile({
+    file,
+    presetId,
+    modelUrl: modelId,
+    signal: controller.signal,
+    onProgress: (info) => {
+      if (token !== state.analysisToken) {
+        return;
+      }
+      if (info && typeof info.value === 'number' && Number.isFinite(info.value)) {
+        updateProgress(info.value);
+      }
+    },
+  })
+    .then(({ dataset, summary }) => {
+      if (token !== state.analysisToken) {
+        return;
+      }
+      state.dataset = dataset;
+      state.datasetSummary = {
+        ...summary,
+        warnings: summary?.warnings ?? [],
+        presetId,
+        modelId,
+      };
+      state.datasetContext = {
+        fileSignature,
+        presetId,
+        modelId,
+      };
+      state.analysisActive = false;
+      state.analysisController = null;
+      updateProgress(1);
+      logByomDataset(state.datasetSummary);
+      setInputsDisabled(false);
+      setStatus(evaluateStatus());
+    })
+    .catch((error) => {
+      if (token !== state.analysisToken) {
+        return;
+      }
+      state.analysisActive = false;
+      state.analysisController = null;
+      setInputsDisabled(false);
+      if (error && error.name === 'AbortError') {
+        updateProgress(0);
+        return;
+      }
+      console.error('[byom] dataset analysis failed', error);
+      state.lastError = error instanceof Error ? error : new Error(String(error));
+      clearDataset();
+      logByomDataset(null);
+      setStatus(STATUS.ERROR);
+    });
 }
 
 function setStatus(nextStatus) {
@@ -122,6 +348,9 @@ function setStatus(nextStatus) {
 }
 
 function evaluateStatus() {
+  if (state.analysisActive) {
+    return STATUS.ANALYZING;
+  }
   if (!state.file) {
     return STATUS.IDLE;
   }
@@ -129,6 +358,15 @@ function evaluateStatus() {
   const modelSelected = Boolean(state.elements.modelSelect && state.elements.modelSelect.value);
   if (!presetSelected || !modelSelected) {
     return STATUS.PICKING;
+  }
+  if (state.dataset) {
+    return STATUS.READY;
+  }
+  if (state.lastError) {
+    return STATUS.ERROR;
+  }
+  if (state.file) {
+    return STATUS.ANALYZING;
   }
   return STATUS.READY;
 }
@@ -213,12 +451,14 @@ function toggleDrawer() {
 }
 
 function clearFileSelection() {
+  abortAnalysis();
+  releaseObjectUrl();
   state.file = null;
   state.fileName = '';
+  clearDataset();
   if (state.elements.fileInput) {
     state.elements.fileInput.value = '';
   }
-  updateProgress(0);
 }
 
 function resetForm() {
@@ -232,6 +472,9 @@ function resetForm() {
   if (state.elements.modelSelect) {
     state.elements.modelSelect.selectedIndex = 0;
   }
+  state.lastError = null;
+  state.analysisToken += 1;
+  setInputsDisabled(false);
   setStatus(STATUS.IDLE);
 }
 
@@ -245,12 +488,13 @@ function handleFileChange(event) {
     setStatus(STATUS.IDLE);
     return;
   }
-  state.file = input.files[0];
-  state.fileName = state.file ? state.file.name : '';
+  const file = input.files[0];
+  selectFile(file);
   updateStatusFromInputs();
 }
 
 function updateStatusFromInputs() {
+  ensureDataset();
   const next = evaluateStatus();
   setStatus(next);
 }
@@ -279,6 +523,61 @@ function handleDrawerClick(event) {
   }
 }
 
+function handleDragEnter(event) {
+  if (!state.support) {
+    return;
+  }
+  event.preventDefault();
+  state.elements.uploadSection?.classList.add('is-drop-active');
+}
+
+function handleDragOver(event) {
+  if (!state.support) {
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy';
+  }
+  state.elements.uploadSection?.classList.add('is-drop-active');
+}
+
+function handleDragLeave(event) {
+  if (!state.support) {
+    return;
+  }
+  if (!state.elements.uploadSection) {
+    return;
+  }
+  if (!event.relatedTarget || !state.elements.uploadSection.contains(event.relatedTarget)) {
+    state.elements.uploadSection.classList.remove('is-drop-active');
+  }
+}
+
+function handleDrop(event) {
+  if (!state.support) {
+    return;
+  }
+  event.preventDefault();
+  state.elements.uploadSection?.classList.remove('is-drop-active');
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) {
+    return;
+  }
+  const file = files[0];
+  selectFile(file);
+  if (state.elements.fileInput) {
+    try {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      state.elements.fileInput.files = dataTransfer.files;
+    } catch {
+      // Ignore inability to sync the input field (older browsers).
+    }
+  }
+  updateStatusFromInputs();
+}
+
 function handleCancel(event) {
   event.preventDefault();
   resetForm();
@@ -296,8 +595,11 @@ function handleTrain(event) {
   if (typeof state.handlers.onTrain === 'function') {
     state.handlers.onTrain({
       file: state.file,
+      objectUrl: state.objectUrl,
       preset: state.elements.presetSelect?.value ?? '',
       model: state.elements.modelSelect?.value ?? '',
+      dataset: state.dataset,
+      summary: state.datasetSummary,
     });
   } else {
     console.info(
@@ -305,6 +607,7 @@ function handleTrain(event) {
       state.fileName,
       state.elements.presetSelect?.value,
       state.elements.modelSelect?.value,
+      state.datasetSummary,
     );
   }
 }
@@ -456,6 +759,16 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.progress = drawer.querySelector('#byom-progress');
   state.elements.form = drawer.querySelector('#byom-form');
   state.elements.backdrop = drawer.querySelector('.byom-backdrop');
+  state.elements.uploadSection = drawer.querySelector('.byom-upload');
+
+  if (!state.elements.summary) {
+    const summary = document.createElement('p');
+    summary.id = 'byom-summary';
+    summary.className = 'byom-summary byom-hint';
+    summary.hidden = true;
+    state.elements.summary = summary;
+    state.elements.statusText?.insertAdjacentElement('afterend', summary);
+  }
 
   state.handlers.onTrain = typeof onTrain === 'function' ? onTrain : null;
   state.handlers.onCancel = typeof onCancel === 'function' ? onCancel : null;
@@ -478,6 +791,10 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.fileInput?.addEventListener('change', handleFileChange);
   state.elements.form?.addEventListener('input', handleFormInput, true);
   state.elements.form?.addEventListener('change', handleFormInput, true);
+  state.elements.uploadSection?.addEventListener('dragenter', handleDragEnter);
+  state.elements.uploadSection?.addEventListener('dragover', handleDragOver);
+  state.elements.uploadSection?.addEventListener('dragleave', handleDragLeave);
+  state.elements.uploadSection?.addEventListener('drop', handleDrop);
 
   state.mounted = true;
 }

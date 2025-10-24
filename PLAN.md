@@ -227,14 +227,14 @@
 ---
 
 ## Phase 18 — BYOM Audio Intake & Dataset Prep
-- [ ] Allow local MP3 selection via File Picker and drag/drop; generate/revoke Object URLs safely.
-- [ ] Decode audio into PCM using `AudioContext.decodeAudioData` and stream features with the existing `audio.js` extractor (offline mode).
-- [ ] Capture baseline targets: clone selected preset/model outputs or collect manual keyframes; partition dataset into train/validation.
-- [ ] Surface dataset summary in UI (duration, frame count, segments) and warn if audio duration < 30s or file exceeds size threshold.
+- [x] Allow local MP3 selection via File Picker and drag/drop; generate/revoke Object URLs safely.
+- [x] Decode audio into PCM using `AudioContext.decodeAudioData` and stream features with the existing `audio.js` extractor (offline mode).
+- [x] Capture baseline targets: clone selected preset/model outputs or collect manual keyframes; partition dataset into train/validation.
+- [x] Surface dataset summary in UI (duration, frame count, segments) and warn if audio duration < 30s or file exceeds size threshold.
 
 **Acceptance:**
-- [ ] Selecting a file produces a dataset descriptor logged via BYOM debug overlay with correct counts.
-- [ ] Cancelling mid-analysis cleans up and re-enables the picker without leaks.
+- [x] Selecting a file produces a dataset descriptor logged via BYOM debug overlay with correct counts.
+- [x] Cancelling mid-analysis cleans up and re-enables the picker without leaks.
 
 ---
 

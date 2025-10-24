@@ -174,6 +174,22 @@ export async function loadModel(urlOrObject) {
   };
 }
 
+export async function loadModelDefinition(url) {
+  return fetchModelDefinition(url);
+}
+
+export function createModel(rawDefinition) {
+  return buildModel(rawDefinition);
+}
+
+export function infer(model, features, outBuffer) {
+  if (!model) {
+    throw new Error('infer() requires a model instance.');
+  }
+  const normalized = normalizeWithModel(model, features);
+  return forwardWithModel(model, normalized, outBuffer || model.outputBuffer);
+}
+
 export function normalize(features) {
   if (!currentModel) {
     throw new Error('No model loaded. Call loadModel() before normalize().');
