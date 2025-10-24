@@ -658,12 +658,12 @@
     }
   ],
   "meta": {
-    "name": "Cloud",
-    "slug": "cloud",
+    "name": "Clouds",
+    "slug": "clouds",
     "inputs": 24,
     "outputs": 11,
     "trackIndex": 8,
-    "file": "cloud.json",
+    "file": "clouds.json",
     "trained": "2025-10-23T15:03:45.016Z",
     "training": {
       "feature": "deltaHigh",

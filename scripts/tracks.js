@@ -7,7 +7,7 @@ export const TRACK_MODELS = Object.freeze([
   { index: 5, name: 'Traffic Jam', slug: 'traffic-jam', file: 'traffic-jam.json' },
   { index: 6, name: 'Backpack', slug: 'backpack', file: 'backpack.json' },
   { index: 7, name: 'Last Pack', slug: 'last-pack', file: 'last-pack.json' },
-  { index: 8, name: 'Cloud', slug: 'cloud', file: 'cloud.json' },
+  { index: 8, name: 'Clouds', slug: 'clouds', file: 'clouds.json' },
   { index: 9, name: 'Ease Up', slug: 'ease-up', file: 'ease-up.json' },
   { index: 10, name: 'Epoch ∞', slug: 'epoch-infinity', file: 'epoch-infinity.json' },
 ]);

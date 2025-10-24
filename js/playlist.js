@@ -9,7 +9,7 @@ const TRACKS = Object.freeze([
   Object.freeze({ title: 'Traffic Jam', file: 'Traffic Jam.mp3' }),
   Object.freeze({ title: 'Backpack', file: 'Backpack.mp3' }),
   Object.freeze({ title: 'Last Pack', file: 'Last Pack.mp3' }),
-  Object.freeze({ title: 'Cloud', file: 'Clouds.mp3' }),
+  Object.freeze({ title: 'Clouds', file: 'Clouds.mp3' }),
   Object.freeze({ title: 'Ease Up', file: 'Ease Up.mp3' }),
   Object.freeze({ title: 'Epoch ∞', file: 'Epoch ∞.mp3' }),
 ]);
