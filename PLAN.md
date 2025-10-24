@@ -1,6 +1,6 @@
 # PLAN.md — Implementation Plan for **Latent Noise** Visualizer
 
-**Reference:** See **DESIGN.md** (v1.5). This plan is optimized for AI coding agents (Codex/Copilot/Claude, etc.). Every actionable item has a checkbox. Human‑in‑the‑loop steps are minimized and grouped at the end.
+**Reference:** See **DESIGN.md** (v1.6). This plan is optimized for AI coding agents (Codex/Copilot/Claude, etc.). Every actionable item has a checkbox. Human‑in‑the‑loop steps are minimized and grouped at the end.
 
 > **Target repo layout**
 > ```
@@ -8,14 +8,17 @@
 >  ├─ index.html
 >  ├─ css/style.css
 >  ├─ js/
->  │   ├─ app.js        
->  │   ├─ audio.js      
->  │   ├─ nn.js         
->  │   ├─ map.js        
->  │   ├─ physics.js    
->  │   ├─ render.js     
->  │   ├─ presets.js    
->  │   └─ playlist.js   
+>  │   ├─ app.js
+>  │   ├─ audio.js
+>  │   ├─ nn.js
+>  │   ├─ map.js
+>  │   ├─ physics.js
+>  │   ├─ render.js
+>  │   ├─ presets.js
+>  │   ├─ playlist.js
+>  │   ├─ byom.js
+>  │   ├─ training.js
+>  │   └─ workers/train-worker.js
 >  ├─ models/*.json
 >  └─ assets/audio/*.mp3 (11 tracks)
 > ```
@@ -208,6 +211,66 @@
 
 **Acceptance:**
 - [x] On initial load the overlay is visible until Play is pressed, at which point fullscreen engages, HUD elements hide, and playback begins without manual intervention.
+
+---
+
+## Phase 17 — BYOM Mode UI Scaffold
+- [ ] Add BYOM toggle button (HUD + `Y` hotkey) that opens/closes a dedicated drawer/dialog.
+- [ ] Lay out BYOM form sections: file picker, preset/model dropdowns, manual tweak group, hyperparameter inputs, progress bar.
+- [ ] Wire basic state machine in `byom.js` (`idle → picking → ready`) with inert stubs for training hooks.
+- [ ] Ensure drawer is keyboard accessible, trap focus while open, and closes on escape/cancel.
+
+**Acceptance:**
+- [ ] BYOM drawer opens/closes smoothly on button/hotkey; focus management passes accessibility smoke checks.
+- [ ] Form inputs validate required selections before enabling the Train CTA.
+
+---
+
+## Phase 18 — BYOM Audio Intake & Dataset Prep
+- [ ] Allow local MP3 selection via File Picker and drag/drop; generate/revoke Object URLs safely.
+- [ ] Decode audio into PCM using `AudioContext.decodeAudioData` and stream features with the existing `audio.js` extractor (offline mode).
+- [ ] Capture baseline targets: clone selected preset/model outputs or collect manual keyframes; partition dataset into train/validation.
+- [ ] Surface dataset summary in UI (duration, frame count, segments) and warn if audio duration < 30s or file exceeds size threshold.
+
+**Acceptance:**
+- [ ] Selecting a file produces a dataset descriptor logged via BYOM debug overlay with correct counts.
+- [ ] Cancelling mid-analysis cleans up and re-enables the picker without leaks.
+
+---
+
+## Phase 19 — Web Worker Training Pipeline
+- [ ] Implement `training.js` coordinator to spawn `workers/train-worker.js`, transfer datasets, and manage lifecycle (start/pause/cancel).
+- [ ] Build worker gradient descent loop with learning-rate decay, gradient clipping, validation loss tracking, and progress messaging.
+- [ ] Update UI with live progress, estimated time remaining, and allow cancelling/resuming; ensure UI remains responsive.
+- [ ] Validate trained weights by running warm-up inference on the main thread and clamping outputs before activation.
+
+**Acceptance:**
+- [ ] Training completes on a reference MP3 in < 2 minutes on mid-tier hardware, emitting loss curves in console or overlay.
+- [ ] Cancelling training terminates the worker promptly and frees transferred buffers.
+
+---
+
+## Phase 20 — BYOM Persistence & Playback Integration
+- [ ] Serialize trained model + normalization + preset metadata to DESIGN §18 schema and store in IndexedDB (`ln.byom.models`).
+- [ ] Expose BYOM entries in playlist UI under a separate group with ability to rename/delete entries.
+- [ ] On app boot, reload stored BYOM models, prompt user to re-select source file to refresh Object URL, and reinstate presets.
+- [ ] Start playback using the new model: audio pipeline uses user file, NN outputs drive visuals, presets apply correctly.
+
+**Acceptance:**
+- [ ] After training, the new BYOM entry appears in the playlist and persists across reloads (with graceful prompt to reconnect file).
+- [ ] Selecting the entry plays the user audio and reproduces the trained visual behavior without console errors.
+
+---
+
+## Phase 21 — BYOM QA, Safety, & Polish
+- [ ] Add guard rails for hyperparameters (safe ranges, warnings) and photosensitive presets in BYOM mode.
+- [ ] Implement BYOM diagnostics overlay (loss curves, sample outputs) toggle via `?debug=1` or HUD control.
+- [ ] Write documentation snippet (README/DEVLOG) summarizing BYOM workflow and limitations.
+- [ ] Run manual regression to ensure album-only mode unaffected (playlist, performance, volume).
+
+**Acceptance:**
+- [ ] QA checklist signed off: BYOM instructions documented, safe-mode clamps verified, and legacy album playback unchanged.
+- [ ] Debug overlay accurately reflects training metrics and hides by default.
 
 ---
 

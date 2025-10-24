@@ -4,7 +4,7 @@
 **Scope:** Multi‑file JavaScript simulation with separate CSS and JS modules. Playback is restricted to bundled album tracks only. Visuals are driven by a tiny per‑track neural network (NN) that maps audio features → visual parameters.  
 **ES Modules:** The HTML references **a single ES module entry (`js/app.js`)**. All other modules are imported via ES module `import` statements.  
 **Author:** (ChatGPT-5)  
-**Version:** 1.5
+**Version:** 1.6
 
 ---
 
@@ -12,15 +12,16 @@
 - Deliver a modular HTML application with **ES modules**; the HTML page loads **one** `<script type="module" src="js/app.js"></script>` and nothing else.  
 - Each track ships with its own small, pre‑trained **neural network** (lightweight MLP) that converts real‑time audio features to sim parameters.  
 - Audio‑reactive visuals (Canvas 2D + Web Audio) with **60 FPS target** desktop and **>30 FPS** mobile.  
-- **Playback limited to the Latent Noise album** (11 bundled tracks).  
+- **Primary experience** defaults to the Latent Noise album (11 bundled tracks).
 - Per‑track **models + presets** define unique behavior and look.  
 - Zero build tools required; open `index.html` and choose a track.
+- Provide a sandboxed **BYOM (Bring Your Own Music) mode** that lets users load a local MP3, assign presets or clone an existing model, optionally tweak training hyperparameters, and produce an in-browser trained model via Web Workers.
 
 ---
 
 ## 2) Constraints & Non‑Goals
 - **Minimal dependencies:** no runtime frameworks; no TF.js.  
-- No external audio inputs (no drag & drop, no mic, no remote URLs).  
+- No networked audio inputs; BYOM accepts **local files only** via the File Picker / drag & drop sandbox.
 - Canvas 2D only (no heavy WebGL).  
 - Lightweight particle physics (no external engine).  
 - Optional localStorage for last track/preset/volume/HUD state.
@@ -33,15 +34,17 @@
 3. I can tweak high‑level parameters (intensity, particle count, palette shift) that **scale** NN outputs.  
 4. I can pause/resume and seek within the current track.  
 5. **I can control volume** via a slider in the HUD.
+6. I can enter **BYOM mode**, pick a local MP3, reuse or customize presets/models, and watch the system adapt after in-browser training completes.
 
 ---
 
 ## 4) Tech Overview
 - **Rendering:** HTML5 Canvas 2D, `requestAnimationFrame`, composite modes (`lighter`, `screen`, `multiply`).  
 - **Audio:** Web Audio API (`AudioContext`, `MediaElementAudioSourceNode`, `AnalyserNode`, `GainNode` for **volume slider**), FFT 2048–4096, `smoothingTimeConstant ~0.8`.  
-- **Input:** `HTMLAudioElement` only (bundled files).  
+- **Input:** `HTMLAudioElement` (bundled album sources by default, or Object URLs produced by BYOM mode).  
 - **Neural layer:** Tiny **MLP** per track (e.g., `[F] → 32 ReLU → 16 ReLU → P tanh`) implemented in `nn.js` with typed arrays; weights as JSON.  
 - **State:** `AppState` orchestrates audio, NN, physics, render, playlist, and UI.
+- **BYOM tooling:** File API (Object URLs), Web Workers for background training, and IndexedDB storage for user models/presets.
 
 ---
 
@@ -85,17 +88,48 @@ js/app.js (ESM)
  │   ├── physics.js      // particles, fields, integrator
  │   ├── render.js       // canvas passes, trails, glow, HUD (incl. volume slider)
  │   ├── presets.js      // visual motifs & constants per track
- │   └── playlist.js     // fixed album playlist
+ │   ├── playlist.js     // fixed album playlist
+ │   ├── byom.js         // BYOM mode state machine + UI glue
+ │   ├── training.js     // training coordinator (main thread)
+ │   └── workers/
+ │       └── train-worker.js // Web Worker running gradient descent loop
  ├── models/             // per‑track NN weights & normalization
  └── assets/
      └── audio/ (11 album tracks)
 ```
+
+### BYOM Mode Architecture
+- `byom.js` flips between album playback and BYOM states (`idle → analyzing → training → ready`) while keeping `app.js` as the single orchestration hub.
+- Local files enter through the File Picker or drag & drop; we wrap the selected `File` in an Object URL and hand it to `audio.js` (no network ever).
+- Feature extraction, mapping, physics, and rendering pipelines remain unchanged once BYOM hands off a trained model; only data sources differ.
+
+#### Workflow
+1. User enables BYOM mode, selects a local MP3, and optionally chooses a baseline (existing preset/model combo or manual preset sliders).
+2. `training.js` decodes the entire track via `AudioContext.decodeAudioData`, streams feature frames, and builds a training dataset (features + target params). Targets come either from the chosen baseline model (teacher forcing) or user-entered preset curves.
+3. Dataset arrays, metadata, and hyperparameters (`epochs`, `learningRate`, `batchSize`, `regularization`, `seed`) are transferred to `workers/train-worker.js` via `postMessage` with transferable buffers.
+4. `train-worker.js` performs batched gradient descent on the MLP (same schema as DESIGN §18) using typed arrays. It posts progress messages (`epoch`, `loss`, `valLoss`, `samplePreview`) for UI feedback.
+5. On completion the worker returns the trained weights + normalization stats. `training.js` validates, serializes to the existing model JSON schema, and supplies it to `nn.js` for warm-up.
+6. `byom.js` registers the new model/preset under a generated ID, stores it in IndexedDB (`ln.byom.models` store), and switches the active playback pipeline to the user track.
+
+#### Preset & Model Controls
+- Users can clone presets/models from bundled tracks, tweak scalars (spawn rate bias, palette, turbulence) before training, or switch to "manual" mode where they keyframe targets per section in a compact timeline UI.
+- Hyperparameter UI exposes safe ranges with guarded defaults; sliders/inputs map to the worker payload.
+- Training can be paused/cancelled; `training.js` aborts the worker and releases buffers if requested.
+
+#### Storage & Persistence
+- Trained models persist in IndexedDB along with preset metadata and a hash of the source file name + size for quick reuse.
+- Lightweight entries (<1 MB) are mirrored to `localStorage` for quick bootstrapping; full weight blobs stay in IndexedDB.
+- BYOM entries appear in the playlist under a separate group, selectable across sessions (provided the original file path is reselected so the Object URL can be refreshed).
+
+#### Compatibility
+- If Web Workers or IndexedDB are unavailable, BYOM mode is disabled with an explanatory tooltip; the baseline album experience remains intact.
 
 ---
 
 ## 6) Audio Feature Extraction
 - **Feature vector F (per frame):** bands energies (sub..high), RMS, centroid, roll‑off, flatness, deltas, EMAs, optional onset flags. `|F| ≈ 16–32`.  
 - **Normalization:** Per‑model mean/std → `F_norm`.
+- **BYOM preprocessing:** Offline pass walks the full track at 60 Hz, aggregates feature stats, and bins frames into sections for supervised training and validation splits (80/20).
 
 ---
 
@@ -103,6 +137,7 @@ js/app.js (ESM)
 - Default architecture `|F| → 32 ReLU → 16 ReLU → P tanh`.  
 - **Outputs `Y` (−1..1)** mapped to: `spawnRate, fieldStrength, cohesion, repelImpulse, trailFade, glow, sizeJitter, hueShift, sparkleDensity, vortexAmount` (extendable).  
 - **Stability:** low‑pass smoothing, hysteresis for impulses, safety clamps (photosensitive‑safe).
+- **Training constraints (BYOM):** Worker enforces gradient clipping, learning-rate decay, and early stopping once validation loss plateaus for 5 epochs to avoid runaway weights.
 
 ---
 
@@ -126,6 +161,8 @@ js/app.js (ESM)
 - **Playback:** `Space` play/pause, `N` next, `P` previous, arrows seek.  
 - **Toggles:** `H` HUD, `B` Bloom, `T` Trails, `G` Grid, `P` Photosensitive safe, `K` NN bypass.  
 - **Knobs:** `[`/`]` particles, `;`/`'` intensity, `,`/`.` palette.  
+- **BYOM mode toggle:** `Y` hotkey or HUD button opens the BYOM drawer (drawer overlays controls on desktop, full-screen sheet on mobile).
+- **BYOM panel:** file picker, preset/model selector, manual sliders, hyperparameter inputs (epochs, learning rate, batch size, regularization), and a progress bar with cancel/resume.
 - **HUD Volume Slider:** range 0–100% controlling a **GainNode** (log‑scaled for perceptual linearity). Persist last value.
 
 ---
@@ -142,6 +179,7 @@ js/app.js (ESM)
 9. Clouds — buoyant; soft bloom.
 10. Ease Up — sway; long trails.  
 11. Epoch ∞ — sparse; slow hue drift.
+12. BYOM Library — dynamic slots generated per user upload; display source filename and training preset/model summary.
 
 ---
 
@@ -160,6 +198,11 @@ export function loadModel(name) {}
 export function loadPreset(nameOrIndex) {}
 export function setParam(key, value) {}
 export function setNNBypass(on) {}
+export function enterBYOMMode() {}
+export function trainBYOM(options) {}
+export function listBYOMEntries() {}
+export function loadBYOMEntry(id) {}
+export function cancelBYOMTraining() {}
 ```
 
 ---
@@ -169,6 +212,7 @@ export function setNNBypass(on) {}
 - **Particles:** 1k–12k with dynamic cap.  
 - **Canvas:** fixed internal res; adaptive downscale.  
 - **Audio FFT:** 2048 default; 4096 if headroom.
+- **Training worker (BYOM):** batches 256 frames, aims for < 16 ms/iteration; yields every epoch to keep UI responsive; main thread throttles dataset streaming to 30 MB/s.
 
 ---
 
@@ -176,18 +220,21 @@ export function setNNBypass(on) {}
 - Safe mode limits luminance/flash rate and clamps NN outputs.  
 - Color‑blind palettes and legible HUD.  
 - Volume slider defaults to 70%; keyboard accessible.
+- BYOM presets inherit safe-mode clamps; manual inputs are limited to photosensitive-safe ranges with inline warnings.
 
 ---
 
 ## 15) Security & Permissions
 - No mic; no network required.  
 - Local files for audio and models.
+- BYOM never forwards file contents externally; Object URLs revoked after playback and IndexedDB entries store only derived weights/metadata (no raw audio).
 
 ---
 
 ## 16) Fallbacks
 - Autoplay policy gate (user gesture).  
 - NN bypass key `K` for slow devices.
+- BYOM toggle hides when File API, Web Workers, or IndexedDB are unsupported; UI explains fallback.
 
 ---
 
@@ -211,7 +258,35 @@ export function setNNBypass(on) {}
     <select id="playlist"></select>
     <label class="vol">Volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7"></label>
     <label><input type="checkbox" id="bypass"> NN Bypass</label>
+    <button id="byomToggle" type="button">BYOM</button>
   </div>
+  <dialog id="byomDrawer" class="byom">
+    <form method="dialog">
+      <header>Bring Your Own Music</header>
+      <input id="byomFile" type="file" accept="audio/mpeg">
+      <section class="baseline">
+        <label>Preset <select id="byomPreset"></select></label>
+        <label>Model <select id="byomModel"></select></label>
+      </section>
+      <section class="manual">
+        <details>
+          <summary>Manual tweaks</summary>
+          <div class="sliders">...</div>
+        </details>
+      </section>
+      <section class="hyper">
+        <label>Epochs <input id="byomEpochs" type="number" min="1" max="500" value="50"></label>
+        <label>Learning Rate <input id="byomLR" type="number" step="0.0001" value="0.001"></label>
+        <label>Batch Size <input id="byomBatch" type="number" min="32" max="1024" value="256"></label>
+        <label>L2 <input id="byomL2" type="number" step="0.0001" value="0.0005"></label>
+      </section>
+      <progress id="byomProgress" value="0" max="1"></progress>
+      <footer>
+        <button type="button" id="byomCancel">Cancel</button>
+        <button type="button" id="byomTrain">Train</button>
+      </footer>
+    </form>
+  </dialog>
   <div id="hud" hidden></div>
   <audio id="player" preload="metadata"></audio>
   <script type="module" src="js/app.js"></script>
@@ -228,11 +303,15 @@ import * as Phys from './physics.js';
 import * as Render from './render.js';
 import * as Presets from './presets.js';
 import * as Playlist from './playlist.js';
+import * as BYOM from './byom.js';
+import * as Training from './training.js';
 
 // wire volume slider → GainNode
 const vol = document.getElementById('volume');
 Audio.setVolume(+vol.value);
 vol.addEventListener('input', () => Audio.setVolume(+vol.value));
+
+BYOM.mount({ drawer: document.getElementById('byomDrawer') });
 
 // main loop skeleton...
 ```
@@ -258,7 +337,8 @@ vol.addEventListener('input', () => Audio.setVolume(+vol.value));
 - Confirm single‑script ESM boot works across browsers (Chrome, Edge, Safari, Firefox).  
 - Verify volume slider maps to **GainNode** and persists to localStorage.  
 - Ensure each track loads its correct model; profile frame time.  
+- Confirm BYOM UI hides gracefully when prerequisites (File API, Workers, IndexedDB) are absent.
+- Exercise BYOM flow: load sample MP3, run training (<=2 min on mid-tier laptop), ensure worker progress updates and resulting model persists to IndexedDB and reloads after refresh.
 - Static hosting (GitHub Pages, etc.).
 
 ---
-
