@@ -4,6 +4,7 @@ import { logByomDataset } from './diagnostics.js';
 import { FEATURE_LABELS, FEATURE_TYPES } from './audio-features.js';
 import { PARAM_NAMES as OUTPUT_LABELS } from './map.js';
 import { PRIMARY_WEIGHT, SECONDARY_WEIGHT, formatCorrelation } from './correlation-math.js';
+import { FRESH_MODEL_ID, FRESH_MODEL_LABEL } from './byom-constants.js';
 
 const STATUS = Object.freeze({
   IDLE: 'idle',
@@ -1148,7 +1149,17 @@ function resetForm() {
     state.elements.presetSelect.selectedIndex = 0;
   }
   if (state.elements.modelSelect) {
-    state.elements.modelSelect.selectedIndex = 0;
+    const select = state.elements.modelSelect;
+    select.value = FRESH_MODEL_ID;
+    if (select.value !== FRESH_MODEL_ID) {
+      const options = Array.from(select.options);
+      const freshOption = options.find((option) => option.value === FRESH_MODEL_ID);
+      if (freshOption) {
+        freshOption.selected = true;
+      } else if (options.length > 0) {
+        select.selectedIndex = 1 < options.length ? 1 : 0;
+      }
+    }
   }
   state.lastError = null;
   state.analysisToken += 1;
@@ -1407,17 +1418,46 @@ function populatePresetOptions() {
   state.elements.presetSelect.selectedIndex = 0;
 }
 
+function sanitizeModelOption(entry) {
+  if (!entry || typeof entry.id !== 'string') {
+    return null;
+  }
+  const id = entry.id;
+  const label = typeof entry.label === 'string' && entry.label.trim().length > 0 ? entry.label.trim() : id;
+  return { id, label };
+}
+
+function buildModelOptionEntries(modelOptions) {
+  const source = Array.isArray(modelOptions) ? modelOptions : [];
+  const entries = [];
+  const seen = new Set();
+  const providedFresh = source.find((entry) => entry && entry.id === FRESH_MODEL_ID);
+  const freshOption = sanitizeModelOption(providedFresh) ?? { id: FRESH_MODEL_ID, label: FRESH_MODEL_LABEL };
+  entries.push(freshOption);
+  seen.add(FRESH_MODEL_ID);
+  source.forEach((entry) => {
+    const sanitized = sanitizeModelOption(entry);
+    if (!sanitized || seen.has(sanitized.id)) {
+      return;
+    }
+    entries.push(sanitized);
+    seen.add(sanitized.id);
+  });
+  return entries;
+}
+
 function populateModelOptions(modelOptions) {
   if (!state.elements.modelSelect) {
     return;
   }
-  const options = Array.isArray(modelOptions) ? modelOptions : state.options.modelOptions;
+  const previousValue = state.elements.modelSelect.value;
+  const options = buildModelOptionEntries(Array.isArray(modelOptions) ? modelOptions : state.options.modelOptions);
+  state.options.modelOptions = options;
   state.elements.modelSelect.innerHTML = '';
   const placeholder = document.createElement('option');
   placeholder.value = '';
   placeholder.textContent = 'Select model';
   placeholder.disabled = true;
-  placeholder.selected = true;
   placeholder.hidden = true;
   state.elements.modelSelect.append(placeholder);
 
@@ -1431,7 +1471,11 @@ function populateModelOptions(modelOptions) {
     state.elements.modelSelect.append(option);
   });
 
-  state.elements.modelSelect.selectedIndex = 0;
+  const defaultValue = options.some((entry) => entry.id === previousValue && entry.id) ? previousValue : FRESH_MODEL_ID;
+  state.elements.modelSelect.value = defaultValue;
+  if (state.elements.modelSelect.value !== defaultValue) {
+    state.elements.modelSelect.value = FRESH_MODEL_ID;
+  }
 }
 
 function updateSupportVisibility() {

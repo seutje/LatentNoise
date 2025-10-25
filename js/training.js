@@ -1,4 +1,5 @@
 import { loadModelDefinition, createModel, infer } from './nn.js';
+import { isFreshModelId } from './byom-constants.js';
 
 const DEFAULT_OPTIONS = Object.freeze({
   learningRateDecay: 0.92,
@@ -6,6 +7,9 @@ const DEFAULT_OPTIONS = Object.freeze({
   gradientClipNorm: 5,
   progressThrottleMs: 120,
 });
+
+const FRESH_MODEL_HIDDEN_SIZE = 16;
+const MIN_STD = 1e-6;
 
 const TRAINING_STATUS = Object.freeze({
   IDLE: 'idle',
@@ -52,6 +56,97 @@ function sanitizeHyperparameters(raw) {
   };
 }
 
+function sanitizeFiniteNumber(value, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function computeDatasetNormalization(dataset) {
+  const featureSize = Number(dataset?.featureSize);
+  const frameCount = Number(dataset?.frameCount);
+  const features = dataset?.features;
+  const size = Number.isInteger(featureSize) && featureSize > 0 ? featureSize : 0;
+  const mean = new Float32Array(size);
+  const std = new Float32Array(size);
+  if (!(features instanceof Float32Array) || size === 0 || frameCount <= 0) {
+    for (let i = 0; i < size; i += 1) {
+      std[i] = 1;
+    }
+    return { mean, std };
+  }
+  const count = Math.max(1, frameCount);
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const offset = frame * featureSize;
+    for (let i = 0; i < featureSize; i += 1) {
+      mean[i] += sanitizeFiniteNumber(features[offset + i]);
+    }
+  }
+  for (let i = 0; i < featureSize; i += 1) {
+    mean[i] /= frameCount > 0 ? frameCount : 1;
+  }
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const offset = frame * featureSize;
+    for (let i = 0; i < featureSize; i += 1) {
+      const value = sanitizeFiniteNumber(features[offset + i]);
+      const diff = value - mean[i];
+      std[i] += diff * diff;
+    }
+  }
+  for (let i = 0; i < featureSize; i += 1) {
+    const variance = std[i] / count;
+    const sigma = Math.sqrt(variance);
+    std[i] = Number.isFinite(sigma) && sigma > MIN_STD ? sigma : 1;
+  }
+  return { mean, std };
+}
+
+function randomSigned() {
+  return Math.random() * 2 - 1;
+}
+
+function createFreshModelDefinition(dataset) {
+  const inputSize = Number(dataset?.featureSize);
+  if (!Number.isFinite(inputSize) || inputSize <= 0) {
+    throw new Error('Fresh training requires a dataset with a positive featureSize.');
+  }
+  const outputSize = Number(dataset?.targetSize);
+  if (!Number.isFinite(outputSize) || outputSize <= 0) {
+    throw new Error('Fresh training requires a dataset with a positive targetSize.');
+  }
+  const hiddenSize = FRESH_MODEL_HIDDEN_SIZE;
+  const normalization = computeDatasetNormalization(dataset);
+  const layer1Weights = new Float32Array(hiddenSize * inputSize);
+  const layer1Bias = new Float32Array(hiddenSize);
+  const layer2Weights = new Float32Array(outputSize * hiddenSize);
+  const layer2Bias = new Float32Array(outputSize);
+
+  const scale1 = Math.sqrt(2 / Math.max(inputSize, 1));
+  const scale2 = Math.sqrt(2 / Math.max(hiddenSize, 1));
+
+  for (let i = 0; i < layer1Weights.length; i += 1) {
+    layer1Weights[i] = Math.fround(randomSigned() * scale1);
+  }
+  for (let i = 0; i < layer2Weights.length; i += 1) {
+    layer2Weights[i] = Math.fround(randomSigned() * scale2);
+  }
+
+  return {
+    input: inputSize,
+    normalization,
+    layers: [
+      {
+        activation: 'relu',
+        weights: layer1Weights,
+        bias: layer1Bias,
+      },
+      {
+        activation: 'tanh',
+        weights: layer2Weights,
+        bias: layer2Bias,
+      },
+    ],
+  };
+}
+
 function createWorker() {
   const url = new URL('./workers/train-worker.js', import.meta.url);
   return new Worker(url, { type: 'module' });
@@ -72,8 +167,10 @@ function ensureCallbacks(callbacks = {}) {
  * @typedef {object} TrainingStartOptions
  * @property {import('./byom-intake.js').AnalyzeResult['dataset']} dataset
  * @property {import('./byom-intake.js').AnalyzeResult['summary']} summary
- * @property {string} modelUrl
+ * @property {string} [modelUrl]
+ * @property {object} [modelDefinition]
  * @property {object} hyperparameters
+ * @property {string} [mode]
  */
 
 export function createController(callbacks) {
@@ -141,9 +238,25 @@ export function createController(callbacks) {
     if (!options || typeof options !== 'object') {
       throw new TypeError('Training options must be an object.');
     }
-    const { dataset, summary, modelUrl, hyperparameters, correlations } = options;
-    if (!modelUrl || typeof modelUrl !== 'string') {
-      throw new Error('Training requires a modelUrl string.');
+    const {
+      dataset,
+      summary,
+      modelUrl,
+      modelDefinition: providedModelDefinition,
+      hyperparameters,
+      correlations,
+      mode,
+    } = options;
+    const inlineDefinition =
+      providedModelDefinition && typeof providedModelDefinition === 'object'
+        ? providedModelDefinition
+        : null;
+    const requestedMode = typeof mode === 'string' ? mode : null;
+    const freshRequested = requestedMode === 'fresh' || isFreshModelId(modelUrl);
+    if (!freshRequested && !inlineDefinition) {
+      if (typeof modelUrl !== 'string' || modelUrl.length === 0) {
+        throw new Error('Training requires a modelUrl string when tuning an existing model.');
+      }
     }
     if (!dataset || !(dataset.features instanceof Float32Array)) {
       throw new Error('Training dataset missing Float32Array features.');
@@ -172,7 +285,13 @@ export function createController(callbacks) {
 
     let modelDefinition;
     try {
-      modelDefinition = await loadModelDefinition(modelUrl);
+      if (inlineDefinition) {
+        modelDefinition = inlineDefinition;
+      } else if (freshRequested) {
+        modelDefinition = createFreshModelDefinition(dataset);
+      } else {
+        modelDefinition = await loadModelDefinition(modelUrl);
+      }
     } catch (error) {
       state.status = TRAINING_STATUS.ERROR;
       rejectPending(error);

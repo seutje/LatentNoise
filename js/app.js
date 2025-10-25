@@ -7,6 +7,7 @@ import { applyPreset as applyPresetScaling, getDefaultPreset, getPreset } from '
 import { getList, resolveUrl } from './playlist.js';
 import { initDebugOverlay, runStartupDiagnostics, updateDebugOverlay } from './diagnostics.js';
 import * as byom from './byom.js';
+import { FRESH_MODEL_ID, FRESH_MODEL_LABEL } from './byom-constants.js';
 import { createController as createTrainingController } from './training.js';
 import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
@@ -643,10 +644,14 @@ async function loadStoredByomEntries() {
   }
 }
 
-const modelOptions = albumTracks.map((track, index) => ({
-  id: MODEL_FILES[index],
-  label: track.title ?? MODEL_FILES[index],
-}));
+const modelOptions = [
+  { id: FRESH_MODEL_ID, label: FRESH_MODEL_LABEL, mode: 'fresh' },
+  ...albumTracks.map((track, index) => ({
+    id: MODEL_FILES[index],
+    label: track.title ?? MODEL_FILES[index],
+    mode: 'tune',
+  })),
+];
 
 byom.mount({
   drawer: byomDrawer,
@@ -722,6 +727,7 @@ byom.setHandlers({
       byom.setTrainingStatus('error', { message: 'Training aborted — dataset is unavailable.', progress: 0 });
       return;
     }
+    const isFreshModel = model === FRESH_MODEL_ID;
     activeTrainingContext = {
       file: file instanceof File ? file : null,
       objectUrl: typeof objectUrl === 'string' ? objectUrl : '',
@@ -730,15 +736,17 @@ byom.setHandlers({
       summary,
       hyperparameters,
       correlations: Array.isArray(correlations) ? correlations.slice() : [],
+      mode: isFreshModel ? 'fresh' : 'tune',
     };
     byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
     trainingController
       .start({
         dataset,
         summary,
-        modelUrl: model,
         hyperparameters,
         correlations: Array.isArray(correlations) ? correlations : [],
+        mode: isFreshModel ? 'fresh' : 'tune',
+        ...(isFreshModel ? {} : { modelUrl: model }),
       })
       .catch((error) => {
         console.error('[byom] training start failed', error);
