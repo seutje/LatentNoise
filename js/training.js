@@ -2,9 +2,9 @@ import { loadModelDefinition, createModel, infer } from './nn.js';
 import { isFreshModelId } from './byom-constants.js';
 
 const DEFAULT_OPTIONS = Object.freeze({
-  learningRateDecay: 0.92,
-  minLearningRate: 1e-5,
-  gradientClipNorm: 5,
+  learningRateDecay: 1,
+  minLearningRate: 0,
+  gradientClipNorm: 0,
   progressThrottleMs: 120,
 });
 
@@ -46,7 +46,7 @@ function clampNumber(value, min, max, fallback) {
 function sanitizeHyperparameters(raw) {
   const epochs = clampNumber(raw?.epochs, 1, 500, 400);
   const learningRate = clampNumber(raw?.learningRate, 1e-5, 0.1, 0.01);
-  const batchSize = clampNumber(raw?.batchSize, 8, 2048, 256);
+  const batchSize = clampNumber(raw?.batchSize, 1, 4096, 1);
   const l2 = clampNumber(raw?.l2 ?? 0, 0, 0.05, 0);
   return {
     epochs,

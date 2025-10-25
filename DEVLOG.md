@@ -257,3 +257,8 @@
 - Reworked the diagnostics overlay feature/output sections to render zero-centered bar graphs instead of decimal values for quicker scanning.
 - Added overflow markers and minimum fill widths so tiny and saturated values remain visible in the bar presentation.
 - Verified repository health with `npm run lint` and `npm test`.
+
+## 2025-10-27 - BYOM Training Parity Tweaks
+- Matched BYOM worker defaults to the CLI trainer by disabling learning rate decay and gradient clipping while switching the SGD batch size to 1.
+- Updated the drawer hyperparameter inputs to use the new defaults so in-browser training aligns with `npm run train` runs.
+- Reconfirmed repository health via `npm run lint` and `npm test`.
