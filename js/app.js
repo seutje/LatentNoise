@@ -11,6 +11,7 @@ import { FRESH_MODEL_ID, FRESH_MODEL_LABEL } from './byom-constants.js';
 import { createController as createTrainingController } from './training.js';
 import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
+import { formatCorrelation } from './correlation-math.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -34,6 +35,56 @@ const STORAGE_KEYS = Object.freeze({
 
 const MAP_PARAM_COUNT = map.PARAM_NAMES.length;
 const FALLBACK_NN_OUTPUTS = new Float32Array(MAP_PARAM_COUNT);
+
+function resolveCorrelationOrientation(metrics) {
+  if (!metrics) {
+    return 'Direct';
+  }
+  if (metrics.orientation === 'inverse' || metrics.inverse === true || metrics.orientationSign === -1) {
+    return 'Inverse';
+  }
+  return 'Direct';
+}
+
+function buildCorrelationNotification(stats) {
+  const perCorrelation = Array.isArray(stats?.correlations)
+    ? stats.correlations
+    : Array.isArray(stats?.correlationMetrics?.perCorrelation)
+      ? stats.correlationMetrics.perCorrelation
+      : [];
+  if (perCorrelation.length === 0) {
+    return 'Training complete! BYOM entry saved.';
+  }
+  const lines = [];
+  perCorrelation.forEach((metrics, index) => {
+    if (!metrics) {
+      return;
+    }
+    const featureFallback = Number.isFinite(metrics.featureIndex)
+      ? `Feature ${metrics.featureIndex}`
+      : `Feature ${index}`;
+    const outputFallback = Number.isFinite(metrics.outputIndex)
+      ? `Output ${metrics.outputIndex}`
+      : 'Output';
+    const featureName = metrics.featureName ?? featureFallback;
+    const outputName = metrics.outputName ?? outputFallback;
+    const label = index === 0 ? 'Primary' : `Secondary #${index}`;
+    const orientation = resolveCorrelationOrientation(metrics);
+    const value = formatCorrelation(
+      typeof metrics.correlation === 'number' ? metrics.correlation : Number(metrics.correlation),
+    );
+    lines.push(`${label} (${featureName} → ${outputName}, ${orientation}): ${value}`);
+  });
+  if (lines.length === 0) {
+    return 'Training complete! BYOM entry saved.';
+  }
+  const combinedFitness = Number(stats?.correlationMetrics?.combinedFitness);
+  const messageLines = ['Training complete!', ...lines];
+  if (Number.isFinite(combinedFitness)) {
+    messageLines.push(`Combined fitness: ${combinedFitness.toFixed(4)}`);
+  }
+  return messageLines.join('\n');
+}
 
 const RENDER_PARAMS_DEFAULT = Object.freeze({
   trailFade: 0.68,
@@ -692,6 +743,16 @@ const trainingController = createTrainingController({
     console.info('[byom] training completed', stats);
     if (warmup?.outputs) {
       console.info('[byom] warm-up outputs', warmup.outputs);
+    }
+    const completionMessage = buildCorrelationNotification(stats);
+    if (completionMessage) {
+      const notification = notify(completionMessage, {
+        tone: 'success',
+        duration: 8000,
+      });
+      if (!notification && typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(completionMessage);
+      }
     }
     if (typeof window !== 'undefined') {
       window.__LN_LAST_TRAINING__ = latestTrainingResult;

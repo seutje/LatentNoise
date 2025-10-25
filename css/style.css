@@ -172,6 +172,7 @@ body.fullscreen-active #byom-drawer {
   font-size: 0.95rem;
   line-height: 1.55;
   letter-spacing: 0.02em;
+  white-space: pre-line;
 }
 
 .notification-close {
