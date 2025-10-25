@@ -111,6 +111,98 @@ body.fullscreen-active #byom-drawer {
   box-shadow: 0 28px 58px rgba(0, 0, 0, 0.55);
 }
 
+.notification-stack {
+  position: fixed;
+  top: clamp(1rem, 4vw, 1.75rem);
+  right: clamp(1rem, 4vw, 1.75rem);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+  z-index: 1100;
+  pointer-events: none;
+}
+
+.notification-card {
+  min-width: min(22rem, 90vw);
+  max-width: min(26rem, 92vw);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-radius: 1.25rem;
+  background: linear-gradient(155deg, rgba(22, 24, 38, 0.92), rgba(12, 14, 24, 0.88));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 28px 56px rgba(0, 0, 0, 0.46);
+  color: var(--text);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translate3d(0, -12px, 0);
+  transition: opacity 0.35s ease, transform 0.35s ease, filter 0.35s ease;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.notification-card[data-state='visible'] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.notification-card[data-state='exit'] {
+  opacity: 0;
+  transform: translate3d(0, -10px, 0);
+  filter: blur(1px);
+}
+
+.notification-card[data-tone='success'] {
+  border-color: rgba(137, 205, 255, 0.4);
+}
+
+.notification-card[data-tone='error'] {
+  border-color: rgba(255, 120, 150, 0.45);
+}
+
+.notification-card[data-tone='warning'] {
+  border-color: rgba(255, 196, 120, 0.45);
+}
+
+.notification-text {
+  flex: 1;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+}
+
+.notification-close {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+
+.notification-close:hover,
+.notification-close:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+.notification-close:active {
+  transform: scale(0.96);
+}
+
 @media (max-width: 600px) {
   .intro-content {
     gap: 1.25rem;
@@ -120,6 +212,20 @@ body.fullscreen-active #byom-drawer {
 
   .intro-button {
     width: 100%;
+  }
+
+  .notification-stack {
+    top: 1rem;
+    right: 50%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(92vw, 24rem);
+    align-items: center;
+  }
+
+  .notification-card {
+    width: 100%;
+    max-width: none;
   }
 }
 

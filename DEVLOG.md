@@ -222,3 +222,8 @@
 - Added `js/byom-storage.js` with IndexedDB-backed persistence for trained models, normalization, and preset metadata plus in-memory fallback and CRUD helpers.
 - Reworked the playlist to group BYOM entries, surface rename/delete/attach controls, and load saved models on boot with user prompts to reconnect local audio files.
 - Persisted post-training sessions into the library and auto-switched playback to the freshly trained model using the current Object URL; manual verification notes left for follow-up since automated tests are unavailable in this environment.
+
+## 2025-10-25 - Notification Stack
+- Replaced blocking alerts with a glassmorphism-styled notification stack that appears in the top-right corner and auto-dismisses after five seconds.
+- Added `js/notifications.js`, initialized the stack on boot, and rerouted BYOM prompts to use the new toasts with graceful fallbacks.
+- Confirmed repository health with `npm run lint` and `npm test`.

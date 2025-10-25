@@ -9,6 +9,7 @@ import { initDebugOverlay, runStartupDiagnostics, updateDebugOverlay } from './d
 import * as byom from './byom.js';
 import { createController as createTrainingController } from './training.js';
 import * as byomStorage from './byom-storage.js';
+import { init as initNotifications, notify } from './notifications.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -321,6 +322,8 @@ if (
   );
 }
 
+initNotifications(document);
+
 render.init();
 render.setWorldSize(2, 2);
 render.setStatus('Idle · Particles 0');
@@ -549,7 +552,8 @@ function promptAttachForEntry(entry, reason = 'attach-file') {
         ? `The file reference for "${label}" expired. Please re-attach the MP3 to continue.`
         : `Please attach the local MP3 for "${label}".`;
   console.info('[byom] %s', message);
-  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+  const notification = notify(message, { tone: 'warning' });
+  if (!notification && typeof window !== 'undefined' && typeof window.alert === 'function') {
     window.alert(message);
   }
   updatePlaylistControls(entry);
@@ -629,10 +633,10 @@ async function loadStoredByomEntries() {
     byomEntries = stored.map((record) => buildRuntimeByomEntry(record));
     rebuildPlaylistOrder();
     renderPlaylistOptions(currentTrackIndex);
-    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-      window.alert('BYOM models restored. Attach the original MP3 files via Attach File before playback.');
-    } else {
-      console.info('[byom] Stored BYOM models restored. Attach source files before playback.');
+    const message = 'BYOM models restored. Attach the original MP3 files via Attach File before playback.';
+    const notification = notify(message, { tone: 'info' });
+    if (!notification && typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(message);
     }
   } catch (error) {
     console.error('[byom] Failed to load stored BYOM entries', error);
