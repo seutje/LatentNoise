@@ -70,103 +70,154 @@
             <span aria-hidden="true">&times;</span>
           </button>
         </header>
-        <form id="byom-form" novalidate>
-          <section class="byom-section byom-upload">
-            <label class="byom-label" for="byom-file">
-              Source Audio
-              <input
-                id="byom-file"
-                name="file"
-                type="file"
-                accept="audio/mpeg"
-                required
-                aria-describedby="byom-file-hint"
-              />
-            </label>
-            <p id="byom-file-hint" class="byom-hint">
-              Load a local MP3 file to begin training your own model.
-            </p>
-          </section>
-          <section class="byom-section byom-baseline" aria-labelledby="byom-baseline-heading">
-            <h3 id="byom-baseline-heading" class="byom-heading">Baseline</h3>
-            <div class="byom-field">
-              <label class="byom-label" for="byom-preset">Preset</label>
-              <select id="byom-preset" name="preset" required></select>
+        <div class="byom-content">
+          <div id="byom-tabs" class="byom-tabs" role="tablist" aria-label="BYOM sections">
+            <button
+              type="button"
+              id="byom-tab-training"
+              class="byom-tab"
+              role="tab"
+              aria-selected="true"
+              aria-controls="byom-panel-training"
+            >Training</button>
+            <button
+              type="button"
+              id="byom-tab-manager"
+              class="byom-tab"
+              role="tab"
+              aria-selected="false"
+              aria-controls="byom-panel-manager"
+              tabindex="-1"
+            >Manager</button>
+          </div>
+          <div class="byom-panels">
+            <div
+              id="byom-panel-training"
+              class="byom-tabpanel"
+              role="tabpanel"
+              aria-labelledby="byom-tab-training"
+            >
+              <form id="byom-form" novalidate>
+                <section class="byom-section byom-upload">
+                  <label class="byom-label" for="byom-file">
+                    Source Audio
+                    <input
+                      id="byom-file"
+                      name="file"
+                      type="file"
+                      accept="audio/mpeg"
+                      required
+                      aria-describedby="byom-file-hint"
+                    />
+                  </label>
+                  <p id="byom-file-hint" class="byom-hint">
+                    Load a local MP3 file to begin training your own model.
+                  </p>
+                </section>
+                <section class="byom-section byom-baseline" aria-labelledby="byom-baseline-heading">
+                  <h3 id="byom-baseline-heading" class="byom-heading">Baseline</h3>
+                  <div class="byom-field">
+                    <label class="byom-label" for="byom-preset">Preset</label>
+                    <select id="byom-preset" name="preset" required></select>
+                  </div>
+                  <div class="byom-field">
+                    <label class="byom-label" for="byom-model">Model</label>
+                    <select id="byom-model" name="model" required></select>
+                  </div>
+                </section>
+                <section class="byom-section byom-correlations" aria-labelledby="byom-correlations-heading">
+                  <details id="byom-correlations">
+                    <summary id="byom-correlations-heading" class="byom-heading">Correlations</summary>
+                    <p class="byom-hint">
+                      Add feature/output pairs to steer training toward specific musical relationships.
+                    </p>
+                    <ul
+                      id="byom-correlation-list"
+                      class="byom-correlation-list"
+                      aria-live="polite"
+                      aria-describedby="byom-correlation-empty"
+                    ></ul>
+                    <p id="byom-correlation-empty" class="byom-hint">No correlations selected yet.</p>
+                    <button type="button" id="byom-add-correlation" class="byom-secondary byom-correlation-add">
+                      Add correlation
+                    </button>
+                  </details>
+                </section>
+                <section class="byom-section byom-manual" aria-labelledby="byom-manual-heading">
+                  <h3 id="byom-manual-heading" class="byom-heading">Manual Tweaks</h3>
+                  <details id="byom-manual">
+                    <summary>Advanced parameters</summary>
+                    <div class="byom-manual-group">
+                      <label class="byom-label" for="byom-tweak-cohesion">
+                        Cohesion
+                        <input id="byom-tweak-cohesion" type="range" min="0" max="1" step="0.01" value="0.5">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-vortex">
+                        Vortex
+                        <input id="byom-tweak-vortex" type="range" min="0" max="1" step="0.01" value="0.4">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-trails">
+                        Trail Fade
+                        <input id="byom-tweak-trails" type="range" min="0" max="1" step="0.01" value="0.6">
+                      </label>
+                    </div>
+                  </details>
+                </section>
+                <section class="byom-section byom-hyper" aria-labelledby="byom-hyper-heading">
+                  <h3 id="byom-hyper-heading" class="byom-heading">Hyperparameters</h3>
+                  <div class="byom-grid">
+                    <label class="byom-label" for="byom-epochs">
+                      Epochs
+                      <input id="byom-epochs" name="epochs" type="number" min="1" max="500" step="1" value="400" required>
+                    </label>
+                    <label class="byom-label" for="byom-lr">
+                      Learning Rate
+                      <input id="byom-lr" name="learningRate" type="number" min="0.00005" max="0.1" step="0.0001" value="0.01" required>
+                    </label>
+                    <label class="byom-label" for="byom-batch">
+                      Batch Size
+                      <input id="byom-batch" name="batchSize" type="number" min="1" max="4096" step="1" value="2048" required>
+                    </label>
+                    <label class="byom-label" for="byom-l2">
+                      L2 Regularization
+                      <input id="byom-l2" name="l2" type="number" min="0" max="0.01" step="0.0001" value="0.0005">
+                    </label>
+                  </div>
+                </section>
+                <section class="byom-section byom-progress">
+                  <label class="byom-label" for="byom-progress">Progress</label>
+                  <progress id="byom-progress" value="0" max="1">0%</progress>
+                  <p id="byom-status" class="byom-hint" role="status">Select a file to begin.</p>
+                </section>
+                <footer class="byom-actions">
+                  <button type="button" id="byom-cancel" class="byom-secondary">Cancel</button>
+                  <button type="button" id="byom-train" class="byom-primary" disabled>Train Model</button>
+                </footer>
+              </form>
             </div>
-            <div class="byom-field">
-              <label class="byom-label" for="byom-model">Model</label>
-              <select id="byom-model" name="model" required></select>
+            <div
+              id="byom-panel-manager"
+              class="byom-tabpanel"
+              role="tabpanel"
+              aria-labelledby="byom-tab-manager"
+              hidden
+            >
+              <section class="byom-section byom-manager-actions">
+                <p class="byom-hint">Import previously trained models or export them for safekeeping.</p>
+                <div class="byom-manager-controls">
+                  <button type="button" id="byom-manager-import" class="byom-primary">Import Models</button>
+                </div>
+                <input id="byom-manager-import-input" type="file" accept="application/json" multiple hidden>
+                <p id="byom-manager-status" class="byom-hint" role="status" hidden></p>
+              </section>
+              <section class="byom-section byom-manager-list" aria-labelledby="byom-manager-heading">
+                <h3 id="byom-manager-heading" class="byom-heading">Stored Models</h3>
+                <p id="byom-manager-empty" class="byom-hint">No stored models yet. Train or import to get started.</p>
+                <ul id="byom-manager-entries" class="byom-manager-entries" role="list"></ul>
+              </section>
             </div>
-          </section>
-          <section class="byom-section byom-correlations" aria-labelledby="byom-correlations-heading">
-            <details id="byom-correlations">
-              <summary id="byom-correlations-heading" class="byom-heading">Correlations</summary>
-              <p class="byom-hint">
-                Add feature/output pairs to steer training toward specific musical relationships.
-              </p>
-              <ul
-                id="byom-correlation-list"
-                class="byom-correlation-list"
-                aria-live="polite"
-                aria-describedby="byom-correlation-empty"
-              ></ul>
-              <p id="byom-correlation-empty" class="byom-hint">No correlations selected yet.</p>
-              <button type="button" id="byom-add-correlation" class="byom-secondary byom-correlation-add">
-                Add correlation
-              </button>
-            </details>
-          </section>
-          <section class="byom-section byom-manual" aria-labelledby="byom-manual-heading">
-            <h3 id="byom-manual-heading" class="byom-heading">Manual Tweaks</h3>
-            <details id="byom-manual">
-              <summary>Advanced parameters</summary>
-              <div class="byom-manual-group">
-                <label class="byom-label" for="byom-tweak-cohesion">
-                  Cohesion
-                  <input id="byom-tweak-cohesion" type="range" min="0" max="1" step="0.01" value="0.5">
-                </label>
-                <label class="byom-label" for="byom-tweak-vortex">
-                  Vortex
-                  <input id="byom-tweak-vortex" type="range" min="0" max="1" step="0.01" value="0.4">
-                </label>
-                <label class="byom-label" for="byom-tweak-trails">
-                  Trail Fade
-                  <input id="byom-tweak-trails" type="range" min="0" max="1" step="0.01" value="0.6">
-                </label>
-              </div>
-            </details>
-          </section>
-          <section class="byom-section byom-hyper" aria-labelledby="byom-hyper-heading">
-            <h3 id="byom-hyper-heading" class="byom-heading">Hyperparameters</h3>
-            <div class="byom-grid">
-              <label class="byom-label" for="byom-epochs">
-                Epochs
-                <input id="byom-epochs" name="epochs" type="number" min="1" max="500" step="1" value="400" required>
-              </label>
-              <label class="byom-label" for="byom-lr">
-                Learning Rate
-                <input id="byom-lr" name="learningRate" type="number" min="0.00005" max="0.1" step="0.0001" value="0.01" required>
-              </label>
-              <label class="byom-label" for="byom-batch">
-                Batch Size
-                <input id="byom-batch" name="batchSize" type="number" min="1" max="4096" step="1" value="2048" required>
-              </label>
-              <label class="byom-label" for="byom-l2">
-                L2 Regularization
-                <input id="byom-l2" name="l2" type="number" min="0" max="0.01" step="0.0001" value="0.0005">
-              </label>
-            </div>
-          </section>
-          <section class="byom-section byom-progress">
-            <label class="byom-label" for="byom-progress">Progress</label>
-            <progress id="byom-progress" value="0" max="1">0%</progress>
-            <p id="byom-status" class="byom-hint" role="status">Select a file to begin.</p>
-          </section>
-          <footer class="byom-actions">
-            <button type="button" id="byom-cancel" class="byom-secondary">Cancel</button>
-            <button type="button" id="byom-train" class="byom-primary" disabled>Train Model</button>
-          </footer>
-        </form>
+          </div>
+        </div>
         <dialog id="byom-correlation-dialog" class="byom-dialog" aria-labelledby="byom-correlation-title">
           <form id="byom-correlation-form" method="dialog">
             <h3 id="byom-correlation-title" class="byom-heading">Add correlation</h3>
