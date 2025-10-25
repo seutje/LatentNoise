@@ -237,3 +237,8 @@
 - Expanded the BYOM drawer with a correlations section that supports adding/removing feature/output pairs, an accessible dialog, and displays achieved correlation metrics after training.
 - Routed BYOM training requests to include correlation objectives, updated the worker to optimize and report multi-correlation metrics, and surfaced those results back in the UI.
 - Revalidated the codebase with `npm run lint` and `npm test`.
+
+## 2025-10-26 - Hyperparameter Alignment
+- Updated BYOM default hyperparameters (epochs, learning rate, and worker fallbacks) to mirror the `npm run train` CLI defaults for consistent training behavior.
+- Synced the drawer form inputs with the new defaults and confirmed the pipeline continues to sanitize overrides correctly.
+- Verified repository health with `npm run lint` and `npm test`.

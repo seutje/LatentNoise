@@ -59,8 +59,8 @@ const ACTIVE_TRAINING_STATUSES = new Set([
 ]);
 
 const DEFAULT_HYPERPARAMETERS = Object.freeze({
-  epochs: 40,
-  learningRate: 0.001,
+  epochs: 400,
+  learningRate: 0.01,
   batchSize: 256,
   l2: 0,
 });

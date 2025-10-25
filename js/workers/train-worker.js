@@ -79,9 +79,9 @@ function sanitizeOptions(options) {
 
 function sanitizeHyper(raw) {
   return {
-    epochs: Math.max(1, Math.floor(Number(raw?.epochs ?? 1))),
-    learningRate: sanitizeNumber(raw?.learningRate, 0.001, 1e-6, 0.5),
-    batchSize: Math.max(1, Math.floor(Number(raw?.batchSize ?? 64))),
+    epochs: Math.max(1, Math.floor(Number(raw?.epochs ?? 400))),
+    learningRate: sanitizeNumber(raw?.learningRate, 0.01, 1e-6, 0.5),
+    batchSize: Math.max(1, Math.floor(Number(raw?.batchSize ?? 256))),
     l2: Math.max(0, Number(raw?.l2 ?? 0)),
   };
 }

@@ -44,8 +44,8 @@ function clampNumber(value, min, max, fallback) {
 }
 
 function sanitizeHyperparameters(raw) {
-  const epochs = clampNumber(raw?.epochs, 1, 500, 40);
-  const learningRate = clampNumber(raw?.learningRate, 1e-5, 0.1, 0.001);
+  const epochs = clampNumber(raw?.epochs, 1, 500, 400);
+  const learningRate = clampNumber(raw?.learningRate, 1e-5, 0.1, 0.01);
   const batchSize = clampNumber(raw?.batchSize, 8, 2048, 256);
   const l2 = clampNumber(raw?.l2 ?? 0, 0, 0.05, 0);
   return {
