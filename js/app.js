@@ -10,6 +10,7 @@ import * as byom from './byom.js';
 import { createController as createTrainingController } from './training.js';
 import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
+import { projectFeatureValue, sanitizeCorrelations as sanitizeCorrelationConfig } from './byom-correlations.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -683,15 +684,45 @@ const trainingController = createTrainingController({
     byom.updateTrainingProgress(payload);
   },
   onComplete: async ({ modelDefinition, stats, warmup }) => {
-    latestTrainingResult = { modelDefinition, stats, warmup };
-    console.info('[byom] training completed', stats);
+    let correlationMetrics = [];
+    if (activeTrainingContext?.dataset && Array.isArray(activeTrainingContext.correlations)) {
+      try {
+        correlationMetrics = evaluateTrainingCorrelations({
+          modelDefinition,
+          dataset: activeTrainingContext.dataset,
+          correlations: activeTrainingContext.correlations,
+        });
+      } catch (error) {
+        console.error('[byom] correlation evaluation failed', error);
+      }
+    }
+
+    if (correlationMetrics.length > 0) {
+      byom.setCorrelationResults(correlationMetrics);
+    } else {
+      byom.setCorrelationResults([]);
+    }
+
+    const enhancedStats = stats ? { ...stats } : {};
+    if (correlationMetrics.length > 0) {
+      enhancedStats.correlations = correlationMetrics.map((entry) => ({
+        id: entry.id,
+        feature: entry.featureLabel,
+        output: entry.outputLabel,
+        orientation: entry.inverse ? 'inverse' : 'direct',
+        correlation: entry.correlation,
+      }));
+    }
+
+    latestTrainingResult = { modelDefinition, stats: enhancedStats, warmup };
+    console.info('[byom] training completed', enhancedStats);
     if (warmup?.outputs) {
       console.info('[byom] warm-up outputs', warmup.outputs);
     }
     if (typeof window !== 'undefined') {
       window.__LN_LAST_TRAINING__ = latestTrainingResult;
     }
-    await finalizeByomTraining({ modelDefinition, stats, warmup });
+    await finalizeByomTraining({ modelDefinition, stats: enhancedStats, warmup });
   },
   onCancelled: (detail) => {
     activeTrainingContext = null;
@@ -717,11 +748,12 @@ const trainingController = createTrainingController({
 });
 
 byom.setHandlers({
-  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters }) => {
+  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters, correlations }) => {
     if (!dataset || !model) {
       byom.setTrainingStatus('error', { message: 'Training aborted — dataset is unavailable.', progress: 0 });
       return;
     }
+    const sanitizedCorrelations = sanitizeCorrelationConfig(correlations, dataset);
     activeTrainingContext = {
       file: file instanceof File ? file : null,
       objectUrl: typeof objectUrl === 'string' ? objectUrl : '',
@@ -729,6 +761,8 @@ byom.setHandlers({
       model,
       summary,
       hyperparameters,
+      dataset,
+      correlations: sanitizedCorrelations,
     };
     byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
     trainingController
@@ -737,6 +771,7 @@ byom.setHandlers({
         summary,
         modelUrl: model,
         hyperparameters,
+        correlations: sanitizedCorrelations,
       })
       .catch((error) => {
         console.error('[byom] training start failed', error);
@@ -1219,6 +1254,81 @@ async function prepareModelForEntry(entry) {
     console.error(`[app] Failed to load model for "${entry.title ?? entry.id}"`, error);
     return null;
   }
+}
+
+function evaluateTrainingCorrelations({ modelDefinition, dataset, correlations }) {
+  if (!modelDefinition || !dataset || !Array.isArray(correlations) || correlations.length === 0) {
+    return [];
+  }
+  const sanitized = sanitizeCorrelationConfig(correlations, dataset);
+  if (sanitized.length === 0) {
+    return [];
+  }
+  const frameCount = Number(dataset.frameCount);
+  const featureSize = Number(dataset.featureSize);
+  if (!Number.isFinite(frameCount) || frameCount <= 0 || !Number.isFinite(featureSize) || featureSize <= 0) {
+    return sanitized.map((entry) => ({
+      id: entry.id,
+      featureLabel: entry.featureLabel,
+      outputLabel: entry.outputLabel,
+      inverse: entry.inverse,
+      correlation: 0,
+    }));
+  }
+  const model = nn.createModel(modelDefinition);
+  const outputBuffer = new Float32Array(model.outputSize);
+  const accumulators = sanitized.map(() => ({ sumX: 0, sumY: 0, sumX2: 0, sumY2: 0, sumXY: 0 }));
+  const features = dataset.features instanceof Float32Array ? dataset.features : null;
+  if (!features) {
+    return sanitized.map((entry) => ({
+      id: entry.id,
+      featureLabel: entry.featureLabel,
+      outputLabel: entry.outputLabel,
+      inverse: entry.inverse,
+      correlation: 0,
+    }));
+  }
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const featureOffset = frame * featureSize;
+    const featureSlice = features.subarray(featureOffset, featureOffset + featureSize);
+    const predictions = nn.infer(model, featureSlice, outputBuffer);
+    sanitized.forEach((correlation, index) => {
+      const featureValue = featureSlice[correlation.featureIndex];
+      const orientedFeature = projectFeatureValue(
+        featureValue,
+        correlation.featureType,
+        correlation.orientationSign,
+      );
+      const orientedPrediction = predictions[correlation.outputIndex] * correlation.orientationSign;
+      const accumulator = accumulators[index];
+      accumulator.sumX += orientedFeature;
+      accumulator.sumY += orientedPrediction;
+      accumulator.sumX2 += orientedFeature * orientedFeature;
+      accumulator.sumY2 += orientedPrediction * orientedPrediction;
+      accumulator.sumXY += orientedFeature * orientedPrediction;
+    });
+  }
+
+  return sanitized.map((correlation, index) => {
+    const stats = accumulators[index];
+    const n = frameCount || 1;
+    const meanX = stats.sumX / n;
+    const meanY = stats.sumY / n;
+    const covariance = stats.sumXY / n - meanX * meanY;
+    const varianceX = stats.sumX2 / n - meanX * meanX;
+    const varianceY = stats.sumY2 / n - meanY * meanY;
+    const denominator = varianceX > 0 && varianceY > 0 ? Math.sqrt(varianceX * varianceY) : 0;
+    const rawCorrelation = denominator > 0 ? covariance / denominator : 0;
+    const clamped = Number.isFinite(rawCorrelation) ? Math.max(-1, Math.min(1, rawCorrelation)) : 0;
+    return {
+      id: correlation.id,
+      featureLabel: correlation.featureLabel,
+      outputLabel: correlation.outputLabel,
+      inverse: correlation.inverse,
+      correlation: clamped,
+    };
+  });
 }
 
 async function finalizeByomTraining({ modelDefinition, stats }) {

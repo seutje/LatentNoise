@@ -101,6 +101,22 @@
               <select id="byom-model" name="model" required></select>
             </div>
           </section>
+          <section class="byom-section byom-correlations" aria-labelledby="byom-correlations-heading">
+            <h3 id="byom-correlations-heading" class="byom-heading">Correlations</h3>
+            <details id="byom-correlations" class="byom-correlation-details">
+              <summary>Configure correlations</summary>
+              <p id="byom-correlation-hint" class="byom-hint">
+                Select music features and simulation outputs to prioritize during training.
+              </p>
+              <ul
+                id="byom-correlation-list"
+                class="byom-correlation-list"
+                aria-describedby="byom-correlation-hint"
+              ></ul>
+              <p id="byom-correlation-empty" class="byom-hint">No correlations selected yet.</p>
+              <button type="button" id="byom-add-correlation" class="byom-tertiary">Add correlation</button>
+            </details>
+          </section>
           <section class="byom-section byom-manual" aria-labelledby="byom-manual-heading">
             <h3 id="byom-manual-heading" class="byom-heading">Manual Tweaks</h3>
             <details id="byom-manual">
@@ -152,6 +168,37 @@
             <button type="button" id="byom-train" class="byom-primary" disabled>Train Model</button>
           </footer>
         </form>
+        <div
+          id="byom-correlation-dialog"
+          class="byom-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-hidden="true"
+          aria-labelledby="byom-correlation-title"
+          hidden
+        >
+          <div class="byom-dialog-surface">
+            <h4 id="byom-correlation-title">Add correlation</h4>
+            <div class="byom-dialog-body">
+              <label class="byom-label" for="byom-correlation-feature">
+                Music feature
+                <select id="byom-correlation-feature"></select>
+              </label>
+              <label class="byom-label" for="byom-correlation-output">
+                Simulation feature
+                <select id="byom-correlation-output"></select>
+              </label>
+              <label class="byom-checkbox" for="byom-correlation-inverse">
+                <input id="byom-correlation-inverse" type="checkbox"> Inverse correlation
+              </label>
+              <p id="byom-correlation-message" class="byom-hint" role="alert" hidden></p>
+            </div>
+            <div class="byom-dialog-actions">
+              <button type="button" class="byom-secondary" data-action="correlation-cancel">Cancel</button>
+              <button type="button" class="byom-primary" data-action="correlation-add">Add</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <audio id="player" preload="metadata"></audio>

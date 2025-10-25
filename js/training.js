@@ -1,4 +1,5 @@
 import { loadModelDefinition, createModel, infer } from './nn.js';
+import { applyCorrelationsToTargetBuffer, sanitizeCorrelations } from './byom-correlations.js';
 
 const DEFAULT_OPTIONS = Object.freeze({
   learningRateDecay: 0.92,
@@ -74,6 +75,7 @@ function ensureCallbacks(callbacks = {}) {
  * @property {import('./byom-intake.js').AnalyzeResult['summary']} summary
  * @property {string} modelUrl
  * @property {object} hyperparameters
+ * @property {Array} correlations
  */
 
 export function createController(callbacks) {
@@ -91,6 +93,7 @@ export function createController(callbacks) {
     options: {
       ...DEFAULT_OPTIONS,
     },
+    activeCorrelations: [],
   };
 
   function updateStatus(nextStatus, detail) {
@@ -140,7 +143,7 @@ export function createController(callbacks) {
     if (!options || typeof options !== 'object') {
       throw new TypeError('Training options must be an object.');
     }
-    const { dataset, summary, modelUrl, hyperparameters } = options;
+    const { dataset, summary, modelUrl, hyperparameters, correlations: correlationOptions } = options;
     if (!modelUrl || typeof modelUrl !== 'string') {
       throw new Error('Training requires a modelUrl string.');
     }
@@ -151,9 +154,11 @@ export function createController(callbacks) {
       throw new Error('Training dataset missing Float32Array targets.');
     }
 
+    const sanitizedCorrelations = sanitizeCorrelations(correlationOptions, dataset);
     state.activeDataset = dataset;
     state.activeSummary = summary ?? null;
     state.activeHyper = sanitizeHyperparameters(hyperparameters);
+    state.activeCorrelations = sanitizedCorrelations;
     state.warmupSample = dataset.features.slice(0, dataset.featureSize);
     state.cancelRequested = false;
     state.lastProgressAt = 0;
@@ -186,6 +191,9 @@ export function createController(callbacks) {
     const worker = getWorker();
     const clonedFeatures = dataset.features.slice();
     const clonedTargets = dataset.targets.slice();
+    if (sanitizedCorrelations.length > 0) {
+      applyCorrelationsToTargetBuffer(dataset, sanitizedCorrelations, clonedTargets);
+    }
     const datasetPayload = {
       features: clonedFeatures,
       targets: clonedTargets,
@@ -281,6 +289,7 @@ export function createController(callbacks) {
     state.activeSummary = null;
     state.activeHyper = null;
     state.warmupSample = null;
+    state.activeCorrelations = [];
   }
 
   async function runWarmup(modelDefinition, stats) {

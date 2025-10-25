@@ -1,6 +1,14 @@
 import { listPresets } from './presets.js';
 import { analyzeFile } from './byom-intake.js';
 import { logByomDataset } from './diagnostics.js';
+import {
+  MUSIC_FEATURES,
+  SIMULATION_FEATURES,
+  formatFeatureLabel,
+  formatOrientation,
+  formatOutputLabel,
+  sanitizeCorrelations,
+} from './byom-correlations.js';
 
 const STATUS = Object.freeze({
   IDLE: 'idle',
@@ -109,6 +117,7 @@ const state = {
     learningRate: null,
     message: '',
     error: null,
+    correlations: new Map(),
   },
   elements: {
     drawer: null,
@@ -125,6 +134,17 @@ const state = {
     backdrop: null,
     uploadSection: null,
     summary: null,
+    correlationsDetails: null,
+    correlationList: null,
+    addCorrelationButton: null,
+    correlationDialog: null,
+    correlationDialogFeature: null,
+    correlationDialogOutput: null,
+    correlationDialogInverse: null,
+    correlationDialogCancel: null,
+    correlationDialogAdd: null,
+    correlationDialogMessage: null,
+    correlationEmpty: null,
   },
   options: {
     modelOptions: [],
@@ -136,11 +156,34 @@ const state = {
     onResume: null,
   },
   lastFocusedElement: null,
+  correlations: [],
+  correlationCounter: 0,
+  modals: {
+    correlation: {
+      open: false,
+      lastFocused: null,
+    },
+  },
 };
 
 function getFocusableElements() {
   if (!state.open || !state.elements.drawer) {
     return [];
+  }
+  if (state.modals.correlation.open && state.elements.correlationDialog) {
+    const dialogCandidates = state.elements.correlationDialog.querySelectorAll(FOCUSABLE_QUERY);
+    return Array.from(dialogCandidates).filter((el) => {
+      if (!(el instanceof HTMLElement)) {
+        return false;
+      }
+      if (el.hasAttribute('disabled') || el.getAttribute('aria-hidden') === 'true') {
+        return false;
+      }
+      if (el.tabIndex < 0) {
+        return false;
+      }
+      return true;
+    });
   }
   const candidates = state.elements.drawer.querySelectorAll(FOCUSABLE_QUERY);
   return Array.from(candidates).filter((el) => {
@@ -217,6 +260,295 @@ function updateSummaryDisplay() {
   summaryEl.textContent = warnings.map((warning) => `⚠︎ ${warning}`).join(' ');
 }
 
+function ensureCorrelationResultMap() {
+  if (!(state.training.correlations instanceof Map)) {
+    state.training.correlations = new Map();
+  }
+  return state.training.correlations;
+}
+
+function clearCorrelationResults({ silent = false } = {}) {
+  const map = ensureCorrelationResultMap();
+  map.clear();
+  if (!silent) {
+    renderCorrelationList();
+  }
+}
+
+function formatCorrelationValue(value) {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+  const clamped = Math.max(-1, Math.min(1, value));
+  return clamped.toFixed(3);
+}
+
+function renderCorrelationList() {
+  const list = state.elements.correlationList;
+  const empty = state.elements.correlationEmpty;
+  if (!list) {
+    return;
+  }
+  list.textContent = '';
+  if (!Array.isArray(state.correlations) || state.correlations.length === 0) {
+    if (empty) {
+      empty.hidden = false;
+    }
+    return;
+  }
+  if (empty) {
+    empty.hidden = true;
+  }
+
+  const resultMap = ensureCorrelationResultMap();
+  const isPending = state.training.active;
+
+  state.correlations.forEach((correlation) => {
+    const item = document.createElement('li');
+    item.className = 'byom-correlation-item';
+    item.dataset.id = correlation.id;
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'byom-correlation-remove';
+    removeButton.dataset.action = 'remove-correlation';
+    removeButton.dataset.id = correlation.id;
+    removeButton.textContent = 'Remove';
+    item.append(removeButton);
+
+    const label = document.createElement('span');
+    label.className = 'byom-correlation-label';
+    label.textContent = `${correlation.featureLabel} → ${correlation.outputLabel} (${formatOrientation(correlation.inverse)})`;
+    item.append(label);
+
+    const metric = document.createElement('span');
+    metric.className = 'byom-correlation-metric';
+    if (resultMap.has(correlation.id)) {
+      const value = resultMap.get(correlation.id);
+      metric.textContent = formatCorrelationValue(value);
+    } else if (isPending) {
+      metric.textContent = '…';
+      metric.dataset.state = 'pending';
+    } else {
+      metric.textContent = '—';
+    }
+    item.append(metric);
+
+    list.append(item);
+  });
+}
+
+function createCorrelationEntry({ featureIndex, outputIndex, inverse }) {
+  const candidate = {
+    id: `corr-${state.correlationCounter += 1}`,
+    featureIndex,
+    outputIndex,
+    inverse: Boolean(inverse),
+  };
+  const dataset = state.dataset
+    ? { featureSize: state.dataset.featureSize, targetSize: state.dataset.targetSize }
+    : undefined;
+  const sanitized = sanitizeCorrelations([candidate], dataset);
+  return sanitized.length > 0 ? sanitized[0] : null;
+}
+
+function hasCorrelationDuplicate(entry) {
+  return state.correlations.some((existing) =>
+    existing.featureIndex === entry.featureIndex &&
+    existing.outputIndex === entry.outputIndex &&
+    existing.inverse === entry.inverse,
+  );
+}
+
+function addCorrelation({ featureIndex, outputIndex, inverse }) {
+  const entry = createCorrelationEntry({ featureIndex, outputIndex, inverse });
+  if (!entry) {
+    return false;
+  }
+  if (hasCorrelationDuplicate(entry)) {
+    return false;
+  }
+  state.correlations.push(entry);
+  clearCorrelationResults({ silent: true });
+  renderCorrelationList();
+  return true;
+}
+
+function removeCorrelation(id) {
+  const index = state.correlations.findIndex((entry) => entry.id === id);
+  if (index === -1) {
+    return false;
+  }
+  state.correlations.splice(index, 1);
+  const map = ensureCorrelationResultMap();
+  map.delete(id);
+  renderCorrelationList();
+  return true;
+}
+
+function setCorrelationDialogMessage(message) {
+  const el = state.elements.correlationDialogMessage;
+  if (!el) {
+    return;
+  }
+  if (message && message.length > 0) {
+    el.textContent = message;
+    el.hidden = false;
+  } else {
+    el.textContent = '';
+    el.hidden = true;
+  }
+}
+
+function populateCorrelationOptions() {
+  const featureSelect = state.elements.correlationDialogFeature;
+  const outputSelect = state.elements.correlationDialogOutput;
+  if (featureSelect && featureSelect.options.length === 0) {
+    MUSIC_FEATURES.forEach((feature) => {
+      const option = document.createElement('option');
+      option.value = String(feature.index);
+      option.textContent = formatFeatureLabel(feature.name);
+      featureSelect.append(option);
+    });
+  }
+  if (outputSelect && outputSelect.options.length === 0) {
+    SIMULATION_FEATURES.forEach((output) => {
+      const option = document.createElement('option');
+      option.value = String(output.index);
+      option.textContent = formatOutputLabel(output.name);
+      outputSelect.append(option);
+    });
+  }
+}
+
+function resetCorrelationDialog() {
+  setCorrelationDialogMessage('');
+  if (state.elements.correlationDialogFeature) {
+    state.elements.correlationDialogFeature.selectedIndex = 0;
+  }
+  if (state.elements.correlationDialogOutput) {
+    state.elements.correlationDialogOutput.selectedIndex = 0;
+  }
+  if (state.elements.correlationDialogInverse) {
+    state.elements.correlationDialogInverse.checked = false;
+  }
+}
+
+function openCorrelationDialog() {
+  const dialog = state.elements.correlationDialog;
+  if (!dialog || state.modals.correlation.open) {
+    return;
+  }
+  populateCorrelationOptions();
+  resetCorrelationDialog();
+  dialog.hidden = false;
+  dialog.setAttribute('aria-hidden', 'false');
+  dialog.setAttribute('data-state', 'open');
+  state.modals.correlation.open = true;
+  state.modals.correlation.lastFocused = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  const featureSelect = state.elements.correlationDialogFeature;
+  if (featureSelect) {
+    featureSelect.focus();
+  }
+}
+
+function closeCorrelationDialog({ restoreFocus = true } = {}) {
+  const dialog = state.elements.correlationDialog;
+  if (!dialog || !state.modals.correlation.open) {
+    return;
+  }
+  dialog.setAttribute('aria-hidden', 'true');
+  dialog.removeAttribute('data-state');
+  dialog.hidden = true;
+  state.modals.correlation.open = false;
+  const focusTarget = restoreFocus
+    ? (state.modals.correlation.lastFocused instanceof HTMLElement
+        ? state.modals.correlation.lastFocused
+        : state.elements.addCorrelationButton)
+    : null;
+  state.modals.correlation.lastFocused = null;
+  if (focusTarget instanceof HTMLElement) {
+    focusTarget.focus();
+  }
+  setCorrelationDialogMessage('');
+}
+
+function confirmCorrelationFromDialog() {
+  const featureIndex = Number(state.elements.correlationDialogFeature?.value ?? -1);
+  const outputIndex = Number(state.elements.correlationDialogOutput?.value ?? -1);
+  const inverse = Boolean(state.elements.correlationDialogInverse?.checked);
+
+  if (!Number.isInteger(featureIndex) || featureIndex < 0 || featureIndex >= MUSIC_FEATURES.length) {
+    setCorrelationDialogMessage('Select a music feature.');
+    return;
+  }
+  if (!Number.isInteger(outputIndex) || outputIndex < 0 || outputIndex >= SIMULATION_FEATURES.length) {
+    setCorrelationDialogMessage('Select a simulation feature.');
+    return;
+  }
+
+  const added = addCorrelation({ featureIndex, outputIndex, inverse });
+  if (!added) {
+    setCorrelationDialogMessage('That correlation has already been added.');
+    return;
+  }
+  closeCorrelationDialog();
+}
+
+function handleCorrelationDialogClick(event) {
+  if (!state.modals.correlation.open) {
+    return;
+  }
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.dataset.action === 'correlation-cancel') {
+    event.preventDefault();
+    closeCorrelationDialog();
+    return;
+  }
+  if (target.dataset.action === 'correlation-add') {
+    event.preventDefault();
+    confirmCorrelationFromDialog();
+    return;
+  }
+  if (target === state.elements.correlationDialog) {
+    closeCorrelationDialog();
+  }
+}
+
+function handleAddCorrelationClick(event) {
+  event.preventDefault();
+  openCorrelationDialog();
+}
+
+function handleCorrelationListClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.dataset.action === 'remove-correlation') {
+    event.preventDefault();
+    removeCorrelation(target.dataset.id ?? '');
+  }
+}
+
+function handleCorrelationDialogKeydown(event) {
+  if (!state.modals.correlation.open) {
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    confirmCorrelationFromDialog();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    closeCorrelationDialog();
+  }
+}
+
 function formatLoss(value) {
   if (!Number.isFinite(value)) {
     return '—';
@@ -283,11 +615,15 @@ function setTrainingStatusInternal(status, detail = {}) {
   } else if (!state.analysisActive) {
     setInputsDisabled(false);
   }
+  if (status === TRAINING_STATUS.CANCELLED || status === TRAINING_STATUS.ERROR) {
+    clearCorrelationResults();
+  }
   if (Number.isFinite(state.training.progress)) {
     updateProgress(state.training.progress);
   }
   updateStatusMessage();
   renderTrainingControls();
+  renderCorrelationList();
 }
 
 function updateTrainingProgressState(progress = {}) {
@@ -297,6 +633,7 @@ function updateTrainingProgressState(progress = {}) {
   }
   updateStatusMessage();
   renderTrainingControls();
+  renderCorrelationList();
 }
 
 function resetTrainingState() {
@@ -486,6 +823,7 @@ function clearDataset() {
   state.datasetSummary = null;
   state.datasetContext = null;
   resetTrainingState();
+  clearCorrelationResults();
   updateProgress(0);
   updateSummaryDisplay();
   logByomDataset(null);
@@ -735,6 +1073,9 @@ function closeDrawer({ restoreFocus = true } = {}) {
   if (!state.open || !state.elements.drawer || !state.elements.toggle) {
     return;
   }
+  if (state.modals.correlation.open) {
+    closeCorrelationDialog({ restoreFocus: false });
+  }
   state.open = false;
   state.elements.drawer.dataset.state = 'closed';
   state.elements.drawer.setAttribute('aria-hidden', 'true');
@@ -932,6 +1273,7 @@ function handleTrain(event) {
   if (state.status !== STATUS.READY || !state.dataset) {
     return;
   }
+  clearCorrelationResults();
   if (typeof state.handlers.onTrain === 'function') {
     state.handlers.onTrain({
       file: state.file,
@@ -941,6 +1283,7 @@ function handleTrain(event) {
       dataset: state.dataset,
       summary: state.datasetSummary,
       hyperparameters: collectHyperparameters(),
+      correlations: state.correlations.map((entry) => ({ ...entry })),
     });
   } else {
     console.info(
@@ -992,6 +1335,11 @@ function handleGlobalKeydown(event) {
     return;
   }
   if (event.defaultPrevented) {
+    return;
+  }
+  if (event.key === 'Escape' && state.modals.correlation.open) {
+    event.preventDefault();
+    closeCorrelationDialog();
     return;
   }
   if (event.key === 'Escape' && state.open) {
@@ -1101,6 +1449,17 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.form = drawer.querySelector('#byom-form');
   state.elements.backdrop = drawer.querySelector('.byom-backdrop');
   state.elements.uploadSection = drawer.querySelector('.byom-upload');
+  state.elements.correlationsDetails = drawer.querySelector('#byom-correlations');
+  state.elements.correlationList = drawer.querySelector('#byom-correlation-list');
+  state.elements.addCorrelationButton = drawer.querySelector('#byom-add-correlation');
+  state.elements.correlationDialog = drawer.querySelector('#byom-correlation-dialog');
+  state.elements.correlationDialogFeature = drawer.querySelector('#byom-correlation-feature');
+  state.elements.correlationDialogOutput = drawer.querySelector('#byom-correlation-output');
+  state.elements.correlationDialogInverse = drawer.querySelector('#byom-correlation-inverse');
+  state.elements.correlationDialogCancel = drawer.querySelector('[data-action="correlation-cancel"]');
+  state.elements.correlationDialogAdd = drawer.querySelector('[data-action="correlation-add"]');
+  state.elements.correlationDialogMessage = drawer.querySelector('#byom-correlation-message');
+  state.elements.correlationEmpty = drawer.querySelector('#byom-correlation-empty');
 
   if (!state.elements.summary) {
     const summary = document.createElement('p');
@@ -1136,6 +1495,13 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.uploadSection?.addEventListener('dragover', handleDragOver);
   state.elements.uploadSection?.addEventListener('dragleave', handleDragLeave);
   state.elements.uploadSection?.addEventListener('drop', handleDrop);
+  state.elements.addCorrelationButton?.addEventListener('click', handleAddCorrelationClick);
+  state.elements.correlationList?.addEventListener('click', handleCorrelationListClick);
+  state.elements.correlationDialog?.addEventListener('click', handleCorrelationDialogClick);
+  state.elements.correlationDialog?.addEventListener('keydown', handleCorrelationDialogKeydown);
+
+  populateCorrelationOptions();
+  renderCorrelationList();
 
   state.mounted = true;
 }
@@ -1188,4 +1554,26 @@ export function updateTrainingProgress(progress) {
 
 export function reset() {
   resetForm();
+}
+
+export function setCorrelationResults(results) {
+  const map = ensureCorrelationResultMap();
+  map.clear();
+  if (Array.isArray(results)) {
+    results.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return;
+      }
+      const id = entry.id ?? entry.key ?? null;
+      if (typeof id !== 'string' && typeof id !== 'number') {
+        return;
+      }
+      const correlation = Number(entry.correlation);
+      if (!Number.isFinite(correlation)) {
+        return;
+      }
+      map.set(String(id), correlation);
+    });
+  }
+  renderCorrelationList();
 }

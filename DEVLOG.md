@@ -227,3 +227,8 @@
 - Replaced blocking alerts with a glassmorphism-styled notification stack that appears in the top-right corner and auto-dismisses after five seconds.
 - Added `js/notifications.js`, initialized the stack on boot, and rerouted BYOM prompts to use the new toasts with graceful fallbacks.
 - Confirmed repository health with `npm run lint` and `npm test`.
+
+## 2025-10-26 - BYOM Correlation Training
+- Extended the BYOM drawer with a collapsible correlations panel, add/remove flow, and modal dialog so users can target multiple feature/output pairs with direct or inverse orientation.
+- Introduced `js/byom-correlations.js` utilities, rewired the training controller to remap targets for the requested correlations, and surfaced post-training Pearson metrics beside each selection.
+- Updated the BYOM training pipeline to evaluate correlation outcomes, persist them in stats metadata, and ran `npm run lint` plus `npm test` to validate the changes.
