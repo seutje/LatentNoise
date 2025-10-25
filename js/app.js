@@ -717,7 +717,7 @@ const trainingController = createTrainingController({
 });
 
 byom.setHandlers({
-  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters }) => {
+  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters, correlations }) => {
     if (!dataset || !model) {
       byom.setTrainingStatus('error', { message: 'Training aborted — dataset is unavailable.', progress: 0 });
       return;
@@ -729,6 +729,7 @@ byom.setHandlers({
       model,
       summary,
       hyperparameters,
+      correlations: Array.isArray(correlations) ? correlations.slice() : [],
     };
     byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
     trainingController
@@ -737,6 +738,7 @@ byom.setHandlers({
         summary,
         modelUrl: model,
         hyperparameters,
+        correlations: Array.isArray(correlations) ? correlations : [],
       })
       .catch((error) => {
         console.error('[byom] training start failed', error);
