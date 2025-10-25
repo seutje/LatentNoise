@@ -262,3 +262,8 @@
 - Matched BYOM worker defaults to the CLI trainer by disabling learning rate decay and gradient clipping while switching the SGD batch size to 1.
 - Updated the drawer hyperparameter inputs to use the new defaults so in-browser training aligns with `npm run train` runs.
 - Reconfirmed repository health via `npm run lint` and `npm test`.
+
+## 2025-10-27 - Spectral Flux Amplification
+- Increased the spectral flux feature scaling by 100× before clamping so the diagnostic overlay reflects meaningful movement during playback.
+- Ensured the flux EMA smoothing still receives normalized values within `[0, 1]`.
+- Revalidated the repository with `npm run lint` and `npm test -- --watch=false`.
