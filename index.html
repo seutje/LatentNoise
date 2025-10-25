@@ -31,18 +31,6 @@
         <label for="volume">Volume <span id="volume-display">70%</span></label>
         <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7">
       </div>
-      <div class="hud-row hud-actions">
-        <button
-          id="byom-toggle"
-          class="hud-button"
-          type="button"
-          aria-haspopup="dialog"
-          aria-expanded="false"
-          aria-controls="byom-drawer"
-        >
-          BYOM Mode
-        </button>
-      </div>
     </div>
     <div id="controls" class="ui">
       <button id="prev">Prev</button>
@@ -54,6 +42,15 @@
       <button id="playlist-rename" type="button" class="playlist-action" hidden title="Rename selected BYOM entry">Rename</button>
       <button id="playlist-delete" type="button" class="playlist-action" hidden title="Delete selected BYOM entry">Delete</button>
       <button id="fullscreen" type="button">Fullscreen</button>
+      <button
+        id="byom-toggle"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-controls="byom-drawer"
+      >
+        BYOM
+      </button>
     </div>
     <input id="byom-attach-input" type="file" accept="audio/mpeg" hidden>
     <div
