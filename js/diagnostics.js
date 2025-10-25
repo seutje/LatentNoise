@@ -19,6 +19,10 @@ const diagnosticsState = {
 
 const OUTPUT_LABELS = map.PARAM_NAMES.slice();
 const FEATURE_LABELS = getFeatureLabels();
+const BAR_HALF_WIDTH = 10;
+const BAR_EMPTY_CHAR = '·';
+const BAR_FILL_CHAR = '█';
+const BAR_ZERO_CHAR = '0';
 
 function formatNumber(value, fractionDigits = 3) {
   if (!Number.isFinite(value)) {
@@ -30,6 +34,39 @@ function formatNumber(value, fractionDigits = 3) {
   return value.toFixed(fractionDigits);
 }
 
+function formatBar(value) {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+
+  const clamped = Math.max(-1, Math.min(1, value));
+  const magnitude = Math.abs(clamped);
+  let fill = Math.round(magnitude * BAR_HALF_WIDTH);
+  if (fill === 0 && magnitude > 0) {
+    fill = 1;
+  }
+  const left = new Array(BAR_HALF_WIDTH).fill(BAR_EMPTY_CHAR);
+  const right = new Array(BAR_HALF_WIDTH).fill(BAR_EMPTY_CHAR);
+
+  if (clamped < 0) {
+    for (let i = BAR_HALF_WIDTH - fill; i < BAR_HALF_WIDTH; i += 1) {
+      left[i] = BAR_FILL_CHAR;
+    }
+    if (Math.abs(value) > 1) {
+      left[0] = '‹';
+    }
+  } else if (clamped > 0) {
+    for (let i = 0; i < fill; i += 1) {
+      right[i] = BAR_FILL_CHAR;
+    }
+    if (Math.abs(value) > 1) {
+      right[BAR_HALF_WIDTH - 1] = '›';
+    }
+  }
+
+  return `|${left.join('')}${BAR_ZERO_CHAR}${right.join('')}|`;
+}
+
 function formatArray(values, labels = []) {
   if (!values || typeof values.length !== 'number') {
     return 'No data';
@@ -39,7 +76,7 @@ function formatArray(values, labels = []) {
   for (let i = 0; i < length; i += 1) {
     const label = labels[i] ?? `#${String(i).padStart(2, '0')}`;
     const rawValue = Number(values[i]);
-    const formatted = Number.isFinite(rawValue) ? formatNumber(rawValue, 4) : '—';
+    const formatted = formatBar(rawValue);
     lines.push(`${label.padEnd(16)} ${formatted}`);
   }
   return lines.join('\n');
