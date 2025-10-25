@@ -1,3 +1,7 @@
+import { projectFeatureValue, PRIMARY_WEIGHT, SECONDARY_WEIGHT } from '../correlation-math.js';
+import { FEATURE_LABELS, FEATURE_TYPES } from '../audio-features.js';
+import { PARAM_NAMES as OUTPUT_LABELS } from '../map.js';
+
 const ACTIVATIONS = {
   relu: {
     activate: (x) => (x > 0 ? x : 0),
@@ -231,6 +235,81 @@ function prepareDataset(dataset) {
   };
 }
 
+function resolveFeatureName(index) {
+  return index >= 0 && index < FEATURE_LABELS.length ? FEATURE_LABELS[index] : `feature-${index}`;
+}
+
+function resolveOutputName(index) {
+  return index >= 0 && index < OUTPUT_LABELS.length ? OUTPUT_LABELS[index] : `output-${index}`;
+}
+
+function resolveFeatureType(name) {
+  const type = FEATURE_TYPES[name];
+  return type === 'signed' ? 'signed' : 'positive';
+}
+
+function sanitizeCorrelations(raw, dataset) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new Error('Training requires at least one correlation.');
+  }
+  return raw.map((entry, index) => {
+    const featureIndex = Number(entry?.featureIndex);
+    if (!Number.isInteger(featureIndex) || featureIndex < 0 || featureIndex >= dataset.featureSize) {
+      throw new Error(`Correlation ${index + 1} references an invalid feature index.`);
+    }
+    const outputIndex = Number(entry?.outputIndex);
+    if (!Number.isInteger(outputIndex) || outputIndex < 0 || outputIndex >= dataset.targetSize) {
+      throw new Error(`Correlation ${index + 1} references an invalid output index.`);
+    }
+    const featureName = typeof entry?.featureName === 'string' && entry.featureName.length > 0
+      ? entry.featureName
+      : resolveFeatureName(featureIndex);
+    const outputName = typeof entry?.outputName === 'string' && entry.outputName.length > 0
+      ? entry.outputName
+      : resolveOutputName(outputIndex);
+    const rawType = typeof entry?.featureType === 'string' ? entry.featureType : null;
+    const featureType = rawType === 'signed' || rawType === 'positive'
+      ? rawType
+      : resolveFeatureType(featureName);
+    const inverse = Boolean(entry?.inverse);
+    const orientationSign = Number(entry?.orientationSign) === -1 ? -1 : inverse ? -1 : 1;
+    const orientation = orientationSign === -1 ? 'inverse' : 'direct';
+    const weightValue = Number(entry?.weight);
+    const weight = Number.isFinite(weightValue) && weightValue > 0
+      ? weightValue
+      : index === 0
+        ? PRIMARY_WEIGHT
+        : SECONDARY_WEIGHT;
+    return {
+      featureIndex,
+      featureName,
+      featureType,
+      outputIndex,
+      outputName,
+      inverse: orientation === 'inverse',
+      orientation,
+      orientationSign,
+      weight,
+    };
+  });
+}
+
+function computeCorrelationTargets(dataset, correlations) {
+  const correlationCount = correlations.length;
+  const buffer = new Float32Array(dataset.frameCount * correlationCount);
+  const featureSize = dataset.featureSize;
+  for (let frameIndex = 0; frameIndex < dataset.frameCount; frameIndex += 1) {
+    const featureOffset = frameIndex * featureSize;
+    const targetOffset = frameIndex * correlationCount;
+    for (let i = 0; i < correlationCount; i += 1) {
+      const correlation = correlations[i];
+      const rawValue = sanitizeFinite(dataset.features[featureOffset + correlation.featureIndex]);
+      buffer[targetOffset + i] = projectFeatureValue(rawValue, correlation.featureType, correlation.orientationSign);
+    }
+  }
+  return buffer;
+}
+
 function shuffleIndices(indices) {
   for (let i = indices.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -317,24 +396,29 @@ function normalizeInput(runtime, dataset, frameIndex) {
   return inputBuffer;
 }
 
-function computeLossAndGradients(runtime, dataset, frameIndex, invTargetSize) {
+function computeLossAndGradients(runtime, dataset, frameIndex, correlationContext) {
   const input = normalizeInput(runtime, dataset, frameIndex);
   const output = forwardPass(runtime, input);
-  const { targets, targetSize } = dataset;
-  const targetOffset = frameIndex * targetSize;
   const layers = runtime.layers;
   const lastLayer = layers[layers.length - 1];
 
+  const { correlations, correlationTargets, correlationCount } = correlationContext;
+  const targetOffset = frameIndex * correlationCount;
+  lastLayer.deltas.fill(0);
+
   let sampleLoss = 0;
-  for (let i = 0; i < targetSize; i += 1) {
-    const prediction = output[i];
-    const target = sanitizeFinite(targets[targetOffset + i]);
+  for (let i = 0; i < correlationCount; i += 1) {
+    const correlation = correlations[i];
+    const prediction = output[correlation.outputIndex];
+    const target = correlationTargets[targetOffset + i];
     const diff = prediction - target;
-    sampleLoss += diff * diff;
-    const gradient = diff * invTargetSize;
-    lastLayer.deltas[i] = gradient * lastLayer.activation.derivative(lastLayer.preActivations[i], prediction);
+    sampleLoss += 0.5 * correlation.weight * diff * diff;
+    const derivative = lastLayer.activation.derivative(
+      lastLayer.preActivations[correlation.outputIndex],
+      prediction,
+    );
+    lastLayer.deltas[correlation.outputIndex] += correlation.weight * diff * derivative;
   }
-  const lossValue = 0.5 * sampleLoss * invTargetSize;
 
   for (let layerIndex = layers.length - 2; layerIndex >= 0; layerIndex -= 1) {
     const layer = layers[layerIndex];
@@ -365,7 +449,7 @@ function computeLossAndGradients(runtime, dataset, frameIndex, invTargetSize) {
     }
   }
 
-  return lossValue;
+  return sampleLoss;
 }
 
 function applyGradients(runtime, hyper, options, sampleCount, epochLearningRate) {
@@ -424,26 +508,100 @@ function resetGradients(runtime) {
   }
 }
 
-function computeValidationLoss(runtime, dataset) {
-  const { valIndices, targetSize } = dataset;
+function computeValidationLoss(runtime, dataset, correlationContext) {
+  const { valIndices } = dataset;
   if (!valIndices || valIndices.length === 0) {
     return null;
   }
-  const invTargetSize = 1 / targetSize;
+  const { correlations, correlationTargets, correlationCount } = correlationContext;
   let totalLoss = 0;
   for (let i = 0; i < valIndices.length; i += 1) {
     const frameIndex = valIndices[i];
     const input = normalizeInput(runtime, dataset, frameIndex);
     const output = forwardPass(runtime, input);
-    const targetOffset = frameIndex * targetSize;
+    const targetOffset = frameIndex * correlationCount;
     let sampleLoss = 0;
-    for (let j = 0; j < targetSize; j += 1) {
-      const diff = output[j] - dataset.targets[targetOffset + j];
-      sampleLoss += diff * diff;
+    for (let j = 0; j < correlationCount; j += 1) {
+      const correlation = correlations[j];
+      const target = correlationTargets[targetOffset + j];
+      const diff = output[correlation.outputIndex] - target;
+      sampleLoss += 0.5 * correlation.weight * diff * diff;
     }
-    totalLoss += 0.5 * sampleLoss * invTargetSize;
+    totalLoss += sampleLoss;
   }
   return totalLoss / valIndices.length;
+}
+
+function evaluateCorrelationMetrics(runtime, dataset, correlationContext) {
+  const { correlations, correlationTargets, correlationCount } = correlationContext;
+  const aggregator = correlations.map(() => ({
+    sumFeature: 0,
+    sumOutput: 0,
+    sumFeatureSq: 0,
+    sumOutputSq: 0,
+    sumFeatureOutput: 0,
+    mse: 0,
+  }));
+  const featureSize = dataset.featureSize;
+  for (let frameIndex = 0; frameIndex < dataset.frameCount; frameIndex += 1) {
+    const input = normalizeInput(runtime, dataset, frameIndex);
+    const output = forwardPass(runtime, input);
+    const featureOffset = frameIndex * featureSize;
+    const targetOffset = frameIndex * correlationCount;
+    for (let i = 0; i < correlationCount; i += 1) {
+      const correlation = correlations[i];
+      const featureValue = sanitizeFinite(dataset.features[featureOffset + correlation.featureIndex]);
+      const prediction = output[correlation.outputIndex];
+      const target = correlationTargets[targetOffset + i];
+      const bucket = aggregator[i];
+      bucket.sumFeature += featureValue;
+      bucket.sumOutput += prediction;
+      bucket.sumFeatureSq += featureValue * featureValue;
+      bucket.sumOutputSq += prediction * prediction;
+      bucket.sumFeatureOutput += featureValue * prediction;
+      const error = prediction - target;
+      bucket.mse += error * error;
+    }
+  }
+  const n = dataset.frameCount || 1;
+  const perCorrelation = aggregator.map((entry, index) => {
+    const numerator = n * entry.sumFeatureOutput - entry.sumFeature * entry.sumOutput;
+    const denomFeature = n * entry.sumFeatureSq - entry.sumFeature * entry.sumFeature;
+    const denomOutput = n * entry.sumOutputSq - entry.sumOutput * entry.sumOutput;
+    const denominator = Math.sqrt(Math.max(denomFeature, 0) * Math.max(denomOutput, 0));
+    const correlationValue = denominator > 0 ? numerator / denominator : 0;
+    const fitness = correlationValue * correlations[index].orientationSign;
+    return {
+      featureIndex: correlations[index].featureIndex,
+      featureName: correlations[index].featureName,
+      featureType: correlations[index].featureType,
+      outputIndex: correlations[index].outputIndex,
+      outputName: correlations[index].outputName,
+      inverse: correlations[index].inverse,
+      orientation: correlations[index].orientation,
+      orientationSign: correlations[index].orientationSign,
+      weight: correlations[index].weight,
+      correlation: correlationValue,
+      fitness,
+      mse: entry.mse / n,
+    };
+  });
+  const totalWeight = correlations.reduce((sum, correlation) => sum + correlation.weight, 0);
+  const combinedFitness =
+    totalWeight > 0
+      ? perCorrelation.reduce(
+          (sum, metrics, index) => sum + correlations[index].weight * metrics.fitness,
+          0,
+        ) / totalWeight
+      : 0;
+  const averageMse =
+    perCorrelation.reduce((sum, metrics) => sum + metrics.mse, 0) /
+    (perCorrelation.length || 1);
+  return {
+    perCorrelation,
+    combinedFitness,
+    averageMse,
+  };
 }
 
 function buildUpdatedModelDefinition(baseModel, runtime) {
@@ -467,12 +625,18 @@ function buildUpdatedModelDefinition(baseModel, runtime) {
 
 async function trainModel(payload) {
   const dataset = prepareDataset(payload.dataset);
+  const correlations = sanitizeCorrelations(payload.correlations, dataset);
+  const correlationTargets = computeCorrelationTargets(dataset, correlations);
+  const correlationContext = {
+    correlations,
+    correlationTargets,
+    correlationCount: correlations.length,
+  };
   const runtime = buildRuntimeModel(payload.model);
   const hyper = sanitizeHyper(payload.hyperparameters);
   const options = sanitizeOptions(payload.options);
 
   const trainIndices = dataset.trainIndices;
-  const invTargetSize = 1 / dataset.targetSize;
   const batchesPerEpoch = Math.max(1, Math.ceil(trainIndices.length / hyper.batchSize));
   const totalBatches = batchesPerEpoch * hyper.epochs;
   let processedBatches = 0;
@@ -511,7 +675,7 @@ async function trainModel(payload) {
       let batchLoss = 0;
       for (let i = startIndex; i < endIndex; i += 1) {
         const frameIndex = trainIndices[i];
-        batchLoss += computeLossAndGradients(runtime, dataset, frameIndex, invTargetSize);
+        batchLoss += computeLossAndGradients(runtime, dataset, frameIndex, correlationContext);
       }
 
       applyGradients(runtime, hyper, options, endIndex - startIndex, epochLearningRate);
@@ -548,7 +712,7 @@ async function trainModel(payload) {
       break;
     }
 
-    lastValidationLoss = computeValidationLoss(runtime, dataset);
+    lastValidationLoss = computeValidationLoss(runtime, dataset, correlationContext);
     postProgress({
       epoch: epoch + 1,
       epochs: hyper.epochs,
@@ -576,7 +740,10 @@ async function trainModel(payload) {
     elapsedMs,
     startedAt,
     samplesProcessed: samplesProcessedTotal,
+    correlationMetrics: evaluateCorrelationMetrics(runtime, dataset, correlationContext),
   };
+
+  stats.correlations = stats.correlationMetrics.perCorrelation;
 
   const model = buildUpdatedModelDefinition(payload.model, runtime);
   postResult({ model }, stats);

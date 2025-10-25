@@ -529,6 +529,114 @@ body.fullscreen-active #byom-drawer {
   color: rgba(245, 247, 255, 0.7);
 }
 
+.byom-correlations details {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem 1rem;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.byom-correlations summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  outline: none;
+}
+
+.byom-correlations summary::-webkit-details-marker {
+  display: none;
+}
+
+.byom-correlations[open] summary {
+  color: rgba(245, 247, 255, 0.9);
+}
+
+.byom-correlation-list {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.byom-correlation-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.85rem;
+  background: rgba(10, 12, 20, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.byom-inline-button {
+  font: inherit;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 999px;
+  padding: 0.25rem 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.byom-inline-button:hover,
+.byom-inline-button:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.byom-inline-button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.byom-correlation-label {
+  font-size: 0.78rem;
+  color: rgba(245, 247, 255, 0.82);
+  letter-spacing: 0.04em;
+}
+
+.byom-correlation-label strong {
+  font-weight: 600;
+}
+
+.byom-correlation-result {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+  color: rgba(130, 207, 255, 0.9);
+}
+
+.byom-correlation-add {
+  margin-top: 0.75rem;
+  align-self: flex-start;
+}
+
+.byom-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.byom-checkbox input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+
 .byom-field select,
 .byom-field input,
 #byom-form input[type='number'],
@@ -706,6 +814,57 @@ body.fullscreen-active #byom-drawer {
   border-color: rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.18);
   transform: translateY(-1px);
+}
+
+.byom-dialog {
+  border: none;
+  border-radius: 1.25rem;
+  padding: 1.4rem 1.6rem 1.6rem;
+  background: rgba(12, 14, 24, 0.96);
+  color: var(--text);
+  width: min(28rem, 90vw);
+  max-width: 90vw;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+}
+
+.byom-dialog::backdrop {
+  background: rgba(5, 6, 10, 0.62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.byom-dialog[open],
+.byom-dialog[data-open='true'] {
+  display: block;
+}
+
+.byom-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.byom-dialog-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 520px) {
+  .byom-dialog-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: center;
+  }
+
+  .byom-dialog-grid label:nth-of-type(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+.byom-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 #debug-overlay {

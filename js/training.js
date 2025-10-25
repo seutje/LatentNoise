@@ -86,6 +86,7 @@ export function createController(callbacks) {
     activeDataset: null,
     activeSummary: null,
     activeHyper: null,
+    activeCorrelations: [],
     warmupSample: null,
     cancelRequested: false,
     options: {
@@ -140,7 +141,7 @@ export function createController(callbacks) {
     if (!options || typeof options !== 'object') {
       throw new TypeError('Training options must be an object.');
     }
-    const { dataset, summary, modelUrl, hyperparameters } = options;
+    const { dataset, summary, modelUrl, hyperparameters, correlations } = options;
     if (!modelUrl || typeof modelUrl !== 'string') {
       throw new Error('Training requires a modelUrl string.');
     }
@@ -150,10 +151,14 @@ export function createController(callbacks) {
     if (!dataset.targets || !(dataset.targets instanceof Float32Array)) {
       throw new Error('Training dataset missing Float32Array targets.');
     }
+    if (!Array.isArray(correlations) || correlations.length === 0) {
+      throw new Error('Training requires at least one correlation.');
+    }
 
     state.activeDataset = dataset;
     state.activeSummary = summary ?? null;
     state.activeHyper = sanitizeHyperparameters(hyperparameters);
+    state.activeCorrelations = correlations.map((correlation) => ({ ...correlation }));
     state.warmupSample = dataset.features.slice(0, dataset.featureSize);
     state.cancelRequested = false;
     state.lastProgressAt = 0;
@@ -208,6 +213,8 @@ export function createController(callbacks) {
       metadata: dataset.metadata ? { ...dataset.metadata } : null,
     };
 
+    const correlationPayload = state.activeCorrelations.map((correlation) => ({ ...correlation }));
+
     worker.postMessage(
       {
         type: 'train',
@@ -215,6 +222,7 @@ export function createController(callbacks) {
           dataset: datasetPayload,
           model: modelDefinition,
           hyperparameters: state.activeHyper,
+          correlations: correlationPayload,
           options: {
             learningRateDecay: state.options.learningRateDecay,
             minLearningRate: state.options.minLearningRate,
@@ -280,6 +288,7 @@ export function createController(callbacks) {
     state.activeDataset = null;
     state.activeSummary = null;
     state.activeHyper = null;
+    state.activeCorrelations = [];
     state.warmupSample = null;
   }
 
@@ -389,6 +398,7 @@ export function createController(callbacks) {
       status: state.status,
       hyperparameters: state.activeHyper,
       summary: state.activeSummary,
+      correlations: state.activeCorrelations.slice(),
     };
   }
 

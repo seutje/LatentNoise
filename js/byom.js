@@ -1,6 +1,9 @@
 import { listPresets } from './presets.js';
 import { analyzeFile } from './byom-intake.js';
 import { logByomDataset } from './diagnostics.js';
+import { FEATURE_LABELS, FEATURE_TYPES } from './audio-features.js';
+import { PARAM_NAMES as OUTPUT_LABELS } from './map.js';
+import { PRIMARY_WEIGHT, SECONDARY_WEIGHT, formatCorrelation } from './correlation-math.js';
 
 const STATUS = Object.freeze({
   IDLE: 'idle',
@@ -72,6 +75,343 @@ const FOCUSABLE_SELECTORS = [
 ];
 const FOCUSABLE_QUERY = FOCUSABLE_SELECTORS.join(',');
 
+const ORIENTATION_INFO = Object.freeze({
+  direct: { label: 'Direct', orientation: 'direct', inverse: false, sign: 1 },
+  inverse: { label: 'Inverse', orientation: 'inverse', inverse: true, sign: -1 },
+});
+
+function makeCorrelationId(featureIndex, outputIndex, orientationSign) {
+  const sign = orientationSign === -1 ? 'inv' : 'dir';
+  return `${featureIndex}:${outputIndex}:${sign}`;
+}
+
+function getFeatureTypeByName(name) {
+  const type = FEATURE_TYPES[name];
+  return type === 'signed' ? 'signed' : 'positive';
+}
+
+function resolveOrientation(inverse) {
+  return inverse ? ORIENTATION_INFO.inverse : ORIENTATION_INFO.direct;
+}
+
+function assignCorrelationWeights() {
+  state.correlations.forEach((correlation, index) => {
+    correlation.weight = index === 0 ? PRIMARY_WEIGHT : SECONDARY_WEIGHT;
+  });
+}
+
+function clearCorrelationMetrics() {
+  state.correlationResults.clear();
+  renderCorrelationList();
+}
+
+function updateCorrelationControlsDisabledState() {
+  const disabled = !state.support || state.inputsDisabled;
+  if (state.elements.addCorrelationButton) {
+    state.elements.addCorrelationButton.disabled = disabled;
+    state.elements.addCorrelationButton.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  }
+  if (!state.elements.correlationList) {
+    return;
+  }
+  const buttons = state.elements.correlationList.querySelectorAll('button[data-action="remove-correlation"]');
+  buttons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    button.disabled = disabled;
+    button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  });
+}
+
+function renderCorrelationList() {
+  const list = state.elements.correlationList;
+  const emptyState = state.elements.correlationEmpty;
+  if (!list) {
+    return;
+  }
+  list.innerHTML = '';
+  if (state.correlations.length === 0) {
+    if (emptyState) {
+      emptyState.hidden = false;
+    }
+    updateCorrelationControlsDisabledState();
+    return;
+  }
+  if (emptyState) {
+    emptyState.hidden = true;
+  }
+  state.correlations.forEach((correlation) => {
+    const item = document.createElement('li');
+    item.className = 'byom-correlation-item';
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'byom-inline-button';
+    removeButton.dataset.action = 'remove-correlation';
+    removeButton.dataset.id = correlation.id;
+    removeButton.textContent = 'Remove';
+    removeButton.disabled = state.inputsDisabled || !state.support;
+    removeButton.setAttribute('aria-disabled', removeButton.disabled ? 'true' : 'false');
+
+    const label = document.createElement('span');
+    label.className = 'byom-correlation-label';
+    const featureStrong = document.createElement('strong');
+    featureStrong.textContent = correlation.featureName;
+    label.append(featureStrong);
+    label.append(document.createTextNode(` → ${correlation.outputName} (${resolveOrientation(correlation.inverse).label})`));
+
+    const result = state.correlationResults.get(correlation.id);
+    const value = result && Number.isFinite(result.correlation) ? result.correlation : null;
+    const resultSpan = document.createElement('span');
+    resultSpan.className = 'byom-correlation-result';
+    resultSpan.textContent = value === null ? '—' : formatCorrelation(value);
+    if (value !== null) {
+      resultSpan.title = `Pearson correlation ${formatCorrelation(value)}`;
+    } else {
+      resultSpan.removeAttribute('title');
+    }
+
+    item.append(removeButton, label, resultSpan);
+    list.append(item);
+  });
+  updateCorrelationControlsDisabledState();
+}
+
+function populateCorrelationSelectors() {
+  const featureSelect = state.elements.correlationFeatureSelect;
+  const outputSelect = state.elements.correlationOutputSelect;
+  if (featureSelect) {
+    featureSelect.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select feature';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    placeholder.hidden = true;
+    featureSelect.append(placeholder);
+    FEATURE_LABELS.forEach((label, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = label;
+      featureSelect.append(option);
+    });
+  }
+  if (outputSelect) {
+    outputSelect.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select output';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    placeholder.hidden = true;
+    outputSelect.append(placeholder);
+    OUTPUT_LABELS.forEach((label, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = label;
+      outputSelect.append(option);
+    });
+  }
+}
+
+function resetCorrelationDialog() {
+  state.elements.correlationForm?.reset();
+  if (state.elements.correlationError) {
+    state.elements.correlationError.textContent = '';
+    state.elements.correlationError.hidden = true;
+  }
+}
+
+function openCorrelationDialog() {
+  if (!state.support) {
+    return;
+  }
+  resetCorrelationDialog();
+  const dialog = state.elements.correlationDialog;
+  if (!dialog) {
+    return;
+  }
+  try {
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', 'true');
+      dialog.dataset.open = 'true';
+    }
+  } catch (error) {
+    console.warn('[byom] Failed to open correlation dialog', error);
+  }
+  state.elements.correlationFeatureSelect?.focus();
+}
+
+function closeCorrelationDialog() {
+  const dialog = state.elements.correlationDialog;
+  if (!dialog) {
+    return;
+  }
+  if (typeof dialog.close === 'function') {
+    dialog.close();
+  } else {
+    dialog.removeAttribute('open');
+    dialog.dataset.open = 'false';
+  }
+  resetCorrelationDialog();
+}
+
+function showCorrelationError(message) {
+  if (!state.elements.correlationError) {
+    return;
+  }
+  state.elements.correlationError.hidden = false;
+  state.elements.correlationError.textContent = message;
+}
+
+function createCorrelationDefinition({ featureIndex, outputIndex, inverse }) {
+  const featureIdx = Number(featureIndex);
+  const outputIdx = Number(outputIndex);
+  if (!Number.isInteger(featureIdx) || featureIdx < 0 || featureIdx >= FEATURE_LABELS.length) {
+    return null;
+  }
+  if (!Number.isInteger(outputIdx) || outputIdx < 0 || outputIdx >= OUTPUT_LABELS.length) {
+    return null;
+  }
+  const featureName = FEATURE_LABELS[featureIdx] ?? `feature-${featureIdx}`;
+  const outputName = OUTPUT_LABELS[outputIdx] ?? `output-${outputIdx}`;
+  const orientation = resolveOrientation(Boolean(inverse));
+  return {
+    id: makeCorrelationId(featureIdx, outputIdx, orientation.sign),
+    featureIndex: featureIdx,
+    featureName,
+    featureType: getFeatureTypeByName(featureName),
+    outputIndex: outputIdx,
+    outputName,
+    inverse: orientation.inverse,
+    orientation: orientation.orientation,
+    orientationSign: orientation.sign,
+    weight: 0,
+  };
+}
+
+function removeCorrelation(id) {
+  const index = state.correlations.findIndex((correlation) => correlation.id === id);
+  if (index === -1) {
+    return;
+  }
+  state.correlations.splice(index, 1);
+  state.correlationResults.delete(id);
+  assignCorrelationWeights();
+  renderCorrelationList();
+  updateTrainAvailability();
+  updateStatusMessage();
+}
+
+function handleCorrelationListClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.dataset.action === 'remove-correlation') {
+    const id = target.dataset.id;
+    if (typeof id === 'string' && id.length > 0) {
+      removeCorrelation(id);
+    }
+  }
+}
+
+function addCorrelation(definition) {
+  if (!definition) {
+    return false;
+  }
+  const exists = state.correlations.some((correlation) => correlation.id === definition.id);
+  if (exists) {
+    showCorrelationError('That correlation already exists. Choose another combination.');
+    return false;
+  }
+  state.correlations.push(definition);
+  state.correlationResults.delete(definition.id);
+  assignCorrelationWeights();
+  renderCorrelationList();
+  updateTrainAvailability();
+  updateStatusMessage();
+  return true;
+}
+
+function handleCorrelationFormSubmit(event) {
+  event.preventDefault();
+  if (state.inputsDisabled || !state.support) {
+    return;
+  }
+  const featureValue = state.elements.correlationFeatureSelect?.value ?? '';
+  const outputValue = state.elements.correlationOutputSelect?.value ?? '';
+  const inverse = Boolean(state.elements.correlationInverse?.checked);
+  const definition = createCorrelationDefinition({ featureIndex: featureValue, outputIndex: outputValue, inverse });
+  if (!definition) {
+    showCorrelationError('Select a valid feature and output to continue.');
+    return;
+  }
+  const added = addCorrelation(definition);
+  if (added) {
+    closeCorrelationDialog();
+    state.elements.addCorrelationButton?.focus();
+  }
+}
+
+function handleAddCorrelationClick(event) {
+  event.preventDefault();
+  if (state.inputsDisabled || !state.support) {
+    return;
+  }
+  openCorrelationDialog();
+}
+
+function handleCorrelationDialogCancel(event) {
+  event.preventDefault();
+  closeCorrelationDialog();
+}
+
+function getCorrelationDefinitions() {
+  assignCorrelationWeights();
+  return state.correlations.map((correlation) => ({
+    featureIndex: correlation.featureIndex,
+    featureName: correlation.featureName,
+    featureType: correlation.featureType,
+    outputIndex: correlation.outputIndex,
+    outputName: correlation.outputName,
+    inverse: correlation.inverse,
+    orientation: correlation.orientation,
+    orientationSign: correlation.orientationSign,
+    weight: correlation.weight,
+  }));
+}
+
+function applyCorrelationMetrics(metrics) {
+  if (!metrics) {
+    return;
+  }
+  const entries = Array.isArray(metrics.perCorrelation)
+    ? metrics.perCorrelation
+    : Array.isArray(metrics.correlations)
+      ? metrics.correlations
+      : [];
+  if (entries.length === 0) {
+    return;
+  }
+  state.correlationResults.clear();
+  entries.forEach((entry) => {
+    const featureIndex = Number(entry.featureIndex);
+    const outputIndex = Number(entry.outputIndex);
+    const orientationSign = Number(entry.orientationSign) === -1 ? -1 : 1;
+    const id = makeCorrelationId(featureIndex, outputIndex, orientationSign);
+    state.correlationResults.set(id, {
+      correlation: Number(entry.correlation),
+      fitness: Number(entry.fitness),
+      orientationSign,
+    });
+  });
+  renderCorrelationList();
+}
+
 function detectSupport() {
   if (typeof window === 'undefined') {
     return false;
@@ -87,6 +427,7 @@ const state = {
   open: false,
   status: STATUS.IDLE,
   support: detectSupport(),
+  inputsDisabled: false,
   file: null,
   fileName: '',
   objectUrl: '',
@@ -97,6 +438,8 @@ const state = {
   analysisToken: 0,
   analysisActive: false,
   lastError: null,
+  correlations: [],
+  correlationResults: new Map(),
   training: {
     status: TRAINING_STATUS.IDLE,
     active: false,
@@ -125,6 +468,16 @@ const state = {
     backdrop: null,
     uploadSection: null,
     summary: null,
+    correlationSection: null,
+    correlationList: null,
+    correlationEmpty: null,
+    addCorrelationButton: null,
+    correlationDialog: null,
+    correlationForm: null,
+    correlationFeatureSelect: null,
+    correlationOutputSelect: null,
+    correlationInverse: null,
+    correlationError: null,
   },
   options: {
     modelOptions: [],
@@ -172,6 +525,9 @@ function updateStatusMessage() {
           ? state.lastError
           : undefined,
     });
+    if (state.status === STATUS.READY && state.correlations.length === 0) {
+      message = 'Dataset ready — add at least one correlation to enable training.';
+    }
   }
   if (state.elements.statusText) {
     state.elements.statusText.textContent = message;
@@ -190,7 +546,7 @@ function updateTrainAvailability() {
     renderTrainingControls();
     return;
   }
-  const ready = state.status === STATUS.READY;
+  const ready = state.status === STATUS.READY && state.correlations.length > 0;
   state.elements.trainButton.disabled = !ready;
   state.elements.trainButton.setAttribute('aria-disabled', ready ? 'false' : 'true');
   renderTrainingControls();
@@ -278,6 +634,11 @@ function setTrainingStatusInternal(status, detail = {}) {
   state.training.status = status;
   state.training.active = ACTIVE_TRAINING_STATUSES.has(status);
   applyTrainingDetail(detail);
+  if (detail?.correlationMetrics) {
+    applyCorrelationMetrics(detail.correlationMetrics);
+  } else if (Array.isArray(detail?.correlations)) {
+    applyCorrelationMetrics({ perCorrelation: detail.correlations });
+  }
   if (state.training.active) {
     setInputsDisabled(true);
   } else if (!state.analysisActive) {
@@ -332,7 +693,7 @@ function renderTrainingControls() {
     status === TRAINING_STATUS.COMPLETED ||
     status === TRAINING_STATUS.CANCELLED ||
     status === TRAINING_STATUS.ERROR;
-  const datasetReady = state.status === STATUS.READY;
+  const datasetReady = state.status === STATUS.READY && state.correlations.length > 0;
 
   let trainLabel = 'Train Model';
   let trainDisabled = !datasetReady;
@@ -507,6 +868,7 @@ function selectFile(file) {
   state.file = file ?? null;
   state.fileName = file ? file.name : '';
   state.lastError = null;
+  clearCorrelationMetrics();
   if (file) {
     try {
       state.objectUrl = URL.createObjectURL(file);
@@ -535,6 +897,7 @@ function getFileSignature(file) {
 function setInputsDisabled(disabled) {
   const targets = [state.elements.fileInput, state.elements.presetSelect, state.elements.modelSelect];
   const lock = disabled || state.training.active;
+  state.inputsDisabled = lock;
   targets.forEach((el) => {
     if (!el) {
       return;
@@ -547,6 +910,7 @@ function setInputsDisabled(disabled) {
       el.disabled = false;
     }
   });
+  updateCorrelationControlsDisabledState();
 }
 
 function ensureDataset() {
@@ -932,6 +1296,16 @@ function handleTrain(event) {
   if (state.status !== STATUS.READY || !state.dataset) {
     return;
   }
+  if (state.correlations.length === 0) {
+    showCorrelationError('Add at least one correlation before training.');
+    return;
+  }
+  const correlations = getCorrelationDefinitions();
+  if (correlations.length === 0) {
+    showCorrelationError('Add at least one correlation before training.');
+    return;
+  }
+  clearCorrelationMetrics();
   if (typeof state.handlers.onTrain === 'function') {
     state.handlers.onTrain({
       file: state.file,
@@ -941,6 +1315,7 @@ function handleTrain(event) {
       dataset: state.dataset,
       summary: state.datasetSummary,
       hyperparameters: collectHyperparameters(),
+      correlations,
     });
   } else {
     console.info(
@@ -949,6 +1324,7 @@ function handleTrain(event) {
       state.elements.presetSelect?.value,
       state.elements.modelSelect?.value,
       state.datasetSummary,
+      correlations,
     );
   }
 }
@@ -1066,6 +1442,8 @@ function updateSupportVisibility() {
     state.elements.toggle.removeAttribute('disabled');
     state.elements.toggle.removeAttribute('aria-disabled');
     state.elements.toggle.title = '';
+    state.elements.correlationSection?.removeAttribute('aria-hidden');
+    updateCorrelationControlsDisabledState();
     return;
   }
   state.elements.toggle.disabled = true;
@@ -1078,6 +1456,10 @@ function updateSupportVisibility() {
   if (state.elements.statusText) {
     state.elements.statusText.textContent = 'BYOM mode is unavailable in this environment.';
   }
+  if (state.elements.correlationSection) {
+    state.elements.correlationSection.setAttribute('aria-hidden', 'true');
+  }
+  updateCorrelationControlsDisabledState();
 }
 
 export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } = {}) {
@@ -1101,6 +1483,16 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.form = drawer.querySelector('#byom-form');
   state.elements.backdrop = drawer.querySelector('.byom-backdrop');
   state.elements.uploadSection = drawer.querySelector('.byom-upload');
+  state.elements.correlationSection = drawer.querySelector('.byom-correlations');
+  state.elements.correlationList = drawer.querySelector('#byom-correlation-list');
+  state.elements.correlationEmpty = drawer.querySelector('#byom-correlation-empty');
+  state.elements.addCorrelationButton = drawer.querySelector('#byom-add-correlation');
+  state.elements.correlationDialog = drawer.querySelector('#byom-correlation-dialog');
+  state.elements.correlationForm = drawer.querySelector('#byom-correlation-form');
+  state.elements.correlationFeatureSelect = drawer.querySelector('#byom-correlation-feature');
+  state.elements.correlationOutputSelect = drawer.querySelector('#byom-correlation-output');
+  state.elements.correlationInverse = drawer.querySelector('#byom-correlation-inverse');
+  state.elements.correlationError = drawer.querySelector('#byom-correlation-error');
 
   if (!state.elements.summary) {
     const summary = document.createElement('p');
@@ -1117,9 +1509,12 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.options.modelOptions = Array.isArray(modelOptions) ? modelOptions.slice() : [];
   populatePresetOptions();
   populateModelOptions(state.options.modelOptions);
+  populateCorrelationSelectors();
+  renderCorrelationList();
   updateSupportVisibility();
   updateProgress(0);
   setStatus(STATUS.IDLE);
+  updateCorrelationControlsDisabledState();
 
   state.elements.toggle.addEventListener('click', handleToggleClick);
   state.elements.drawer.addEventListener('click', handleDrawerClick);
@@ -1136,6 +1531,12 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.uploadSection?.addEventListener('dragover', handleDragOver);
   state.elements.uploadSection?.addEventListener('dragleave', handleDragLeave);
   state.elements.uploadSection?.addEventListener('drop', handleDrop);
+  state.elements.addCorrelationButton?.addEventListener('click', handleAddCorrelationClick);
+  state.elements.correlationList?.addEventListener('click', handleCorrelationListClick);
+  state.elements.correlationForm?.addEventListener('submit', handleCorrelationFormSubmit);
+  const correlationCancelButton = state.elements.correlationDialog?.querySelector('button[data-action="cancel-correlation"]');
+  correlationCancelButton?.addEventListener('click', handleCorrelationDialogCancel);
+  state.elements.correlationDialog?.addEventListener('cancel', handleCorrelationDialogCancel);
 
   state.mounted = true;
 }
