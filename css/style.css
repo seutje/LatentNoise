@@ -474,6 +474,82 @@ body.fullscreen-active #byom-drawer {
   text-transform: uppercase;
 }
 
+.byom-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.byom-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1.6rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.byom-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.9rem;
+  border: none;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: transparent;
+  color: inherit;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.byom-tab[aria-selected='true'] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.byom-tab:hover,
+.byom-tab:focus-visible {
+  outline: none;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.byom-panels {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.byom-tabpanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#byom-panel-training {
+  flex: 1;
+  display: flex;
+}
+
+#byom-panel-training[hidden] {
+  display: none;
+}
+
+#byom-panel-manager {
+  gap: 1.4rem;
+  padding: 0 1.6rem 2rem;
+  overflow-y: auto;
+}
+
+#byom-panel-manager[hidden] {
+  display: none;
+}
+
 .byom-close {
   background: transparent;
   border: none;
@@ -498,6 +574,10 @@ body.fullscreen-active #byom-drawer {
   gap: 1.4rem;
   padding: 0 1.6rem 2rem;
   overflow-y: auto;
+}
+
+#byom-panel-training > #byom-form {
+  flex: 1;
 }
 
 .byom-section {
@@ -782,6 +862,66 @@ body.fullscreen-active #byom-drawer {
   justify-content: flex-end;
   gap: 0.75rem;
   padding-bottom: 1.5rem;
+}
+
+.byom-manager-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.byom-manager-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.byom-manager-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.byom-manager-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.byom-manager-meta strong {
+  font-size: 0.9rem;
+}
+
+.byom-manager-meta span {
+  opacity: 0.8;
+}
+
+.byom-manager-actions-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+#byom-manager-status[data-tone='success'] {
+  color: #4ade80;
+}
+
+#byom-manager-status[data-tone='warning'] {
+  color: #fbbf24;
+}
+
+#byom-manager-status[data-tone='error'] {
+  color: #f87171;
 }
 
 .byom-primary,

@@ -5,6 +5,13 @@ import { FEATURE_LABELS, FEATURE_TYPES } from './audio-features.js';
 import { PARAM_NAMES as OUTPUT_LABELS } from './map.js';
 import { PRIMARY_WEIGHT, SECONDARY_WEIGHT, formatCorrelation } from './correlation-math.js';
 import { FRESH_MODEL_ID, FRESH_MODEL_LABEL } from './byom-constants.js';
+import {
+  listEntries as listStoredEntries,
+  getEntry as getStoredEntry,
+  putEntry as storeEntry,
+  STORAGE_PATH,
+} from './byom-storage.js';
+import { extractImportEntries, createExportFileName } from './byom-manager-utils.js';
 
 const STATUS = Object.freeze({
   IDLE: 'idle',
@@ -75,6 +82,18 @@ const FOCUSABLE_SELECTORS = [
   'details summary',
 ];
 const FOCUSABLE_QUERY = FOCUSABLE_SELECTORS.join(',');
+
+const TABS = Object.freeze({
+  TRAINING: 'training',
+  MANAGER: 'manager',
+});
+
+const MANAGER_STATUS_TONES = Object.freeze({
+  INFO: 'info',
+  SUCCESS: 'success',
+  WARNING: 'warning',
+  ERROR: 'error',
+});
 
 const ORIENTATION_INFO = Object.freeze({
   direct: { label: 'Direct', orientation: 'direct', inverse: false, sign: 1 },
@@ -429,6 +448,7 @@ const state = {
   status: STATUS.IDLE,
   support: detectSupport(),
   inputsDisabled: false,
+  activeTab: TABS.TRAINING,
   file: null,
   fileName: '',
   objectUrl: '',
@@ -441,6 +461,14 @@ const state = {
   lastError: null,
   correlations: [],
   correlationResults: new Map(),
+  manager: {
+    loading: false,
+    importing: false,
+    loaded: false,
+    loadToken: 0,
+    entries: [],
+    statusTone: MANAGER_STATUS_TONES.INFO,
+  },
   training: {
     status: TRAINING_STATUS.IDLE,
     active: false,
@@ -479,6 +507,16 @@ const state = {
     correlationOutputSelect: null,
     correlationInverse: null,
     correlationError: null,
+    tablist: null,
+    trainingTab: null,
+    managerTab: null,
+    trainingPanel: null,
+    managerPanel: null,
+    managerImportButton: null,
+    managerImportInput: null,
+    managerStatus: null,
+    managerList: null,
+    managerEmpty: null,
   },
   options: {
     modelOptions: [],
@@ -488,6 +526,7 @@ const state = {
     onCancel: null,
     onPause: null,
     onResume: null,
+    onImportEntries: null,
   },
   lastFocusedElement: null,
 };
@@ -502,6 +541,9 @@ function getFocusableElements() {
       return false;
     }
     if (el.hasAttribute('disabled') || el.getAttribute('aria-hidden') === 'true') {
+      return false;
+    }
+    if (el.closest('[hidden]')) {
       return false;
     }
     if (el.tabIndex < 0) {
@@ -1479,6 +1521,449 @@ function populateModelOptions(modelOptions) {
   }
 }
 
+function getTabButtons() {
+  const tabs = [];
+  if (state.elements.trainingTab instanceof HTMLElement) {
+    tabs.push(state.elements.trainingTab);
+  }
+  if (state.elements.managerTab instanceof HTMLElement) {
+    tabs.push(state.elements.managerTab);
+  }
+  return tabs;
+}
+
+function setActiveTab(tabId, { focus = false } = {}) {
+  const nextTab = tabId === TABS.MANAGER ? TABS.MANAGER : TABS.TRAINING;
+  state.activeTab = nextTab;
+
+  const trainingSelected = nextTab === TABS.TRAINING;
+  const managerSelected = nextTab === TABS.MANAGER;
+
+  if (state.elements.trainingTab) {
+    state.elements.trainingTab.setAttribute('aria-selected', trainingSelected ? 'true' : 'false');
+    state.elements.trainingTab.tabIndex = trainingSelected ? 0 : -1;
+  }
+  if (state.elements.managerTab) {
+    state.elements.managerTab.setAttribute('aria-selected', managerSelected ? 'true' : 'false');
+    state.elements.managerTab.tabIndex = managerSelected ? 0 : -1;
+  }
+  if (state.elements.trainingPanel) {
+    state.elements.trainingPanel.hidden = !trainingSelected;
+  }
+  if (state.elements.managerPanel) {
+    state.elements.managerPanel.hidden = !managerSelected;
+  }
+
+  if (focus) {
+    const activeTabEl = nextTab === TABS.MANAGER ? state.elements.managerTab : state.elements.trainingTab;
+    activeTabEl?.focus();
+  }
+
+  if (managerSelected) {
+    if (!state.manager.loaded && !state.manager.loading) {
+      refreshManagerEntriesInternal({ silent: true });
+    } else {
+      renderManagerEntries();
+    }
+  }
+  updateManagerBusyState();
+}
+
+function handleTabClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target === state.elements.trainingTab) {
+    setActiveTab(TABS.TRAINING, { focus: true });
+  } else if (target === state.elements.managerTab) {
+    setActiveTab(TABS.MANAGER, { focus: true });
+  }
+}
+
+function handleTabKeydown(event) {
+  if (!state.elements.tablist) {
+    return;
+  }
+  const { key } = event;
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) {
+    return;
+  }
+  const tabs = getTabButtons();
+  if (tabs.length === 0) {
+    return;
+  }
+  const currentIndex = tabs.indexOf(document.activeElement);
+  let nextIndex = currentIndex;
+  if (key === 'Home') {
+    nextIndex = 0;
+  } else if (key === 'End') {
+    nextIndex = tabs.length - 1;
+  } else if (key === 'ArrowRight') {
+    nextIndex = currentIndex >= 0 ? (currentIndex + 1) % tabs.length : 0;
+  } else if (key === 'ArrowLeft') {
+    nextIndex = currentIndex >= 0 ? (currentIndex - 1 + tabs.length) % tabs.length : tabs.length - 1;
+  }
+  if (nextIndex === currentIndex || nextIndex < 0 || nextIndex >= tabs.length) {
+    return;
+  }
+  event.preventDefault();
+  const nextTab = tabs[nextIndex];
+  if (nextTab === state.elements.managerTab) {
+    setActiveTab(TABS.MANAGER, { focus: true });
+  } else {
+    setActiveTab(TABS.TRAINING, { focus: true });
+  }
+}
+
+function resolveManagerTone(tone) {
+  if (Object.values(MANAGER_STATUS_TONES).includes(tone)) {
+    return tone;
+  }
+  return MANAGER_STATUS_TONES.INFO;
+}
+
+function setManagerStatus(message, tone = MANAGER_STATUS_TONES.INFO) {
+  const statusEl = state.elements.managerStatus;
+  if (!statusEl) {
+    return;
+  }
+  const text = typeof message === 'string' ? message.trim() : '';
+  if (!text) {
+    statusEl.textContent = '';
+    statusEl.hidden = true;
+    statusEl.removeAttribute('data-tone');
+    statusEl.setAttribute('role', 'status');
+    state.manager.statusTone = MANAGER_STATUS_TONES.INFO;
+    return;
+  }
+  const resolvedTone = resolveManagerTone(tone);
+  statusEl.hidden = false;
+  statusEl.textContent = text;
+  statusEl.dataset.tone = resolvedTone;
+  statusEl.setAttribute('role', resolvedTone === MANAGER_STATUS_TONES.ERROR ? 'alert' : 'status');
+  state.manager.statusTone = resolvedTone;
+}
+
+function clearManagerStatus() {
+  setManagerStatus('', MANAGER_STATUS_TONES.INFO);
+}
+
+function isManagerBusy() {
+  return state.manager.loading || state.manager.importing;
+}
+
+function updateManagerBusyState() {
+  const busy = isManagerBusy();
+  if (state.elements.managerPanel) {
+    state.elements.managerPanel.setAttribute('aria-busy', busy ? 'true' : 'false');
+  }
+  if (state.elements.managerImportButton) {
+    state.elements.managerImportButton.disabled = busy || !state.support;
+    state.elements.managerImportButton.setAttribute(
+      'aria-disabled',
+      state.elements.managerImportButton.disabled ? 'true' : 'false',
+    );
+  }
+  if (state.elements.managerList) {
+    const buttons = state.elements.managerList.querySelectorAll('button[data-action]');
+    buttons.forEach((button) => {
+      if (button instanceof HTMLButtonElement) {
+        button.disabled = busy;
+        button.setAttribute('aria-disabled', busy ? 'true' : 'false');
+      }
+    });
+  }
+}
+
+function formatManagerTimestamp(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return '';
+  }
+  try {
+    return new Date(timestamp).toLocaleString();
+  } catch {
+    return '';
+  }
+}
+
+function getManagerEntryName(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return 'Untitled Model';
+  }
+  if (typeof entry.name === 'string' && entry.name.trim()) {
+    return entry.name.trim();
+  }
+  if (entry.file?.name) {
+    return entry.file.name;
+  }
+  return entry.id ?? 'Untitled Model';
+}
+
+function renderManagerEntries() {
+  const list = state.elements.managerList;
+  const empty = state.elements.managerEmpty;
+  if (!list) {
+    return;
+  }
+  const entries = Array.isArray(state.manager.entries) ? state.manager.entries.slice() : [];
+  const sorted = entries.sort((a, b) => {
+    const aTime = Number.isFinite(a?.updatedAt) ? a.updatedAt : Number(a?.createdAt) || 0;
+    const bTime = Number.isFinite(b?.updatedAt) ? b.updatedAt : Number(b?.createdAt) || 0;
+    return bTime - aTime;
+  });
+  list.innerHTML = '';
+  if (sorted.length === 0) {
+    if (empty) {
+      empty.hidden = false;
+    }
+    updateManagerBusyState();
+    return;
+  }
+  if (empty) {
+    empty.hidden = true;
+  }
+  sorted.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+    const item = document.createElement('li');
+    item.className = 'byom-manager-item';
+    item.dataset.id = entry.id ?? '';
+
+    const meta = document.createElement('div');
+    meta.className = 'byom-manager-meta';
+    const title = document.createElement('strong');
+    title.textContent = getManagerEntryName(entry);
+    meta.append(title);
+
+    const updatedText = formatManagerTimestamp(entry.updatedAt ?? entry.createdAt);
+    if (updatedText) {
+      const timeSpan = document.createElement('span');
+      timeSpan.textContent = `Last updated ${updatedText}`;
+      meta.append(timeSpan);
+    }
+    if (entry.file?.name) {
+      const fileSpan = document.createElement('span');
+      fileSpan.textContent = `Source: ${entry.file.name}`;
+      meta.append(fileSpan);
+    }
+    const summaryParts = [];
+    if (entry.summary?.durationFormatted) {
+      summaryParts.push(entry.summary.durationFormatted);
+    }
+    if (Number.isFinite(entry.summary?.frameCount)) {
+      summaryParts.push(`${entry.summary.frameCount} frames`);
+    }
+    if (summaryParts.length > 0) {
+      const summarySpan = document.createElement('span');
+      summarySpan.textContent = summaryParts.join(' · ');
+      meta.append(summarySpan);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'byom-manager-actions-row';
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button';
+    exportButton.className = 'byom-secondary';
+    exportButton.dataset.action = 'export-entry';
+    exportButton.dataset.id = entry.id ?? '';
+    exportButton.textContent = 'Export';
+    exportButton.disabled = isManagerBusy();
+    exportButton.setAttribute('aria-disabled', exportButton.disabled ? 'true' : 'false');
+    actions.append(exportButton);
+
+    item.append(meta, actions);
+    list.append(item);
+  });
+  updateManagerBusyState();
+}
+
+async function refreshManagerEntriesInternal({ silent = false } = {}) {
+  if (!state.support) {
+    return [];
+  }
+  const token = ++state.manager.loadToken;
+  state.manager.loading = true;
+  updateManagerBusyState();
+  if (!silent) {
+    setManagerStatus('Loading stored models…', MANAGER_STATUS_TONES.INFO);
+  }
+  try {
+    const entries = await listStoredEntries();
+    if (token !== state.manager.loadToken) {
+      return [];
+    }
+    state.manager.entries = Array.isArray(entries) ? entries : [];
+    state.manager.loaded = true;
+    renderManagerEntries();
+    if (!silent) {
+      if (state.manager.entries.length === 0) {
+        setManagerStatus('No stored models available yet.', MANAGER_STATUS_TONES.INFO);
+      } else {
+        clearManagerStatus();
+      }
+    }
+    return state.manager.entries;
+  } catch (error) {
+    if (token === state.manager.loadToken) {
+      console.error('[byom] Failed to load stored BYOM models', error);
+      state.manager.entries = [];
+      state.manager.loaded = false;
+      renderManagerEntries();
+      setManagerStatus('Failed to load stored models.', MANAGER_STATUS_TONES.ERROR);
+    }
+    return [];
+  } finally {
+    if (token === state.manager.loadToken) {
+      state.manager.loading = false;
+      updateManagerBusyState();
+    }
+  }
+}
+
+function handleManagerImportClick(event) {
+  event.preventDefault();
+  if (!state.elements.managerImportInput || isManagerBusy() || !state.support) {
+    return;
+  }
+  state.elements.managerImportInput.value = '';
+  state.elements.managerImportInput.click();
+}
+
+async function importEntriesFromFiles(files) {
+  const imported = [];
+  const errors = [];
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const entries = extractImportEntries(payload);
+      if (entries.length === 0) {
+        throw new Error('No BYOM entries found in file.');
+      }
+      const seen = new Set();
+      for (const entry of entries) {
+        if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string') {
+          throw new Error('Imported entry is missing an id.');
+        }
+        if (seen.has(entry.id)) {
+          continue;
+        }
+        seen.add(entry.id);
+        if (!entry.model || typeof entry.model !== 'object') {
+          throw new Error(`Entry "${entry.id}" is missing a model definition.`);
+        }
+        const stored = await storeEntry(entry);
+        imported.push(stored);
+      }
+    } catch (error) {
+      errors.push({ file, error });
+      console.error('[byom] Failed to import BYOM entry', file?.name ?? '<unknown>', error);
+    }
+  }
+  return { imported, errors };
+}
+
+async function handleManagerImportChange(event) {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || !input.files) {
+    return;
+  }
+  const files = Array.from(input.files);
+  input.value = '';
+  if (files.length === 0) {
+    return;
+  }
+  state.manager.importing = true;
+  updateManagerBusyState();
+  setManagerStatus(`Importing ${files.length} file${files.length === 1 ? '' : 's'}…`, MANAGER_STATUS_TONES.INFO);
+  try {
+    const { imported, errors } = await importEntriesFromFiles(files);
+    if (imported.length > 0) {
+      await refreshManagerEntriesInternal({ silent: true });
+      if (typeof state.handlers.onImportEntries === 'function') {
+        state.handlers.onImportEntries(imported);
+      }
+      if (errors.length > 0) {
+        setManagerStatus(
+          `Imported ${imported.length} model${imported.length === 1 ? '' : 's'} with ${errors.length} warning${errors.length === 1 ? '' : 's'}.`,
+          MANAGER_STATUS_TONES.WARNING,
+        );
+      } else {
+        setManagerStatus(
+          `Imported ${imported.length} model${imported.length === 1 ? '' : 's'}.`,
+          MANAGER_STATUS_TONES.SUCCESS,
+        );
+      }
+    } else if (errors.length > 0) {
+      setManagerStatus('Import failed. No valid BYOM models found.', MANAGER_STATUS_TONES.ERROR);
+    } else {
+      setManagerStatus('No models detected in the selected files.', MANAGER_STATUS_TONES.WARNING);
+    }
+  } catch (error) {
+    console.error('[byom] Unexpected error while importing models', error);
+    setManagerStatus('Import failed. Check console for details.', MANAGER_STATUS_TONES.ERROR);
+  } finally {
+    state.manager.importing = false;
+    updateManagerBusyState();
+  }
+}
+
+function handleManagerListClick(event) {
+  const target = event.target instanceof HTMLElement ? event.target.closest('button[data-action]') : null;
+  if (!(target instanceof HTMLButtonElement) || target.disabled) {
+    return;
+  }
+  const { action, id } = target.dataset;
+  if (action === 'export-entry' && id) {
+    exportManagerEntry(id);
+  }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename || 'byom-model.json';
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function exportManagerEntry(id) {
+  if (!id) {
+    return;
+  }
+  try {
+    const entry = await getStoredEntry(id);
+    if (!entry) {
+      setManagerStatus('Model is no longer available. Reload and try again.', MANAGER_STATUS_TONES.WARNING);
+      await refreshManagerEntriesInternal({ silent: true });
+      return;
+    }
+    const payload = {
+      storage: STORAGE_PATH,
+      exportedAt: new Date().toISOString(),
+      entry,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const filename = createExportFileName(entry);
+    downloadBlob(blob, filename);
+    setManagerStatus(`Exported "${getManagerEntryName(entry)}".`, MANAGER_STATUS_TONES.SUCCESS);
+  } catch (error) {
+    console.error('[byom] Failed to export BYOM entry', id, error);
+    setManagerStatus('Export failed. Check console for details.', MANAGER_STATUS_TONES.ERROR);
+  }
+}
+
 function updateSupportVisibility() {
   if (!state.elements.toggle) {
     return;
@@ -1489,6 +1974,7 @@ function updateSupportVisibility() {
     state.elements.toggle.title = '';
     state.elements.correlationSection?.removeAttribute('aria-hidden');
     updateCorrelationControlsDisabledState();
+    updateManagerBusyState();
     return;
   }
   state.elements.toggle.disabled = true;
@@ -1505,6 +1991,7 @@ function updateSupportVisibility() {
     state.elements.correlationSection.setAttribute('aria-hidden', 'true');
   }
   updateCorrelationControlsDisabledState();
+  updateManagerBusyState();
 }
 
 export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } = {}) {
@@ -1538,6 +2025,16 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.correlationOutputSelect = drawer.querySelector('#byom-correlation-output');
   state.elements.correlationInverse = drawer.querySelector('#byom-correlation-inverse');
   state.elements.correlationError = drawer.querySelector('#byom-correlation-error');
+  state.elements.tablist = drawer.querySelector('#byom-tabs');
+  state.elements.trainingTab = drawer.querySelector('#byom-tab-training');
+  state.elements.managerTab = drawer.querySelector('#byom-tab-manager');
+  state.elements.trainingPanel = drawer.querySelector('#byom-panel-training');
+  state.elements.managerPanel = drawer.querySelector('#byom-panel-manager');
+  state.elements.managerImportButton = drawer.querySelector('#byom-manager-import');
+  state.elements.managerImportInput = drawer.querySelector('#byom-manager-import-input');
+  state.elements.managerStatus = drawer.querySelector('#byom-manager-status');
+  state.elements.managerList = drawer.querySelector('#byom-manager-entries');
+  state.elements.managerEmpty = drawer.querySelector('#byom-manager-empty');
 
   if (!state.elements.summary) {
     const summary = document.createElement('p');
@@ -1583,6 +2080,21 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   correlationCancelButton?.addEventListener('click', handleCorrelationDialogCancel);
   state.elements.correlationDialog?.addEventListener('cancel', handleCorrelationDialogCancel);
 
+  state.elements.trainingTab?.addEventListener('click', handleTabClick);
+  state.elements.managerTab?.addEventListener('click', handleTabClick);
+  state.elements.tablist?.addEventListener('keydown', handleTabKeydown);
+  state.elements.managerImportButton?.addEventListener('click', handleManagerImportClick);
+  state.elements.managerImportInput?.addEventListener('change', handleManagerImportChange);
+  state.elements.managerList?.addEventListener('click', handleManagerListClick);
+
+  clearManagerStatus();
+  renderManagerEntries();
+  setActiveTab(TABS.TRAINING, { focus: false });
+  updateManagerBusyState();
+  if (state.support) {
+    refreshManagerEntriesInternal({ silent: true }).catch(() => {});
+  }
+
   state.mounted = true;
 }
 
@@ -1617,11 +2129,12 @@ export function setModelOptions(modelOptions) {
   updateStatusFromInputs();
 }
 
-export function setHandlers({ onTrain, onCancel, onPause, onResume } = {}) {
+export function setHandlers({ onTrain, onCancel, onPause, onResume, onImportEntries } = {}) {
   state.handlers.onTrain = typeof onTrain === 'function' ? onTrain : null;
   state.handlers.onCancel = typeof onCancel === 'function' ? onCancel : null;
   state.handlers.onPause = typeof onPause === 'function' ? onPause : null;
   state.handlers.onResume = typeof onResume === 'function' ? onResume : null;
+  state.handlers.onImportEntries = typeof onImportEntries === 'function' ? onImportEntries : null;
 }
 
 export function setTrainingStatus(status, detail) {
@@ -1630,6 +2143,10 @@ export function setTrainingStatus(status, detail) {
 
 export function updateTrainingProgress(progress) {
   updateTrainingProgressState(progress);
+}
+
+export function refreshManagerEntries(options = {}) {
+  return refreshManagerEntriesInternal(options);
 }
 
 export function reset() {

@@ -676,15 +676,47 @@ function buildRuntimeByomEntry(record, objectUrl = '') {
   };
 }
 
+function mergeStoredByomRecords(records, { replace = false } = {}) {
+  if (!Array.isArray(records)) {
+    return false;
+  }
+  if (replace) {
+    sessionObjectUrls.clear();
+    byomEntries = records.map((record) => buildRuntimeByomEntry(record));
+    rebuildPlaylistOrder();
+    renderPlaylistOptions(currentTrackIndex);
+    return byomEntries.length > 0;
+  }
+  let changed = false;
+  records.forEach((record) => {
+    if (!record || typeof record !== 'object' || !record.id) {
+      return;
+    }
+    const existingIndex = byomEntries.findIndex((entry) => entry.id === record.id);
+    if (existingIndex >= 0) {
+      const existing = byomEntries[existingIndex];
+      const runtime = buildRuntimeByomEntry(record, existing.objectUrl);
+      runtime.listIndex = existing.listIndex;
+      byomEntries[existingIndex] = runtime;
+    } else {
+      byomEntries.push(buildRuntimeByomEntry(record));
+    }
+    changed = true;
+  });
+  if (changed) {
+    rebuildPlaylistOrder();
+    renderPlaylistOptions(currentTrackIndex);
+  }
+  return changed;
+}
+
 async function loadStoredByomEntries() {
   try {
     const stored = await byomStorage.listEntries();
     if (!Array.isArray(stored) || stored.length === 0) {
       return;
     }
-    byomEntries = stored.map((record) => buildRuntimeByomEntry(record));
-    rebuildPlaylistOrder();
-    renderPlaylistOptions(currentTrackIndex);
+    mergeStoredByomRecords(stored, { replace: true });
     const message = 'BYOM models restored. Attach the original MP3 files via Attach File before playback.';
     const notification = notify(message, { tone: 'info' });
     if (!notification && typeof window !== 'undefined' && typeof window.alert === 'function') {
@@ -692,6 +724,16 @@ async function loadStoredByomEntries() {
     }
   } catch (error) {
     console.error('[byom] Failed to load stored BYOM entries', error);
+  }
+}
+
+function handleImportedByomRecords(records) {
+  if (!Array.isArray(records) || records.length === 0) {
+    return;
+  }
+  const changed = mergeStoredByomRecords(records);
+  if (changed) {
+    console.info('[byom] Imported %d stored model%s.', records.length, records.length === 1 ? '' : 's');
   }
 }
 
@@ -842,6 +884,9 @@ byom.setHandlers({
     if (resumed) {
       byom.setTrainingStatus('running');
     }
+  },
+  onImportEntries: (records) => {
+    handleImportedByomRecords(records);
   },
 });
 
@@ -1363,6 +1408,7 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
     runtimeEntry.requiresFile = false;
   }
   byomEntries.push(runtimeEntry);
+  await byom.refreshManagerEntries({ silent: true });
   rebuildPlaylistOrder();
   renderPlaylistOptions(runtimeEntry.listIndex);
   updatePlaylistControls(runtimeEntry);

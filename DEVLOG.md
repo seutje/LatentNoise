@@ -276,3 +276,8 @@
 ## 2025-10-27 - BYOM Toggle Placement
 - Relocated the BYOM toggle from the HUD to the control strip, keeping its accessibility wiring intact and shortening the label to "BYOM" for consistency with neighboring actions.
 - Verified the layout change by re-running `npm run lint` and `npm test`.
+
+## 2025-10-27 - BYOM Manager Tab
+- Introduced Training/Manager tabs in the BYOM drawer, adding an indexed import/export manager for stored models with accessibility-friendly controls.
+- Persisted manager state through new storage helpers, refreshed the runtime playlist when models are imported, and covered utility logic with Jest tests.
+- Confirmed health via `npm run lint` and `npm test -- --coverage`.
