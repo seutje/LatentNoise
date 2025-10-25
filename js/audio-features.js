@@ -381,7 +381,7 @@ export function createFeatureExtractor({
     }
     vector[FEATURE_INDEX.FLATNESS] = flatness;
 
-    const flux = clamp01((fluxSum / (binCount || 1)) * 100);
+    const flux = clamp01((fluxSum / (binCount || 1)) * 5000);
     vector[FEATURE_INDEX.FLUX] = flux;
     if (!initialized) {
       fluxEma = flux;
