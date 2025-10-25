@@ -55,7 +55,7 @@ function buildCorrelationNotification(stats) {
   if (perCorrelation.length === 0) {
     return 'Training complete! BYOM entry saved.';
   }
-  const segments = [];
+  const lines = [];
   perCorrelation.forEach((metrics, index) => {
     if (!metrics) {
       return;
@@ -73,16 +73,17 @@ function buildCorrelationNotification(stats) {
     const value = formatCorrelation(
       typeof metrics.correlation === 'number' ? metrics.correlation : Number(metrics.correlation),
     );
-    segments.push(`${label} (${featureName} → ${outputName}, ${orientation}): ${value}`);
+    lines.push(`${label} (${featureName} → ${outputName}, ${orientation}): ${value}`);
   });
-  if (segments.length === 0) {
+  if (lines.length === 0) {
     return 'Training complete! BYOM entry saved.';
   }
   const combinedFitness = Number(stats?.correlationMetrics?.combinedFitness);
+  const messageLines = ['Training complete!', ...lines];
   if (Number.isFinite(combinedFitness)) {
-    segments.push(`Combined fitness: ${combinedFitness.toFixed(4)}`);
+    messageLines.push(`Combined fitness: ${combinedFitness.toFixed(4)}`);
   }
-  return `Training complete! ${segments.join(' · ')}`;
+  return messageLines.join('\n');
 }
 
 const RENDER_PARAMS_DEFAULT = Object.freeze({
