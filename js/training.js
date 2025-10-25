@@ -39,6 +39,163 @@ function clampNumber(value, min, max, fallback) {
   return numeric;
 }
 
+function sanitizeFiniteNumber(value, fallback = 0) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function projectCorrelationTarget(rawValue, featureType, orientationSign) {
+  const sign = orientationSign === -1 ? -1 : 1;
+  const safeValue = sanitizeFiniteNumber(rawValue, 0);
+  if (featureType === 'signed') {
+    const clamped = Math.max(-1, Math.min(1, safeValue));
+    return clamped * sign;
+  }
+  const positive = Math.max(0, Math.min(1, safeValue));
+  const centered = positive * 2 - 1;
+  return centered * sign;
+}
+
+function sanitizeCorrelations(raw, dataset) {
+  if (!Array.isArray(raw) || raw.length === 0 || !dataset) {
+    return [];
+  }
+  const featureSize = Number(dataset.featureSize);
+  const targetSize = Number(dataset.targetSize);
+  if (!Number.isInteger(featureSize) || featureSize <= 0 || !Number.isInteger(targetSize) || targetSize <= 0) {
+    return [];
+  }
+  const seen = new Set();
+  const sanitized = [];
+  raw.forEach((entry) => {
+    if (!entry) {
+      return;
+    }
+    const featureIndex = Number(entry.featureIndex);
+    const outputIndex = Number(entry.outputIndex);
+    if (!Number.isInteger(featureIndex) || featureIndex < 0 || featureIndex >= featureSize) {
+      return;
+    }
+    if (!Number.isInteger(outputIndex) || outputIndex < 0 || outputIndex >= targetSize) {
+      return;
+    }
+    const orientationSign = entry.orientationSign === -1 ? -1 : 1;
+    const id =
+      typeof entry.id === 'string' && entry.id.length > 0
+        ? entry.id
+        : `${featureIndex}:${outputIndex}:${orientationSign < 0 ? 'inv' : 'dir'}`;
+    if (seen.has(id)) {
+      return;
+    }
+    seen.add(id);
+    const featureType = typeof entry.featureType === 'string' ? entry.featureType.toLowerCase() : 'positive';
+    sanitized.push({
+      id,
+      featureIndex,
+      featureName: typeof entry.featureName === 'string' ? entry.featureName : '',
+      featureType: featureType === 'signed' ? 'signed' : 'positive',
+      outputIndex,
+      outputName: typeof entry.outputName === 'string' ? entry.outputName : '',
+      orientationSign,
+    });
+  });
+  return sanitized;
+}
+
+function applyCorrelationTargets(targets, features, dataset, correlations) {
+  if (!Array.isArray(correlations) || correlations.length === 0) {
+    return;
+  }
+  const featureSize = Number(dataset.featureSize);
+  const targetSize = Number(dataset.targetSize);
+  const frameCount = Number(dataset.frameCount);
+  if (!Number.isInteger(featureSize) || featureSize <= 0 || !Number.isInteger(targetSize) || targetSize <= 0) {
+    return;
+  }
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const featureOffset = frame * featureSize;
+    const targetOffset = frame * targetSize;
+    correlations.forEach((correlation) => {
+      const rawValue = features[featureOffset + correlation.featureIndex];
+      targets[targetOffset + correlation.outputIndex] = projectCorrelationTarget(
+        rawValue,
+        correlation.featureType,
+        correlation.orientationSign,
+      );
+    });
+  }
+}
+
+function evaluateCorrelationMetrics(modelDefinition, dataset, correlations) {
+  if (!dataset || !Array.isArray(correlations) || correlations.length === 0) {
+    return [];
+  }
+  let model;
+  try {
+    model = createModel(modelDefinition);
+  } catch (error) {
+    console.error('[training] Failed to build model for correlation evaluation', error);
+    return [];
+  }
+  const featureSize = Number(dataset.featureSize);
+  const frameCount = Number(dataset.frameCount);
+  if (!Number.isInteger(featureSize) || featureSize <= 0 || !Number.isInteger(frameCount) || frameCount <= 0) {
+    return [];
+  }
+  const featureBuffer = new Float32Array(featureSize);
+  const outputBuffer = new Float32Array(model.outputSize);
+  const aggregates = correlations.map(() => ({
+    sumFeature: 0,
+    sumOutput: 0,
+    sumFeatureSq: 0,
+    sumOutputSq: 0,
+    sumFeatureOutput: 0,
+    count: 0,
+  }));
+
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    const featureOffset = frame * featureSize;
+    featureBuffer.set(dataset.features.subarray(featureOffset, featureOffset + featureSize));
+    const outputs = infer(model, featureBuffer, outputBuffer);
+    correlations.forEach((correlation, index) => {
+      const featureValue = sanitizeFiniteNumber(featureBuffer[correlation.featureIndex], 0);
+      const outputValue = sanitizeFiniteNumber(outputs[correlation.outputIndex], 0);
+      const agg = aggregates[index];
+      agg.sumFeature += featureValue;
+      agg.sumOutput += outputValue;
+      agg.sumFeatureSq += featureValue * featureValue;
+      agg.sumOutputSq += outputValue * outputValue;
+      agg.sumFeatureOutput += featureValue * outputValue;
+      agg.count += 1;
+    });
+  }
+
+  return correlations.map((correlation, index) => {
+    const agg = aggregates[index];
+    const n = agg.count || 0;
+    if (n === 0) {
+      return {
+        id: correlation.id,
+        featureIndex: correlation.featureIndex,
+        outputIndex: correlation.outputIndex,
+        orientationSign: correlation.orientationSign,
+        correlation: 0,
+      };
+    }
+    const numerator = n * agg.sumFeatureOutput - agg.sumFeature * agg.sumOutput;
+    const denomFeature = n * agg.sumFeatureSq - agg.sumFeature * agg.sumFeature;
+    const denomOutput = n * agg.sumOutputSq - agg.sumOutput * agg.sumOutput;
+    const denominator = Math.sqrt(Math.max(denomFeature, 0) * Math.max(denomOutput, 0));
+    const corrValue = denominator > 0 ? numerator / denominator : 0;
+    return {
+      id: correlation.id,
+      featureIndex: correlation.featureIndex,
+      outputIndex: correlation.outputIndex,
+      orientationSign: correlation.orientationSign,
+      correlation: Number.isFinite(corrValue) ? corrValue : 0,
+    };
+  });
+}
+
 function sanitizeHyperparameters(raw) {
   const epochs = clampNumber(raw?.epochs, 1, 500, 40);
   const learningRate = clampNumber(raw?.learningRate, 1e-5, 0.1, 0.001);
@@ -86,6 +243,7 @@ export function createController(callbacks) {
     activeDataset: null,
     activeSummary: null,
     activeHyper: null,
+    activeCorrelations: [],
     warmupSample: null,
     cancelRequested: false,
     options: {
@@ -140,7 +298,7 @@ export function createController(callbacks) {
     if (!options || typeof options !== 'object') {
       throw new TypeError('Training options must be an object.');
     }
-    const { dataset, summary, modelUrl, hyperparameters } = options;
+    const { dataset, summary, modelUrl, hyperparameters, correlations: requestedCorrelations } = options;
     if (!modelUrl || typeof modelUrl !== 'string') {
       throw new Error('Training requires a modelUrl string.');
     }
@@ -154,6 +312,7 @@ export function createController(callbacks) {
     state.activeDataset = dataset;
     state.activeSummary = summary ?? null;
     state.activeHyper = sanitizeHyperparameters(hyperparameters);
+    state.activeCorrelations = sanitizeCorrelations(requestedCorrelations, dataset);
     state.warmupSample = dataset.features.slice(0, dataset.featureSize);
     state.cancelRequested = false;
     state.lastProgressAt = 0;
@@ -186,6 +345,9 @@ export function createController(callbacks) {
     const worker = getWorker();
     const clonedFeatures = dataset.features.slice();
     const clonedTargets = dataset.targets.slice();
+    if (state.activeCorrelations.length > 0) {
+      applyCorrelationTargets(clonedTargets, clonedFeatures, dataset, state.activeCorrelations);
+    }
     const datasetPayload = {
       features: clonedFeatures,
       targets: clonedTargets,
@@ -280,6 +442,7 @@ export function createController(callbacks) {
     state.activeDataset = null;
     state.activeSummary = null;
     state.activeHyper = null;
+    state.activeCorrelations = [];
     state.warmupSample = null;
   }
 
@@ -353,13 +516,23 @@ export function createController(callbacks) {
       case 'result': {
         state.status = TRAINING_STATUS.COMPLETED;
         state.cancelRequested = false;
-        resolvePending({ cancelled: false, result: message.result, stats: message.stats });
-        cb.onStatus({ status: TRAINING_STATUS.COMPLETED, detail: message.stats });
-        runWarmup(message.result.model, message.stats).then((warmup) => {
+        const correlationMetrics = evaluateCorrelationMetrics(
+          message.result.model,
+          state.activeDataset,
+          state.activeCorrelations,
+        );
+        const statsWithCorrelations = {
+          ...message.stats,
+          correlations: correlationMetrics,
+        };
+        resolvePending({ cancelled: false, result: message.result, stats: statsWithCorrelations });
+        cb.onStatus({ status: TRAINING_STATUS.COMPLETED, detail: statsWithCorrelations });
+        runWarmup(message.result.model, statsWithCorrelations).then((warmup) => {
           cb.onComplete({
             modelDefinition: message.result.model,
-            stats: message.stats,
+            stats: statsWithCorrelations,
             warmup,
+            correlationMetrics,
           });
         });
         break;

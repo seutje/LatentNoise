@@ -121,6 +121,46 @@
               </div>
             </details>
           </section>
+          <section class="byom-section byom-correlations" aria-labelledby="byom-correlation-heading">
+            <h3 id="byom-correlation-heading" class="byom-heading">Correlations</h3>
+            <details id="byom-correlation-details">
+              <summary>Target correlations</summary>
+              <div id="byom-correlation-list" class="byom-correlation-list" role="list"></div>
+              <button type="button" id="byom-correlation-add" class="byom-secondary byom-correlation-add">
+                Add Correlation
+              </button>
+              <p id="byom-correlation-hint" class="byom-hint">
+                Select one or more feature/output pairs to guide training.
+              </p>
+            </details>
+          </section>
+          <div
+            id="byom-correlation-dialog"
+            class="byom-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="byom-correlation-dialog-title"
+            hidden
+          >
+            <div class="byom-modal-content">
+              <h4 id="byom-correlation-dialog-title">Add Correlation</h4>
+              <div class="byom-field">
+                <label class="byom-label" for="byom-correlation-feature">Music feature</label>
+                <select id="byom-correlation-feature"></select>
+              </div>
+              <div class="byom-field">
+                <label class="byom-label" for="byom-correlation-output">Simulation feature</label>
+                <select id="byom-correlation-output"></select>
+              </div>
+              <label class="byom-checkbox" for="byom-correlation-inverse">
+                <input id="byom-correlation-inverse" type="checkbox"> Inverse
+              </label>
+              <div class="byom-modal-actions">
+                <button type="button" id="byom-correlation-cancel" class="byom-secondary">Cancel</button>
+                <button type="button" id="byom-correlation-confirm" class="byom-primary">Add</button>
+              </div>
+            </div>
+          </div>
           <section class="byom-section byom-hyper" aria-labelledby="byom-hyper-heading">
             <h3 id="byom-hyper-heading" class="byom-heading">Hyperparameters</h3>
             <div class="byom-grid">

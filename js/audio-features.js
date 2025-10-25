@@ -72,6 +72,33 @@ export const FEATURE_LABELS = Object.freeze([
   'trackPosition',
 ]);
 
+export const FEATURE_TYPES = Object.freeze({
+  sub: 'signed',
+  bass: 'signed',
+  lowMid: 'signed',
+  mid: 'signed',
+  high: 'signed',
+  rms: 'positive',
+  centroid: 'positive',
+  rollOff: 'positive',
+  flatness: 'positive',
+  deltaSub: 'signed',
+  deltaBass: 'signed',
+  deltaLowMid: 'signed',
+  deltaMid: 'signed',
+  deltaHigh: 'signed',
+  deltaRms: 'signed',
+  emaSub: 'signed',
+  emaBass: 'signed',
+  emaLowMid: 'signed',
+  emaMid: 'signed',
+  emaHigh: 'signed',
+  emaRms: 'positive',
+  flux: 'positive',
+  fluxEma: 'positive',
+  trackPosition: 'positive',
+});
+
 const BAND_EMA_MS = 300;
 const RMS_EMA_MS = 250;
 const FLUX_EMA_MS = 200;

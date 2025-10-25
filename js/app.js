@@ -682,8 +682,8 @@ const trainingController = createTrainingController({
   onProgress: (payload) => {
     byom.updateTrainingProgress(payload);
   },
-  onComplete: async ({ modelDefinition, stats, warmup }) => {
-    latestTrainingResult = { modelDefinition, stats, warmup };
+  onComplete: async ({ modelDefinition, stats, warmup, correlationMetrics }) => {
+    latestTrainingResult = { modelDefinition, stats, warmup, correlationMetrics };
     console.info('[byom] training completed', stats);
     if (warmup?.outputs) {
       console.info('[byom] warm-up outputs', warmup.outputs);
@@ -691,7 +691,12 @@ const trainingController = createTrainingController({
     if (typeof window !== 'undefined') {
       window.__LN_LAST_TRAINING__ = latestTrainingResult;
     }
-    await finalizeByomTraining({ modelDefinition, stats, warmup });
+    if (Array.isArray(correlationMetrics)) {
+      byom.setCorrelationMetrics(correlationMetrics);
+    } else if (Array.isArray(stats?.correlations)) {
+      byom.setCorrelationMetrics(stats.correlations);
+    }
+    await finalizeByomTraining({ modelDefinition, stats, warmup, correlationMetrics });
   },
   onCancelled: (detail) => {
     activeTrainingContext = null;
@@ -717,7 +722,7 @@ const trainingController = createTrainingController({
 });
 
 byom.setHandlers({
-  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters }) => {
+  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters, correlations }) => {
     if (!dataset || !model) {
       byom.setTrainingStatus('error', { message: 'Training aborted — dataset is unavailable.', progress: 0 });
       return;
@@ -729,6 +734,7 @@ byom.setHandlers({
       model,
       summary,
       hyperparameters,
+      correlations: Array.isArray(correlations) ? correlations.map((entry) => ({ ...entry })) : null,
     };
     byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
     trainingController
@@ -737,6 +743,7 @@ byom.setHandlers({
         summary,
         modelUrl: model,
         hyperparameters,
+        correlations,
       })
       .catch((error) => {
         console.error('[byom] training start failed', error);
@@ -1221,7 +1228,7 @@ async function prepareModelForEntry(entry) {
   }
 }
 
-async function finalizeByomTraining({ modelDefinition, stats }) {
+async function finalizeByomTraining({ modelDefinition, stats, correlationMetrics }) {
   if (!modelDefinition) {
     console.warn('[byom] Training result missing model definition; cannot persist entry.');
     activeTrainingContext = null;
@@ -1258,6 +1265,9 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
   };
   if (context.hyperparameters) {
     baseline.hyperparameters = { ...context.hyperparameters };
+  }
+  if (Array.isArray(context.correlations)) {
+    baseline.correlations = context.correlations.map((entry) => ({ ...entry }));
   }
 
   let persisted;
@@ -1299,6 +1309,11 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
 
   if (typeof byom.reset === 'function') {
     byom.reset();
+  }
+  if (Array.isArray(correlationMetrics) && typeof byom.setCorrelationMetrics === 'function') {
+    byom.setCorrelationMetrics(correlationMetrics);
+  } else if (Array.isArray(stats?.correlations)) {
+    byom.setCorrelationMetrics(stats.correlations);
   }
   if (typeof byom.close === 'function') {
     byom.close({ restoreFocus: false });
