@@ -61,6 +61,9 @@ const PERFORMANCE_SCALE_STEPS = Object.freeze([1, 0.85, 0.7]);
 
 const ANIMATION_LOOKAHEAD_MS = 0;
 const TRACK_INTERMISSION_MS = 1000;
+const NOTIFICATION_LIFETIME_MS = 5000;
+const NOTIFICATION_EXIT_TRANSITION_MS = 350;
+const MAX_NOTIFICATION_COUNT = 4;
 
 const BASE_PARTICLE_CAP = 5200;
 const MIN_PARTICLE_CAP = 800;
@@ -291,6 +294,92 @@ const introOverlay = document.getElementById('intro-overlay');
 const introPlayButton = document.getElementById('intro-play');
 const byomToggleButton = document.getElementById('byom-toggle');
 const byomDrawer = document.getElementById('byom-drawer');
+const notificationStack = document.getElementById('notification-stack');
+
+function showNotification(message, options = {}) {
+  const text = typeof message === 'string' ? message.trim() : '';
+  if (!text) {
+    return;
+  }
+  if (!notificationStack) {
+    console.info('[notify]', text);
+    return;
+  }
+
+  const titleText = typeof options.title === 'string' ? options.title.trim() : '';
+  const durationMs = Number.isFinite(options.duration) && options.duration > 0
+    ? options.duration
+    : NOTIFICATION_LIFETIME_MS;
+
+  while (notificationStack.children.length >= MAX_NOTIFICATION_COUNT) {
+    const lastChild = notificationStack.lastElementChild;
+    if (lastChild) {
+      notificationStack.removeChild(lastChild);
+    } else {
+      break;
+    }
+  }
+
+  const card = document.createElement('div');
+  card.className = 'notification-card';
+  card.setAttribute('role', 'status');
+  card.setAttribute('aria-live', 'polite');
+
+  const content = document.createElement('div');
+  content.className = 'notification-content';
+
+  if (titleText) {
+    const title = document.createElement('p');
+    title.className = 'notification-title';
+    title.textContent = titleText;
+    content.appendChild(title);
+  }
+
+  const body = document.createElement('p');
+  body.className = 'notification-message';
+  body.textContent = text;
+  content.appendChild(body);
+
+  const dismissButton = document.createElement('button');
+  dismissButton.type = 'button';
+  dismissButton.className = 'notification-close';
+  dismissButton.setAttribute('aria-label', 'Dismiss notification');
+  dismissButton.textContent = '×';
+
+  card.appendChild(content);
+  card.appendChild(dismissButton);
+  notificationStack.prepend(card);
+
+  requestAnimationFrame(() => {
+    card.dataset.state = 'active';
+  });
+
+  const removeCard = () => {
+    if (card.parentNode === notificationStack) {
+      notificationStack.removeChild(card);
+    } else {
+      card.remove();
+    }
+  };
+
+  const beginExit = () => {
+    if (card.dataset.state === 'exit') {
+      return;
+    }
+    card.dataset.state = 'exit';
+    window.setTimeout(removeCard, NOTIFICATION_EXIT_TRANSITION_MS);
+  };
+
+  const lifetimeTimer = window.setTimeout(beginExit, durationMs);
+
+  const handleDismiss = (event) => {
+    event.preventDefault();
+    window.clearTimeout(lifetimeTimer);
+    beginExit();
+  };
+
+  dismissButton.addEventListener('click', handleDismiss);
+}
 
 function dismissIntroOverlay() {
   if (!introOverlay || introOverlay.dataset.hidden === 'true') {
@@ -549,9 +638,7 @@ function promptAttachForEntry(entry, reason = 'attach-file') {
         ? `The file reference for "${label}" expired. Please re-attach the MP3 to continue.`
         : `Please attach the local MP3 for "${label}".`;
   console.info('[byom] %s', message);
-  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-    window.alert(message);
-  }
+  showNotification(message, { title: 'Attach File Required' });
   updatePlaylistControls(entry);
 }
 
@@ -629,11 +716,9 @@ async function loadStoredByomEntries() {
     byomEntries = stored.map((record) => buildRuntimeByomEntry(record));
     rebuildPlaylistOrder();
     renderPlaylistOptions(currentTrackIndex);
-    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-      window.alert('BYOM models restored. Attach the original MP3 files via Attach File before playback.');
-    } else {
-      console.info('[byom] Stored BYOM models restored. Attach source files before playback.');
-    }
+    const restoreMessage = 'BYOM models restored. Attach the original MP3 files via Attach File before playback.';
+    showNotification(restoreMessage, { title: 'BYOM Ready' });
+    console.info('[byom] Stored BYOM models restored. Attach source files before playback.');
   } catch (error) {
     console.error('[byom] Failed to load stored BYOM entries', error);
   }

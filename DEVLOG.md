@@ -222,3 +222,8 @@
 - Added `js/byom-storage.js` with IndexedDB-backed persistence for trained models, normalization, and preset metadata plus in-memory fallback and CRUD helpers.
 - Reworked the playlist to group BYOM entries, surface rename/delete/attach controls, and load saved models on boot with user prompts to reconnect local audio files.
 - Persisted post-training sessions into the library and auto-switched playback to the freshly trained model using the current Object URL; manual verification notes left for follow-up since automated tests are unavailable in this environment.
+
+## 2025-10-25 - Notification Overlay Refresh
+- Replaced blocking `window.alert` usage with a glassmorphism-styled notification stack that mirrors the intro overlay aesthetic and automatically dismisses after five seconds.
+- Added reusable UI helpers and styles to stack notifications in the top-right corner with dismiss controls and fallback console logging when the host element is unavailable.
+- Confirmed stability with `npm run lint` and `npm test`.
