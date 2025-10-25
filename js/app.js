@@ -261,18 +261,6 @@ function readStoredBoolean(key, defaultValue) {
   return stored === '1' || stored.toLowerCase() === 'true';
 }
 
-function readStoredInt(key, defaultValue, min = Number.MIN_SAFE_INTEGER, max = Number.MAX_SAFE_INTEGER) {
-  const stored = readStorage(key);
-  if (stored === null) {
-    return defaultValue;
-  }
-  const parsed = parseInt(stored, 10);
-  if (!Number.isFinite(parsed)) {
-    return defaultValue;
-  }
-  return clamp(parsed, min, max);
-}
-
 function wrapHue(value) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -1341,12 +1329,22 @@ function setTrack(index, options = {}) {
     : 0;
 
   if (isByomEntry(entry) && !entry.objectUrl) {
+    currentTrackIndex = index;
+    playlistSelect.value = String(index);
+    storeTrackSelection(entry);
     updatePlaylistControls(entry);
     promptAttachForEntry(entry, 'attach-file');
-    if (currentTrackIndex >= 0 && currentTrackIndex < playlistEntries.length) {
-      playlistSelect.value = String(currentTrackIndex);
-      updatePlaylistControls(getCurrentEntry());
-    }
+    audioElement.pause();
+    audioElement.removeAttribute('src');
+    audioElement.load();
+    activeModelEntryId = '';
+    lastModelOutputs = FALLBACK_NN_OUTPUTS;
+    playback.status = 'Idle';
+    updateStatus(physics.getMetrics());
+    render.setTrackTitle(entry.title ?? `Track ${index + 1}`);
+    render.updateTrackTime(0, NaN);
+    updateSeekUi(0, NaN);
+    updatePlayButtonUi();
     return;
   }
 
