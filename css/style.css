@@ -156,17 +156,14 @@ body.fullscreen-active #byom-drawer {
 
 .notification-card[data-tone='success'] {
   border-color: rgba(137, 205, 255, 0.4);
-  box-shadow: 0 30px 60px rgba(50, 130, 255, 0.3);
 }
 
 .notification-card[data-tone='error'] {
   border-color: rgba(255, 120, 150, 0.45);
-  box-shadow: 0 30px 60px rgba(255, 80, 110, 0.32);
 }
 
 .notification-card[data-tone='warning'] {
   border-color: rgba(255, 196, 120, 0.45);
-  box-shadow: 0 30px 60px rgba(255, 196, 120, 0.28);
 }
 
 .notification-text {
