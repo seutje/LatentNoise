@@ -8,6 +8,7 @@ import { getList, resolveUrl } from './playlist.js';
 import { initDebugOverlay, runStartupDiagnostics, updateDebugOverlay } from './diagnostics.js';
 import * as byom from './byom.js';
 import { createController as createTrainingController } from './training.js';
+import * as byomStorage from './byom-storage.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -287,6 +288,9 @@ function wrapHue(value) {
 }
 
 const playlistSelect = document.getElementById('playlist');
+const playlistAttachButton = document.getElementById('playlist-attach');
+const playlistRenameButton = document.getElementById('playlist-rename');
+const playlistDeleteButton = document.getElementById('playlist-delete');
 const audioElement = document.getElementById('player');
 const volumeSlider = document.getElementById('volume');
 const playButton = document.getElementById('play');
@@ -294,6 +298,7 @@ const prevButton = document.getElementById('prev');
 const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
 const fullscreenButton = document.getElementById('fullscreen');
+const byomAttachInput = document.getElementById('byom-attach-input');
 const introOverlay = document.getElementById('intro-overlay');
 const introPlayButton = document.getElementById('intro-play');
 const byomToggleButton = document.getElementById('byom-toggle');
@@ -316,11 +321,15 @@ if (
   !nextButton ||
   !seekSlider ||
   !fullscreenButton ||
+  !playlistAttachButton ||
+  !playlistRenameButton ||
+  !playlistDeleteButton ||
+  !byomAttachInput ||
   !byomToggleButton ||
   !byomDrawer
 ) {
   throw new Error(
-    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, fullscreen, or BYOM).',
+    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, playlist actions, fullscreen, or BYOM).',
   );
 }
 
@@ -392,15 +401,257 @@ function constrainManualAdjustmentsForSafeMode(enabled) {
   manualAdjustments.sparkleOffset = Math.min(manualAdjustments.sparkleOffset, 0);
 }
 
-const tracks = getList();
-if (tracks.length === 0) {
+const albumTracks = getList();
+if (albumTracks.length === 0) {
   throw new Error('Playlist is empty; Phase 2 requires 11 static tracks.');
 }
-if (MODEL_FILES.length !== tracks.length) {
+if (MODEL_FILES.length !== albumTracks.length) {
   throw new Error('Model placeholder count mismatch with playlist length.');
 }
 
-const modelOptions = tracks.map((track, index) => ({
+const albumEntries = albumTracks.map((track, index) => {
+  const basePreset = getPreset(index);
+  return {
+    id: `album-${index}`,
+    type: 'album',
+    title: track.title,
+    albumIndex: index,
+    audioUrl: resolveUrl(index),
+    modelUrl: MODEL_FILES[index],
+    presetId: basePreset?.id ?? null,
+    presetTitle: basePreset?.title ?? track.title ?? `Track ${index + 1}`,
+    listIndex: index,
+  };
+});
+
+let byomEntries = [];
+let playlistEntries = [...albumEntries];
+rebuildPlaylistOrder();
+
+const storedTrackPreference = readStorage(STORAGE_KEYS.TRACK_INDEX);
+const sessionObjectUrls = new Map();
+
+let pendingAttachEntryId = '';
+
+function rebuildPlaylistOrder() {
+  playlistEntries = [...albumEntries, ...byomEntries];
+  playlistEntries.forEach((entry, index) => {
+    entry.listIndex = index;
+  });
+  return playlistEntries;
+}
+
+function getEntryByIndex(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= playlistEntries.length) {
+    return null;
+  }
+  return playlistEntries[index];
+}
+
+function getCurrentEntry() {
+  return getEntryByIndex(currentTrackIndex);
+}
+
+function isByomEntry(entry) {
+  return entry && entry.type === 'byom';
+}
+
+function renderPlaylistOptions(activeIndex = currentTrackIndex) {
+  if (!playlistSelect) {
+    return;
+  }
+  playlistSelect.innerHTML = '';
+
+  if (albumEntries.length > 0) {
+    const albumGroup = document.createElement('optgroup');
+    albumGroup.label = 'Album';
+    albumEntries.forEach((entry) => {
+      const option = document.createElement('option');
+      option.value = String(entry.listIndex);
+      option.dataset.entryId = entry.id;
+      option.textContent = entry.title;
+      albumGroup.append(option);
+    });
+    playlistSelect.append(albumGroup);
+  }
+
+  if (byomEntries.length > 0) {
+    const byomGroup = document.createElement('optgroup');
+    byomGroup.label = 'BYOM Library';
+    byomEntries.forEach((entry) => {
+      const option = document.createElement('option');
+      option.value = String(entry.listIndex);
+      option.dataset.entryId = entry.id;
+      option.textContent = entry.requiresFile ? `${entry.title} (attach file)` : entry.title;
+      byomGroup.append(option);
+    });
+    playlistSelect.append(byomGroup);
+  }
+
+  if (Number.isInteger(activeIndex) && activeIndex >= 0 && activeIndex < playlistEntries.length) {
+    playlistSelect.value = String(activeIndex);
+  }
+}
+
+function updatePlaylistControls(entry) {
+  const isByom = isByomEntry(entry);
+  [playlistAttachButton, playlistRenameButton, playlistDeleteButton].forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.hidden = !isByom;
+    button.disabled = !isByom;
+  });
+  if (playlistAttachButton && isByom) {
+    playlistAttachButton.textContent = entry && entry.objectUrl ? 'Replace File' : 'Attach File';
+  }
+}
+
+function storeTrackSelection(entry) {
+  if (!entry) {
+    return;
+  }
+  const serialized = isByomEntry(entry)
+    ? `byom:${entry.id}`
+    : `album:${entry.albumIndex}`;
+  writeStorage(STORAGE_KEYS.TRACK_INDEX, serialized);
+}
+
+function setEntryObjectUrl(entry, objectUrl, fileInfo) {
+  if (!entry || !isByomEntry(entry)) {
+    return;
+  }
+  if (entry.objectUrl && entry.objectUrl !== objectUrl) {
+    try {
+      URL.revokeObjectURL(entry.objectUrl);
+    } catch {
+      // Ignore revoke failures.
+    }
+  }
+  entry.objectUrl = objectUrl || '';
+  entry.requiresFile = !entry.objectUrl;
+  if (fileInfo instanceof File) {
+    const signature = `${fileInfo.name}:${fileInfo.size}:${Number.isFinite(fileInfo.lastModified) ? fileInfo.lastModified : 0}`;
+    entry.file = {
+      name: fileInfo.name,
+      size: fileInfo.size,
+      lastModified: Number.isFinite(fileInfo.lastModified) ? fileInfo.lastModified : 0,
+      signature,
+    };
+  }
+  if (entry.objectUrl) {
+    sessionObjectUrls.set(entry.id, entry.objectUrl);
+  } else {
+    sessionObjectUrls.delete(entry.id);
+  }
+  renderPlaylistOptions(currentTrackIndex);
+  updatePlaylistControls(entry);
+}
+
+function promptAttachForEntry(entry, reason = 'attach-file') {
+  if (!entry || !isByomEntry(entry)) {
+    return;
+  }
+  pendingAttachEntryId = entry.id;
+  const label = entry.file?.name ?? entry.title ?? 'your track';
+  const message =
+    reason === 'attach-file'
+      ? `Select the original MP3 for "${label}" via Attach File to enable playback.`
+      : reason === 'object-url-expired'
+        ? `The file reference for "${label}" expired. Please re-attach the MP3 to continue.`
+        : `Please attach the local MP3 for "${label}".`;
+  console.info('[byom] %s', message);
+  if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+    window.alert(message);
+  }
+  updatePlaylistControls(entry);
+}
+
+function resolveStoredTrackIndex(reference) {
+  rebuildPlaylistOrder();
+  if (!reference || typeof reference !== 'string') {
+    return 0;
+  }
+  if (reference.startsWith('byom:')) {
+    const id = reference.slice(5);
+    const entry = playlistEntries.find((candidate) => candidate.id === id);
+    return entry ? entry.listIndex : 0;
+  }
+  if (reference.startsWith('album:')) {
+    const parsed = parseInt(reference.slice(6), 10);
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed < albumEntries.length) {
+      return albumEntries[parsed].listIndex;
+    }
+  }
+  const fallback = parseInt(reference, 10);
+  if (Number.isInteger(fallback) && fallback >= 0 && fallback < playlistEntries.length) {
+    return fallback;
+  }
+  return 0;
+}
+
+function createFileMetadata(file, summary) {
+  if (file instanceof File) {
+    const lastModified = Number.isFinite(file.lastModified) ? file.lastModified : 0;
+    return {
+      name: file.name,
+      size: file.size,
+      lastModified,
+      signature: `${file.name}:${file.size}:${lastModified}`,
+    };
+  }
+  if (summary) {
+    return {
+      name: summary.fileName ?? 'unknown',
+      size: Number(summary.fileSizeBytes) || 0,
+      lastModified: 0,
+      signature: '',
+    };
+  }
+  return null;
+}
+
+function buildRuntimeByomEntry(record, objectUrl = '') {
+  if (!record || typeof record !== 'object') {
+    throw new Error('Invalid BYOM record.');
+  }
+  return {
+    id: record.id,
+    type: 'byom',
+    title: record.name ?? record.file?.name ?? `BYOM ${byomEntries.length + 1}`,
+    modelDefinition: record.model ?? null,
+    baseline: record.baseline ?? null,
+    presetId: record.baseline?.presetId ?? null,
+    presetOverrides: record.presetOverrides ?? null,
+    summary: record.summary ?? null,
+    stats: record.stats ?? null,
+    file: record.file ?? null,
+    objectUrl: objectUrl || '',
+    requiresFile: !objectUrl,
+    listIndex: 0,
+  };
+}
+
+async function loadStoredByomEntries() {
+  try {
+    const stored = await byomStorage.listEntries();
+    if (!Array.isArray(stored) || stored.length === 0) {
+      return;
+    }
+    byomEntries = stored.map((record) => buildRuntimeByomEntry(record));
+    rebuildPlaylistOrder();
+    renderPlaylistOptions(currentTrackIndex);
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert('BYOM models restored. Attach the original MP3 files via Attach File before playback.');
+    } else {
+      console.info('[byom] Stored BYOM models restored. Attach source files before playback.');
+    }
+  } catch (error) {
+    console.error('[byom] Failed to load stored BYOM entries', error);
+  }
+}
+
+const modelOptions = albumTracks.map((track, index) => ({
   id: MODEL_FILES[index],
   label: track.title ?? MODEL_FILES[index],
 }));
@@ -412,6 +663,7 @@ byom.mount({
 });
 
 let latestTrainingResult = null;
+let activeTrainingContext = null;
 
 const trainingController = createTrainingController({
   onStatus: ({ status, detail }) => {
@@ -438,7 +690,7 @@ const trainingController = createTrainingController({
   onProgress: (payload) => {
     byom.updateTrainingProgress(payload);
   },
-  onComplete: ({ modelDefinition, stats, warmup }) => {
+  onComplete: async ({ modelDefinition, stats, warmup }) => {
     latestTrainingResult = { modelDefinition, stats, warmup };
     console.info('[byom] training completed', stats);
     if (warmup?.outputs) {
@@ -447,8 +699,10 @@ const trainingController = createTrainingController({
     if (typeof window !== 'undefined') {
       window.__LN_LAST_TRAINING__ = latestTrainingResult;
     }
+    await finalizeByomTraining({ modelDefinition, stats, warmup });
   },
   onCancelled: (detail) => {
+    activeTrainingContext = null;
     byom.setTrainingStatus('cancelled', {
       progress: 0,
       message: detail?.reason === 'cancelled-before-start' ? 'Training cancelled.' : 'Training cancelled.',
@@ -456,6 +710,7 @@ const trainingController = createTrainingController({
   },
   onError: (error) => {
     console.error('[byom] training error', error);
+    activeTrainingContext = null;
     byom.setTrainingStatus('error', {
       error,
       message: error?.message ?? 'Training failed.',
@@ -470,11 +725,19 @@ const trainingController = createTrainingController({
 });
 
 byom.setHandlers({
-  onTrain: ({ dataset, summary, model, hyperparameters }) => {
+  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters }) => {
     if (!dataset || !model) {
       byom.setTrainingStatus('error', { message: 'Training aborted — dataset is unavailable.', progress: 0 });
       return;
     }
+    activeTrainingContext = {
+      file: file instanceof File ? file : null,
+      objectUrl: typeof objectUrl === 'string' ? objectUrl : '',
+      preset: preset || summary?.presetId || null,
+      model,
+      summary,
+      hyperparameters,
+    };
     byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
     trainingController
       .start({
@@ -485,6 +748,7 @@ byom.setHandlers({
       })
       .catch((error) => {
         console.error('[byom] training start failed', error);
+        activeTrainingContext = null;
         byom.setTrainingStatus('error', {
           error,
           message: error?.message ?? 'Training could not start.',
@@ -518,13 +782,13 @@ byom.setHandlers({
   },
 });
 
-const initialTrackIndex = readStoredInt(STORAGE_KEYS.TRACK_INDEX, 0, 0, tracks.length - 1);
 const storedSafeMode = readStoredBoolean(STORAGE_KEYS.SAFE_MODE, false);
 const storedBypass = readStoredBoolean(STORAGE_KEYS.NN_BYPASS, false);
 
 const safeModeEnabled = storedSafeMode;
 const nnBypass = storedBypass;
 let lastModelOutputs = FALLBACK_NN_OUTPUTS;
+let currentTrackIndex = -1;
 
 map.configure({ safeMode: safeModeEnabled });
 if (safeModeEnabled) {
@@ -534,21 +798,18 @@ if (safeModeEnabled) {
 initDebugOverlay({ search: typeof window !== 'undefined' ? window.location.search : '' });
 await runStartupDiagnostics({ safeMode: safeModeEnabled });
 
-// Remove any stray options before populating the locked playlist.
-playlistSelect.innerHTML = '';
-tracks.forEach((track, index) => {
-  const option = document.createElement('option');
-  option.value = String(index);
-  option.textContent = track.title;
-  option.dataset.src = resolveUrl(index);
-  playlistSelect.append(option);
-});
+rebuildPlaylistOrder();
+renderPlaylistOptions(currentTrackIndex);
 
-render.setTrackTitle(tracks[initialTrackIndex]?.title ?? 'Latent Noise');
+await loadStoredByomEntries();
+
+const initialTrackIndex = resolveStoredTrackIndex(storedTrackPreference);
+const initialEntry = getEntryByIndex(initialTrackIndex);
+render.setTrackTitle(initialEntry?.title ?? 'Latent Noise');
+updatePlaylistControls(initialEntry);
 
 const modelCache = new Map();
-let currentTrackIndex = -1;
-let activeModelIndex = -1;
+let activeModelEntryId = '';
 let modelLoadToken = 0;
 
 const playback = {
@@ -684,8 +945,24 @@ function updatePerformanceScaling(averageFps) {
   }
 }
 
-function applyPresetForTrack(index, options = {}) {
-  const preset = getPreset(index) ?? activePreset ?? getDefaultPreset();
+function applyPresetForEntry(entry, options = {}) {
+  let preset = null;
+  if (entry) {
+    if (isByomEntry(entry)) {
+      if (entry.presetId) {
+        preset = getPreset(entry.presetId);
+      }
+      if (!preset && entry.presetTitle) {
+        preset = getPreset(entry.presetTitle);
+      }
+    } else if (entry.type === 'album') {
+      preset = getPreset(entry.albumIndex);
+    }
+  }
+  if (!preset) {
+    preset = activePreset ?? getDefaultPreset();
+  }
+
   activePreset = preset;
   if (preset?.palette) {
     render.setPalette(preset.palette);
@@ -705,6 +982,15 @@ function applyPresetForTrack(index, options = {}) {
     }
     if (adjusted.render) {
       copyParams(renderParams, adjusted.render);
+    }
+  }
+
+  if (entry && entry.presetOverrides) {
+    if (entry.presetOverrides.sim) {
+      copyParams(simParams, entry.presetOverrides.sim);
+    }
+    if (entry.presetOverrides.render) {
+      copyParams(renderParams, entry.presetOverrides.render);
     }
   }
 
@@ -854,8 +1140,12 @@ function cacheEntryIsPromise(entry) {
   return entry && typeof entry === 'object' && typeof entry.then === 'function';
 }
 
-async function fetchModelDefinition(index) {
-  const existing = modelCache.get(index);
+async function fetchModelDefinitionForEntry(entry) {
+  if (!entry) {
+    throw new Error('Playlist entry is required to load a model.');
+  }
+  const cacheKey = entry.id;
+  const existing = modelCache.get(cacheKey);
   if (existing) {
     if (cacheEntryIsPromise(existing)) {
       return existing;
@@ -863,36 +1153,57 @@ async function fetchModelDefinition(index) {
     return existing;
   }
 
-  const url = MODEL_FILES[index];
-  if (!url) {
-    throw new RangeError(`Model path missing for playlist index ${index}`);
+  if (entry.type === 'album') {
+    const url = entry.modelUrl;
+    if (!url) {
+      throw new RangeError(`Model path missing for playlist entry ${entry.id}`);
+    }
+
+    const fetchPromise = fetch(url)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch model "${url}" (${response.status} ${response.statusText}).`);
+        }
+        return response.json();
+      })
+      .then((json) => {
+        validateModelDefinition(json, url);
+        modelCache.set(cacheKey, json);
+        return json;
+      })
+      .catch((error) => {
+        modelCache.delete(cacheKey);
+        throw error;
+      });
+
+    modelCache.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 
-  const fetchPromise = fetch(url)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`Failed to fetch model "${url}" (${response.status} ${response.statusText}).`);
-      }
-      return response.json();
-    })
-    .then((json) => {
-      validateModelDefinition(json, url);
-      modelCache.set(index, json);
-      return json;
-    })
-    .catch((error) => {
-      modelCache.delete(index);
+  if (isByomEntry(entry)) {
+    if (!entry.modelDefinition) {
+      throw new Error(`BYOM entry "${entry.title ?? entry.id}" is missing a model definition.`);
+    }
+    try {
+      validateModelDefinition(entry.modelDefinition, entry.title ?? entry.id);
+    } catch (error) {
+      console.error('[app] Invalid stored BYOM model', error);
       throw error;
-    });
+    }
+    modelCache.set(cacheKey, entry.modelDefinition);
+    return entry.modelDefinition;
+  }
 
-  modelCache.set(index, fetchPromise);
-  return fetchPromise;
+  throw new Error(`Unsupported playlist entry type "${entry.type}".`);
 }
 
-async function prepareModel(index) {
+async function prepareModelForEntry(entry) {
+  if (!entry) {
+    return null;
+  }
   const token = ++modelLoadToken;
   try {
-    const definition = await fetchModelDefinition(index);
+    const definition = await fetchModelDefinitionForEntry(entry);
     if (token !== modelLoadToken) {
       return null;
     }
@@ -907,20 +1218,111 @@ async function prepareModel(index) {
     const normalized = nn.normalize(features);
     const warmupOutputs = nn.forward(normalized);
     lastModelOutputs = warmupOutputs || FALLBACK_NN_OUTPUTS;
-    activeModelIndex = index;
+    activeModelEntryId = entry.id;
     if (info) {
-      console.info(`[app] Model ready for "${tracks[index]?.title ?? index}" (${info.layers} layers)`);
+      console.info(`[app] Model ready for "${entry.title ?? entry.id}" (${info.layers} layers)`);
     }
     return info;
   } catch (error) {
-    console.error(`[app] Failed to load model for "${tracks[index]?.title ?? index}"`, error);
+    console.error(`[app] Failed to load model for "${entry.title ?? entry.id}"`, error);
     return null;
+  }
+}
+
+async function finalizeByomTraining({ modelDefinition, stats }) {
+  if (!modelDefinition) {
+    console.warn('[byom] Training result missing model definition; cannot persist entry.');
+    activeTrainingContext = null;
+    return;
+  }
+  if (!activeTrainingContext) {
+    console.warn('[byom] Training context lost; skipping BYOM persistence.');
+    return;
+  }
+  const context = activeTrainingContext;
+  activeTrainingContext = null;
+
+  let playbackUrl = '';
+  if (context.file instanceof File) {
+    try {
+      playbackUrl = URL.createObjectURL(context.file);
+    } catch (error) {
+      console.warn('[byom] Failed to create playback Object URL from File', error);
+      playbackUrl = context.objectUrl || '';
+    }
+  } else if (context.objectUrl) {
+    playbackUrl = context.objectUrl;
+  }
+
+  const fileMeta = createFileMetadata(context.file, context.summary);
+  const entryName =
+    context.summary?.fileName
+    || fileMeta?.name
+    || `BYOM ${new Date().toLocaleTimeString()}`;
+
+  const baseline = {
+    presetId: context.preset ?? null,
+    modelId: context.model,
+  };
+  if (context.hyperparameters) {
+    baseline.hyperparameters = { ...context.hyperparameters };
+  }
+
+  let persisted;
+  try {
+    const payload = byomStorage.createEntryPayload({
+      name: entryName,
+      baseline,
+      file: fileMeta,
+      summary: context.summary ?? null,
+      stats: stats ?? null,
+      model: modelDefinition,
+      version: 1,
+    });
+    persisted = await byomStorage.putEntry(payload, {
+      name: entryName,
+      inputs: modelDefinition?.input,
+      outputs: Array.isArray(modelDefinition?.layers)
+        ? modelDefinition.layers.at(-1)?.bias?.length
+        : undefined,
+    });
+  } catch (error) {
+    console.error('[byom] Failed to persist trained BYOM entry', error);
+    return;
+  }
+
+  const runtimeEntry = buildRuntimeByomEntry(persisted, playbackUrl);
+  if (context.presetOverrides) {
+    runtimeEntry.presetOverrides = { ...context.presetOverrides };
+  }
+  if (playbackUrl) {
+    sessionObjectUrls.set(runtimeEntry.id, playbackUrl);
+    runtimeEntry.requiresFile = false;
+  }
+  byomEntries.push(runtimeEntry);
+  rebuildPlaylistOrder();
+  renderPlaylistOptions(runtimeEntry.listIndex);
+  updatePlaylistControls(runtimeEntry);
+  console.info('[byom] Stored BYOM entry "%s".', runtimeEntry.title);
+
+  if (typeof byom.reset === 'function') {
+    byom.reset();
+  }
+  if (typeof byom.close === 'function') {
+    byom.close({ restoreFocus: false });
+  }
+
+  if (playbackUrl) {
+    currentTrackIndex = -1;
+    setTrack(runtimeEntry.listIndex, { autoplay: true, autoplayDelayMs: 0 });
+  } else {
+    promptAttachForEntry(runtimeEntry, 'object-url-expired');
   }
 }
 
 function setTrack(index, options = {}) {
   clearAutoAdvanceTimer();
-  if (!Number.isInteger(index) || index < 0 || index >= tracks.length) {
+  if (!Number.isInteger(index) || index < 0 || index >= playlistEntries.length) {
     console.warn('[app] Ignoring out-of-range track index', index);
     return;
   }
@@ -929,23 +1331,42 @@ function setTrack(index, options = {}) {
     pendingPlayTimer = 0;
   }
   const playToken = ++pendingPlayToken;
-  const target = tracks[index];
+  const entry = getEntryByIndex(index);
+  if (!entry) {
+    return;
+  }
   const autoplay = options.autoplay ?? !audioElement.paused;
   const autoplayDelayMs = Number.isFinite(options.autoplayDelayMs)
     ? Math.max(0, options.autoplayDelayMs)
     : 0;
 
-  if (index === currentTrackIndex && activeModelIndex === index) {
+  if (isByomEntry(entry) && !entry.objectUrl) {
+    updatePlaylistControls(entry);
+    promptAttachForEntry(entry, 'attach-file');
+    if (currentTrackIndex >= 0 && currentTrackIndex < playlistEntries.length) {
+      playlistSelect.value = String(currentTrackIndex);
+      updatePlaylistControls(getCurrentEntry());
+    }
+    return;
+  }
+
+  if (index === currentTrackIndex && activeModelEntryId === entry.id && entry.type === 'album') {
     return;
   }
 
   currentTrackIndex = index;
-  playlistSelect.selectedIndex = index;
   playlistSelect.value = String(index);
-  audioElement.src = resolveUrl(index);
-  writeStorage(STORAGE_KEYS.TRACK_INDEX, String(index));
-  const preset = applyPresetForTrack(index, { forceSilence: !autoplay });
-  render.setTrackTitle(target?.title ?? `Track ${index + 1}`);
+  storeTrackSelection(entry);
+  updatePlaylistControls(entry);
+
+  if (isByomEntry(entry)) {
+    audioElement.src = entry.objectUrl;
+  } else {
+    audioElement.src = entry.audioUrl;
+  }
+
+  const preset = applyPresetForEntry(entry, { forceSilence: !autoplay });
+  render.setTrackTitle(entry.title ?? `Track ${index + 1}`);
   render.updateTrackTime(0, Number.isFinite(audioElement.duration) ? audioElement.duration : NaN);
   updateSeekUi(0, NaN);
   playback.status = autoplay ? 'Buffering' : 'Idle';
@@ -956,7 +1377,7 @@ function setTrack(index, options = {}) {
     console.info('[app] Applied preset:', preset.title);
   }
 
-  void prepareModel(index);
+  void prepareModelForEntry(entry);
 
   if (!autoplay || autoplayDelayMs > 0) {
     audioElement.pause();
@@ -988,10 +1409,10 @@ function setTrack(index, options = {}) {
 }
 
 function nextTrack(step = 1, options = {}) {
-  if (tracks.length === 0) {
+  if (playlistEntries.length === 0) {
     return;
   }
-  const nextIndex = (currentTrackIndex + step + tracks.length) % tracks.length;
+  const nextIndex = (currentTrackIndex + step + playlistEntries.length) % playlistEntries.length;
   const autoplay = options.autoplay ?? !audioElement.paused;
   const autoplayDelayMs = Number.isFinite(options.autoplayDelayMs)
     ? Math.max(0, options.autoplayDelayMs)
@@ -1139,6 +1560,8 @@ playlistSelect.addEventListener('change', (event) => {
   if (Number.isNaN(selected)) {
     return;
   }
+  const entry = getEntryByIndex(selected);
+  updatePlaylistControls(entry);
   if (selected !== currentTrackIndex && currentTrackIndex >= 0) {
     startParticleIntermission(TRACK_INTERMISSION_MS);
   }
@@ -1146,6 +1569,144 @@ playlistSelect.addEventListener('change', (event) => {
     autoplay: !audioElement.paused,
     autoplayDelayMs: TRACK_INTERMISSION_MS,
   });
+});
+
+playlistAttachButton.addEventListener('click', () => {
+  const entry = getCurrentEntry();
+  if (!isByomEntry(entry)) {
+    return;
+  }
+  pendingAttachEntryId = entry.id;
+  byomAttachInput.value = '';
+  byomAttachInput.click();
+});
+
+playlistRenameButton.addEventListener('click', async () => {
+  const entry = getCurrentEntry();
+  if (!isByomEntry(entry)) {
+    return;
+  }
+  const currentName = entry.title ?? entry.file?.name ?? '';
+  const nextName = typeof window !== 'undefined' && typeof window.prompt === 'function'
+    ? window.prompt('Rename BYOM entry', currentName)
+    : currentName;
+  if (!nextName) {
+    return;
+  }
+  const trimmed = nextName.trim();
+  if (!trimmed || trimmed === entry.title) {
+    return;
+  }
+  entry.title = trimmed;
+  try {
+    await byomStorage.renameEntry(entry.id, trimmed);
+  } catch (error) {
+    console.error('[byom] Failed to rename entry', error);
+  }
+  renderPlaylistOptions(currentTrackIndex);
+  if (currentTrackIndex >= 0 && playlistEntries[currentTrackIndex]?.id === entry.id) {
+    render.setTrackTitle(entry.title);
+  }
+  updatePlaylistControls(entry);
+});
+
+playlistDeleteButton.addEventListener('click', async () => {
+  const entry = getCurrentEntry();
+  if (!isByomEntry(entry)) {
+    return;
+  }
+  const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
+    ? window.confirm(`Delete "${entry.title ?? entry.file?.name ?? 'BYOM entry'}"? This cannot be undone.`)
+    : true;
+  if (!confirmed) {
+    return;
+  }
+
+  if (entry.objectUrl) {
+    try {
+      URL.revokeObjectURL(entry.objectUrl);
+    } catch {
+      // Ignore revoke errors.
+    }
+  }
+  sessionObjectUrls.delete(entry.id);
+  modelCache.delete(entry.id);
+  if (activeModelEntryId === entry.id) {
+    activeModelEntryId = '';
+  }
+
+  const activeEntryBeforeDelete = getCurrentEntry();
+  const wasPlayingDeleted = activeEntryBeforeDelete && activeEntryBeforeDelete.id === entry.id;
+
+  byomEntries = byomEntries.filter((candidate) => candidate.id !== entry.id);
+  rebuildPlaylistOrder();
+  renderPlaylistOptions(currentTrackIndex);
+
+  try {
+    await byomStorage.deleteEntry(entry.id);
+  } catch (error) {
+    console.error('[byom] Failed to delete BYOM entry', error);
+  }
+
+  if (playlistEntries.length === 0) {
+    currentTrackIndex = -1;
+    audioElement.pause();
+    render.setTrackTitle('Latent Noise');
+    updatePlaylistControls(null);
+    updateStatus(physics.getMetrics());
+    return;
+  }
+
+  if (wasPlayingDeleted) {
+    const fallbackIndex = Math.min(entry.listIndex ?? 0, playlistEntries.length - 1);
+    currentTrackIndex = -1;
+    setTrack(fallbackIndex, { autoplay: false });
+  } else if (activeEntryBeforeDelete) {
+    const activeIndex = playlistEntries.findIndex((candidate) => candidate.id === activeEntryBeforeDelete.id);
+    if (activeIndex >= 0) {
+      currentTrackIndex = activeIndex;
+      playlistSelect.value = String(activeIndex);
+    } else {
+      currentTrackIndex = -1;
+    }
+    updatePlaylistControls(getCurrentEntry());
+  } else {
+    updatePlaylistControls(getCurrentEntry());
+  }
+});
+
+byomAttachInput.addEventListener('change', async () => {
+  const files = byomAttachInput.files;
+  const file = files && files.length > 0 ? files[0] : null;
+  const entryId = pendingAttachEntryId || getCurrentEntry()?.id;
+  pendingAttachEntryId = '';
+  byomAttachInput.value = '';
+  if (!file || !entryId) {
+    return;
+  }
+  const entry = playlistEntries.find((candidate) => candidate.id === entryId);
+  if (!entry || !isByomEntry(entry)) {
+    return;
+  }
+  let objectUrl = '';
+  try {
+    objectUrl = URL.createObjectURL(file);
+  } catch (error) {
+    console.error('[byom] Failed to create Object URL for BYOM file', error);
+    return;
+  }
+  setEntryObjectUrl(entry, objectUrl, file);
+  try {
+    await byomStorage.updateEntry(entry.id, { file: entry.file });
+  } catch (error) {
+    console.warn('[byom] Failed to persist BYOM file metadata', error);
+  }
+  if (currentTrackIndex === entry.listIndex) {
+    setTrack(entry.listIndex, {
+      autoplay: !audioElement.paused,
+      autoplayDelayMs: 0,
+    });
+  }
 });
 
 render.on('playToggle', togglePlayback);
@@ -1161,7 +1722,12 @@ render.on('selectTrack', ({ index }) => {
   if (!Number.isInteger(index)) {
     return;
   }
-  const nextIndex = (index + tracks.length) % tracks.length;
+  if (playlistEntries.length === 0) {
+    return;
+  }
+  const nextIndex = (index + playlistEntries.length) % playlistEntries.length;
+  const entry = getEntryByIndex(nextIndex);
+  updatePlaylistControls(entry);
   if (nextIndex !== currentTrackIndex && currentTrackIndex >= 0) {
     startParticleIntermission(TRACK_INTERMISSION_MS);
   }
@@ -1278,8 +1844,9 @@ function frame(now) {
     ? Math.min(Math.max(audioState.activity, 0), 1)
     : audio.getActivityLevel(audioState?.rms ?? 0);
 
+  const currentEntry = getCurrentEntry();
   let nnOutputs = lastModelOutputs;
-  if (!nnBypass && activeModelIndex === currentTrackIndex) {
+  if (!nnBypass && currentEntry && activeModelEntryId === currentEntry.id) {
     try {
       const normalized = nn.normalize(features);
       nnOutputs = nn.forward(normalized);

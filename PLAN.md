@@ -251,14 +251,14 @@
 ---
 
 ## Phase 20 — BYOM Persistence & Playback Integration
-- [ ] Serialize trained model + normalization + preset metadata to DESIGN §18 schema and store in IndexedDB (`ln.byom.models`).
-- [ ] Expose BYOM entries in playlist UI under a separate group with ability to rename/delete entries.
-- [ ] On app boot, reload stored BYOM models, prompt user to re-select source file to refresh Object URL, and reinstate presets.
-- [ ] Start playback using the new model: audio pipeline uses user file, NN outputs drive visuals, presets apply correctly.
+- [x] Serialize trained model + normalization + preset metadata to DESIGN §18 schema and store in IndexedDB (`ln.byom.models`).
+- [x] Expose BYOM entries in playlist UI under a separate group with ability to rename/delete entries.
+- [x] On app boot, reload stored BYOM models, prompt user to re-select source file to refresh Object URL, and reinstate presets.
+- [x] Start playback using the new model: audio pipeline uses user file, NN outputs drive visuals, presets apply correctly.
 
 **Acceptance:**
-- [ ] After training, the new BYOM entry appears in the playlist and persists across reloads (with graceful prompt to reconnect file).
-- [ ] Selecting the entry plays the user audio and reproduces the trained visual behavior without console errors.
+- [x] After training, the new BYOM entry appears in the playlist and persists across reloads (with graceful prompt to reconnect file).
+- [x] Selecting the entry plays the user audio and reproduces the trained visual behavior without console errors.
 
 ---
 

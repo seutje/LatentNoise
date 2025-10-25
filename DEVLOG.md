@@ -217,3 +217,8 @@
 - Introduced the BYOM training controller and status callbacks that bridge the UI to a dedicated worker with start/pause/resume/cancel lifecycle management and dataset cloning.
 - Implemented the worker-side gradient descent loop with mini-batch updates, learning-rate decay, gradient clipping, validation tracking, and progress/ETA messaging back to the main thread.
 - Extended the BYOM drawer to surface live training telemetry, button state transitions, and warm-up validation, then confirmed the updates with `npm run lint`.
+
+## 2025-10-25 - Phase 20
+- Added `js/byom-storage.js` with IndexedDB-backed persistence for trained models, normalization, and preset metadata plus in-memory fallback and CRUD helpers.
+- Reworked the playlist to group BYOM entries, surface rename/delete/attach controls, and load saved models on boot with user prompts to reconnect local audio files.
+- Persisted post-training sessions into the library and auto-switched playback to the freshly trained model using the current Object URL; manual verification notes left for follow-up since automated tests are unavailable in this environment.

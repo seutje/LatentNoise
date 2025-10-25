@@ -49,8 +49,12 @@
       <button id="next">Next</button>
       <input id="seek" type="range" min="0" max="100" value="0">
       <select id="playlist"></select>
+      <button id="playlist-attach" type="button" class="playlist-action" hidden title="Attach local file for BYOM entry">Attach File</button>
+      <button id="playlist-rename" type="button" class="playlist-action" hidden title="Rename selected BYOM entry">Rename</button>
+      <button id="playlist-delete" type="button" class="playlist-action" hidden title="Delete selected BYOM entry">Delete</button>
       <button id="fullscreen" type="button">Fullscreen</button>
     </div>
+    <input id="byom-attach-input" type="file" accept="audio/mpeg" hidden>
     <div
       id="byom-drawer"
       class="byom-drawer"

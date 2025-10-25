@@ -446,17 +446,6 @@ body.fullscreen-active #byom-drawer {
   cursor: pointer;
 }
 
-#byom-form input[type='file']::file-selector-button {
-  font: inherit;
-  padding: 0.45rem 0.9rem;
-  margin-right: 0.8rem;
-  border: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.15);
-  color: var(--text);
-  cursor: pointer;
-}
-
 #byom-form input[type='file']:focus-visible,
 .byom-field select:focus-visible,
 .byom-field input:focus-visible,
@@ -466,6 +455,50 @@ body.fullscreen-active #byom-drawer {
   outline: 2px solid rgba(255, 255, 255, 0.4);
   outline-offset: 2px;
   border-color: rgba(255, 255, 255, 0.4);
+}
+
+#byom-form select {
+  border-radius: 999px;
+  padding: 0.5rem 1.1rem;
+  padding-right: 2.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.7) 50%) calc(100% - 1.2rem) center / 6px 6px no-repeat,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.7) 50%, transparent 50%) calc(100% - 0.85rem) center / 6px 6px no-repeat,
+    rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+#byom-form select:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.85) 50%) calc(100% - 1.2rem) center / 6px 6px no-repeat,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.85) 50%, transparent 50%) calc(100% - 0.85rem) center / 6px 6px no-repeat,
+    rgba(255, 255, 255, 0.18);
+}
+
+#byom-form select:focus-visible {
+  border-color: rgba(255, 255, 255, 0.6);
+  background:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.85) 50%) calc(100% - 1.2rem) center / 6px 6px no-repeat,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.85) 50%, transparent 50%) calc(100% - 0.85rem) center / 6px 6px no-repeat,
+    rgba(255, 255, 255, 0.18);
+}
+
+#byom-form select option {
+  color: var(--text);
+  background-color: rgba(10, 12, 20, 0.96);
+}
+
+#byom-form input[type='file']::file-selector-button {
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+  margin-right: 0.8rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  cursor: pointer;
 }
 
 .byom-manual-group {
