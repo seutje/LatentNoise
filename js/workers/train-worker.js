@@ -28,9 +28,9 @@ const TRAINING_CONTROL = {
 };
 
 const DEFAULT_OPTIONS = {
-  learningRateDecay: 0.92,
-  minLearningRate: 1e-5,
-  gradientClipNorm: 5,
+  learningRateDecay: 1,
+  minLearningRate: 0,
+  gradientClipNorm: 0,
 };
 
 const state = {
@@ -67,9 +67,23 @@ function sanitizeNumber(value, fallback, min = -Infinity, max = Infinity) {
 }
 
 function sanitizeOptions(options) {
-  const lrDecay = sanitizeNumber(options?.learningRateDecay, DEFAULT_OPTIONS.learningRateDecay, 0.5, 0.999);
-  const minLr = sanitizeNumber(options?.minLearningRate, DEFAULT_OPTIONS.minLearningRate, 1e-6, 0.05);
-  const clipNorm = sanitizeNumber(options?.gradientClipNorm, DEFAULT_OPTIONS.gradientClipNorm, 0.1, 50);
+  let lrDecay = Number(options?.learningRateDecay);
+  if (!Number.isFinite(lrDecay)) {
+    lrDecay = DEFAULT_OPTIONS.learningRateDecay;
+  }
+  lrDecay = Math.min(Math.max(lrDecay, 0.5), 1);
+
+  let minLr = Number(options?.minLearningRate);
+  if (!Number.isFinite(minLr)) {
+    minLr = DEFAULT_OPTIONS.minLearningRate;
+  }
+  minLr = Math.min(Math.max(minLr, 0), 0.1);
+
+  let clipNorm = Number(options?.gradientClipNorm);
+  if (!Number.isFinite(clipNorm) || clipNorm < 0) {
+    clipNorm = DEFAULT_OPTIONS.gradientClipNorm;
+  }
+
   return {
     learningRateDecay: lrDecay,
     minLearningRate: minLr,
@@ -81,7 +95,7 @@ function sanitizeHyper(raw) {
   return {
     epochs: Math.max(1, Math.floor(Number(raw?.epochs ?? 400))),
     learningRate: sanitizeNumber(raw?.learningRate, 0.01, 1e-6, 0.5),
-    batchSize: Math.max(1, Math.floor(Number(raw?.batchSize ?? 256))),
+    batchSize: Math.max(1, Math.floor(Number(raw?.batchSize ?? 1))),
     l2: Math.max(0, Number(raw?.l2 ?? 0)),
   };
 }
@@ -458,26 +472,28 @@ function applyGradients(runtime, hyper, options, sampleCount, epochLearningRate)
   }
   const { layers } = runtime;
   const scale = 1 / sampleCount;
-  let gradNormSq = 0;
-
-  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
-    const layer = layers[layerIndex];
-    const { weightGrads, biasGrads } = layer;
-    for (let i = 0; i < weightGrads.length; i += 1) {
-      const scaled = weightGrads[i] * scale;
-      gradNormSq += scaled * scaled;
-    }
-    for (let i = 0; i < biasGrads.length; i += 1) {
-      const scaled = biasGrads[i] * scale;
-      gradNormSq += scaled * scaled;
-    }
-  }
-
   let clipScale = 1;
-  if (gradNormSq > 0) {
-    const norm = Math.sqrt(gradNormSq);
-    if (norm > options.gradientClipNorm) {
-      clipScale = options.gradientClipNorm / norm;
+
+  if (options.gradientClipNorm > 0 && Number.isFinite(options.gradientClipNorm)) {
+    let gradNormSq = 0;
+    for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+      const layer = layers[layerIndex];
+      const { weightGrads, biasGrads } = layer;
+      for (let i = 0; i < weightGrads.length; i += 1) {
+        const scaled = weightGrads[i] * scale;
+        gradNormSq += scaled * scaled;
+      }
+      for (let i = 0; i < biasGrads.length; i += 1) {
+        const scaled = biasGrads[i] * scale;
+        gradNormSq += scaled * scaled;
+      }
+    }
+
+    if (gradNormSq > 0) {
+      const norm = Math.sqrt(gradNormSq);
+      if (norm > options.gradientClipNorm) {
+        clipScale = options.gradientClipNorm / norm;
+      }
     }
   }
 
@@ -487,12 +503,12 @@ function applyGradients(runtime, hyper, options, sampleCount, epochLearningRate)
     const layer = layers[layerIndex];
     const { weights, biases, weightGrads, biasGrads } = layer;
     for (let i = 0; i < weights.length; i += 1) {
-      const grad = (weightGrads[i] * scale) * clipScale + hyper.l2 * weights[i];
+      const grad = weightGrads[i] * scale * clipScale + hyper.l2 * weights[i];
       weights[i] -= lr * grad;
       weightGrads[i] = 0;
     }
     for (let i = 0; i < biases.length; i += 1) {
-      const grad = (biasGrads[i] * scale) * clipScale;
+      const grad = biasGrads[i] * scale * clipScale;
       biases[i] -= lr * grad;
       biasGrads[i] = 0;
     }
