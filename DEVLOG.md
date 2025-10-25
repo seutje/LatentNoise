@@ -213,6 +213,11 @@
 - Upgraded the BYOM drawer with drag/drop uploads, analysis lifecycle management, dataset summaries with warnings, and debug overlay logging while ensuring cancelation resets object URLs and form state cleanly.
 - Revalidated the repository with `npm run lint`.
 
+## 2025-10-26 - Fresh Training Option
+- Added a default "Fresh" BYOM model option, updating intake and UI wiring to analyze datasets without a baseline JSON.
+- Generated fresh network seeds inside the training controller with dataset-driven normalization before handing off to the worker.
+- Confirmed repository health with `npm run lint` and `npm test`.
+
 ## 2025-10-25 - Phase 19
 - Introduced the BYOM training controller and status callbacks that bridge the UI to a dedicated worker with start/pause/resume/cancel lifecycle management and dataset cloning.
 - Implemented the worker-side gradient descent loop with mini-batch updates, learning-rate decay, gradient clipping, validation tracking, and progress/ETA messaging back to the main thread.

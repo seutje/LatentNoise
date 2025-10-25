@@ -1,5 +1,7 @@
 import { createFeatureExtractor, FEATURE_COUNT, mixToMono } from './audio-features.js';
 import { createModel, infer, loadModelDefinition } from './nn.js';
+import { FRESH_MODEL_ID } from './byom-constants.js';
+import { PARAM_NAMES as OUTPUT_PARAM_NAMES } from './map.js';
 
 const FRAME_SIZE = 2048;
 const TARGET_FPS = 60;
@@ -185,10 +187,15 @@ export async function analyzeFile({
     const frameStarts = buildFrameStarts(mono.length, hopSamples, FRAME_SIZE);
     const frameCount = frameStarts.length;
 
+    const isFreshModel = modelUrl === FRESH_MODEL_ID;
     onProgress?.({ stage: 'model', value: PROGRESS_IMPORT + PROGRESS_DECODE });
-    const rawModel = await loadModelDefinition(modelUrl);
-    const model = createModel(rawModel);
-    const outputSize = model.outputSize;
+    let model = null;
+    let outputSize = OUTPUT_PARAM_NAMES.length;
+    if (!isFreshModel) {
+      const rawModel = await loadModelDefinition(modelUrl);
+      model = createModel(rawModel);
+      outputSize = model.outputSize;
+    }
 
     const extractor = createFeatureExtractor({ sampleRate, fftSize: FRAME_SIZE });
     const spectrum = new Float32Array(FRAME_SIZE / 2);
@@ -197,7 +204,7 @@ export async function analyzeFile({
     const frameBuffer = new Float32Array(FRAME_SIZE);
     const featureValues = new Float32Array(frameCount * FEATURE_COUNT);
     const targetValues = new Float32Array(frameCount * outputSize);
-    const outputScratch = new Float32Array(outputSize);
+    const outputScratch = isFreshModel ? null : new Float32Array(outputSize);
 
     let previousStart = frameStarts[0];
 
@@ -225,8 +232,10 @@ export async function analyzeFile({
       });
 
       featureValues.set(features, index * FEATURE_COUNT);
-      const outputs = infer(model, features, outputScratch);
-      targetValues.set(outputs, index * outputSize);
+      if (model) {
+        const outputs = infer(model, features, outputScratch);
+        targetValues.set(outputs, index * outputSize);
+      }
 
       if ((index & 0x3f) === 0) {
         const progressBase = PROGRESS_IMPORT + PROGRESS_DECODE;
