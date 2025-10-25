@@ -101,6 +101,17 @@
               <select id="byom-model" name="model" required></select>
             </div>
           </section>
+          <section class="byom-section byom-correlations" aria-labelledby="byom-correlations-heading">
+            <h3 id="byom-correlations-heading" class="byom-heading">Correlations</h3>
+            <details id="byom-correlations">
+              <summary>Guide training with feature pairs</summary>
+              <div class="byom-correlation-controls">
+                <button type="button" id="byom-correlation-add" class="byom-secondary">Add Correlation</button>
+              </div>
+              <ul id="byom-correlation-list" class="byom-correlation-list" aria-live="polite"></ul>
+              <p class="byom-hint byom-correlation-hint">Add music feature ⇄ simulation feature pairs to steer training toward specific behaviors.</p>
+            </details>
+          </section>
           <section class="byom-section byom-manual" aria-labelledby="byom-manual-heading">
             <h3 id="byom-manual-heading" class="byom-heading">Manual Tweaks</h3>
             <details id="byom-manual">
@@ -152,6 +163,26 @@
             <button type="button" id="byom-train" class="byom-primary" disabled>Train Model</button>
           </footer>
         </form>
+        <dialog id="byom-correlation-dialog" class="byom-dialog" aria-labelledby="byom-correlation-dialog-title">
+          <form id="byom-correlation-form" method="dialog">
+            <h4 id="byom-correlation-dialog-title">Add Correlation</h4>
+            <label class="byom-label" for="byom-correlation-feature">
+              Music Feature
+              <select id="byom-correlation-feature" required></select>
+            </label>
+            <label class="byom-label" for="byom-correlation-output">
+              Simulation Feature
+              <select id="byom-correlation-output" required></select>
+            </label>
+            <label class="byom-checkbox" for="byom-correlation-inverse">
+              <input id="byom-correlation-inverse" type="checkbox"> Inverse
+            </label>
+            <div class="byom-dialog-actions">
+              <button type="button" class="byom-secondary" data-action="cancel">Cancel</button>
+              <button type="submit" class="byom-primary" data-action="add">Add</button>
+            </div>
+          </form>
+        </dialog>
       </div>
     </div>
     <audio id="player" preload="metadata"></audio>

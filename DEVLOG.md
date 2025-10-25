@@ -227,3 +227,8 @@
 - Replaced blocking alerts with a glassmorphism-styled notification stack that appears in the top-right corner and auto-dismisses after five seconds.
 - Added `js/notifications.js`, initialized the stack on boot, and rerouted BYOM prompts to use the new toasts with graceful fallbacks.
 - Confirmed repository health with `npm run lint` and `npm test`.
+
+## 2025-10-25 - BYOM Correlation Training
+- Expanded the BYOM drawer with a correlations section, selection dialog, and list management controls so creators can target music feature ⇄ simulation output relationships.
+- Threaded correlation metadata through BYOM state, the training controller, and the worker so gradient updates optimize for the configured pairings and report achieved metrics back to the UI.
+- Revalidated repository health with `npm run lint` and `npm test` after integrating the new training path.

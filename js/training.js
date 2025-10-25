@@ -52,6 +52,32 @@ function sanitizeHyperparameters(raw) {
   };
 }
 
+function sanitizeCorrelations(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return [];
+  }
+  const sanitized = [];
+  raw.forEach((entry) => {
+    const featureIndex = Number(entry?.featureIndex);
+    const outputIndex = Number(entry?.outputIndex);
+    if (!Number.isInteger(featureIndex) || !Number.isInteger(outputIndex)) {
+      return;
+    }
+    sanitized.push({
+      id: typeof entry?.id === 'string' ? entry.id : `${featureIndex}:${outputIndex}:${sanitized.length}`,
+      featureIndex,
+      featureName: typeof entry?.featureName === 'string' ? entry.featureName : '',
+      featureType: entry?.featureType === 'signed' ? 'signed' : 'positive',
+      outputIndex,
+      outputName: typeof entry?.outputName === 'string' ? entry.outputName : '',
+      inverse: Boolean(entry?.inverse),
+      orientationSign: Number(entry?.orientationSign) === -1 ? -1 : 1,
+      weight: clampNumber(entry?.weight, 0.01, 10, 1),
+    });
+  });
+  return sanitized;
+}
+
 function createWorker() {
   const url = new URL('./workers/train-worker.js', import.meta.url);
   return new Worker(url, { type: 'module' });
@@ -74,6 +100,7 @@ function ensureCallbacks(callbacks = {}) {
  * @property {import('./byom-intake.js').AnalyzeResult['summary']} summary
  * @property {string} modelUrl
  * @property {object} hyperparameters
+ * @property {Array} [correlations]
  */
 
 export function createController(callbacks) {
@@ -140,7 +167,7 @@ export function createController(callbacks) {
     if (!options || typeof options !== 'object') {
       throw new TypeError('Training options must be an object.');
     }
-    const { dataset, summary, modelUrl, hyperparameters } = options;
+    const { dataset, summary, modelUrl, hyperparameters, correlations } = options;
     if (!modelUrl || typeof modelUrl !== 'string') {
       throw new Error('Training requires a modelUrl string.');
     }
@@ -186,6 +213,7 @@ export function createController(callbacks) {
     const worker = getWorker();
     const clonedFeatures = dataset.features.slice();
     const clonedTargets = dataset.targets.slice();
+    const sanitizedCorrelations = sanitizeCorrelations(correlations);
     const datasetPayload = {
       features: clonedFeatures,
       targets: clonedTargets,
@@ -215,6 +243,7 @@ export function createController(callbacks) {
           dataset: datasetPayload,
           model: modelDefinition,
           hyperparameters: state.activeHyper,
+          correlations: sanitizedCorrelations,
           options: {
             learningRateDecay: state.options.learningRateDecay,
             minLearningRate: state.options.minLearningRate,
