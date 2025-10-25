@@ -252,3 +252,8 @@
 - Updated the BYOM training completion notification formatting to include line breaks before each feature/output pair for improved readability.
 - Confirmed the summary still lists combined fitness when available and falls back to the original save confirmation when no correlations are reported.
 - Adjusted notification text styling so newline characters are preserved in toast content and validated with `npm run lint` and `npm test`.
+
+## 2025-10-26 - Debug Overlay Bars
+- Reworked the diagnostics overlay feature/output sections to render zero-centered bar graphs instead of decimal values for quicker scanning.
+- Added overflow markers and minimum fill widths so tiny and saturated values remain visible in the bar presentation.
+- Verified repository health with `npm run lint` and `npm test`.
