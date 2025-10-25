@@ -2,6 +2,8 @@
 
 **Reference:** See **DESIGN.md** (v1.6). This plan is optimized for AI coding agents (Codex/Copilot/Claude, etc.). Every actionable item has a checkbox. Human‑in‑the‑loop steps are minimized and grouped at the end.
 
+> **Testing mandate:** Every new feature or bug fix must land with automated tests (preferably Jest) that exercise the change. Expand coverage whenever touching production modules and run `npm test -- --coverage` before marking a task complete.
+
 > **Target repo layout**
 > ```
 > /latent-noise

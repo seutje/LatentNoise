@@ -267,3 +267,8 @@
 - Increased the spectral flux feature scaling by 100× before clamping so the diagnostic overlay reflects meaningful movement during playback.
 - Ensured the flux EMA smoothing still receives normalized values within `[0, 1]`.
 - Revalidated the repository with `npm run lint` and `npm test -- --watch=false`.
+
+## 2025-10-27 - Coverage Reinforcement
+- Expanded the Jest suite with dedicated tests for playlists, presets, notifications, and BYOM constants to lift baseline coverage.
+- Documented a testing mandate in README/PLAN so future features and fixes ship with automated coverage.
+- Confirmed health with `npm run lint` and `npm test -- --coverage`.

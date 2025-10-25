@@ -27,6 +27,11 @@ Then open [http://localhost:8000](http://localhost:8000) in a Chromium, Firefox,
 - `npm test` — Jest suite for modules that expose test hooks.
 - `npm run models` / `npm run train` — utilities for regenerating neural-network assets.
 
+## Contributing expectations
+- **Add tests for every feature or fix.** Ship a Jest unit test (or suite of tests) that exercises the new code path so the automation protects it going forward.
+- **Keep coverage climbing.** When you touch production code, prefer expanding the test suite over introducing untested behavior, and run `npm test -- --coverage` locally before opening a pull request.
+- **Verify linters and tests.** Always run `npm run lint` and `npm test` after making code changes to catch regressions early.
+
 ## How the visualizer works
 Latent Noise follows the pipeline defined in the design document:
 
