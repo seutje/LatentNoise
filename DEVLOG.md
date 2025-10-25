@@ -272,3 +272,7 @@
 - Expanded the Jest suite with dedicated tests for playlists, presets, notifications, and BYOM constants to lift baseline coverage.
 - Documented a testing mandate in README/PLAN so future features and fixes ship with automated coverage.
 - Confirmed health with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - BYOM Toggle Placement
+- Relocated the BYOM toggle from the HUD to the control strip, keeping its accessibility wiring intact and shortening the label to "BYOM" for consistency with neighboring actions.
+- Verified the layout change by re-running `npm run lint` and `npm test`.
