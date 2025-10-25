@@ -242,3 +242,8 @@
 - Updated BYOM default hyperparameters (epochs, learning rate, and worker fallbacks) to mirror the `npm run train` CLI defaults for consistent training behavior.
 - Synced the drawer form inputs with the new defaults and confirmed the pipeline continues to sanitize overrides correctly.
 - Verified repository health with `npm run lint` and `npm test`.
+
+## 2025-10-26 - BYOM Correlation Alerts
+- Formatted trained correlation metrics inside `app.js` so BYOM completions surface per-correlation scores and combined fitness using the shared `formatCorrelation` helper.
+- Triggered a success toast (with alert fallback) when training finishes, mirroring the CLI correlation summary for quick review in the browser UI.
+- Revalidated the repository via `npm run lint` and `npm test`.
