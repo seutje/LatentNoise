@@ -251,3 +251,4 @@
 ## 2025-10-26 - BYOM Correlation Notification Polish
 - Updated the BYOM training completion notification formatting to include line breaks before each feature/output pair for improved readability.
 - Confirmed the summary still lists combined fitness when available and falls back to the original save confirmation when no correlations are reported.
+- Adjusted notification text styling so newline characters are preserved in toast content and validated with `npm run lint` and `npm test`.
