@@ -897,7 +897,8 @@ function getFileSignature(file) {
 
 function setInputsDisabled(disabled) {
   const targets = [state.elements.fileInput, state.elements.presetSelect, state.elements.modelSelect];
-  const lock = disabled || state.training.active;
+  const requestedLock = Boolean(disabled) && !state.analysisActive;
+  const lock = state.training.active || requestedLock;
   state.inputsDisabled = lock;
   targets.forEach((el) => {
     if (!el) {
