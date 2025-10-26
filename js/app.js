@@ -37,6 +37,8 @@ const STORAGE_KEYS = Object.freeze({
 
 const MAP_PARAM_COUNT = map.PARAM_NAMES.length;
 const FALLBACK_NN_OUTPUTS = new Float32Array(MAP_PARAM_COUNT);
+const FEATURE_LABELS = audio.getFeatureLabels();
+const OUTPUT_LABELS = map.PARAM_NAMES.slice();
 
 function resolveCorrelationOrientation(metrics) {
   if (!metrics) {
@@ -2099,6 +2101,11 @@ function frame(now) {
     frameTimeAvg: averageFrameTime,
     fps: instantaneousFps,
     fpsAvg: averageFps,
+  }, {
+    features,
+    featureLabels: FEATURE_LABELS,
+    outputs: nnOutputs,
+    outputLabels: OUTPUT_LABELS,
   });
   updateStatus(metrics);
 

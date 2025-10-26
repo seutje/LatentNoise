@@ -305,3 +305,9 @@
 ## 2025-10-27 - BYOM Correlations Default Expansion
 - Set the correlations details box in the BYOM drawer to render expanded by default so the controls and empty state are immediately visible.
 - Reconfirmed repository health via `npm test -- --coverage` and `npm run lint`.
+
+## 2025-10-27 - Neural HUD Levels
+- Rendered audio feature inputs and neural outputs directly onto the canvas as twin HUD panels that draw from the active preset's accent palette.
+- Added smoothing, peak tracking, and graceful decay so the HUD levels animate responsively without jitter when data pauses.
+- Routed label metadata from the audio pipeline and mapper into the renderer to power the overlay readout.
+- Validated the overlay with `npm run lint` and `npm test -- --coverage`.

@@ -28,6 +28,20 @@ const PARAM_SCRATCH = {
 
 const CONNECTION_FRACTION = 0.9;
 
+const HUD_SMOOTH_HZ = 12;
+const HUD_PEAK_DECAY_RATE = 1.45;
+const HUD_IDLE_DECAY_RATE = 1.8;
+const HUD_MIN_PEAK = 0.04;
+const HUD_MARGIN = 18;
+const HUD_PANEL_PADDING = 14;
+const HUD_HEADING_HEIGHT = 18;
+const HUD_MIN_ROW_HEIGHT = 7;
+const HUD_MAX_ROW_HEIGHT = 18;
+const HUD_BAR_THICKNESS = 5;
+const HUD_FEATURE_PREFIX = 'IN';
+const HUD_OUTPUT_PREFIX = 'OUT';
+const HUD_MAX_ITEMS = 64;
+
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
   fullscreen: false,
 });
@@ -198,6 +212,342 @@ const listeners = new Map();
 
 const paletteState = buildPalette(DEFAULT_PALETTE);
 
+function ensureHudBufferSize(buffer, length) {
+  if (!buffer) {
+    return 0;
+  }
+  const targetLength = Math.max(0, Math.min(Number.isFinite(length) ? Math.trunc(length) : 0, HUD_MAX_ITEMS));
+  if (buffer.values.length === targetLength) {
+    return targetLength;
+  }
+  if (targetLength === 0) {
+    buffer.values = new Float32Array(0);
+    buffer.display = new Float32Array(0);
+    buffer.peaks = new Float32Array(0);
+    buffer.labels = [];
+    buffer.labelSource = null;
+    return 0;
+  }
+  buffer.values = new Float32Array(targetLength);
+  buffer.display = new Float32Array(targetLength);
+  buffer.peaks = new Float32Array(targetLength);
+  buffer.labels = new Array(targetLength);
+  buffer.labelSource = null;
+  return targetLength;
+}
+
+function buildFallbackLabel(prefix, index) {
+  const normalizedIndex = String(index + 1).padStart(2, '0');
+  const normalizedPrefix = typeof prefix === 'string' && prefix.length > 0 ? prefix : 'LVL';
+  return `${normalizedPrefix}-${normalizedIndex}`;
+}
+
+function assignHudLabels(buffer, labels) {
+  if (!buffer) {
+    return;
+  }
+  const length = buffer.values.length;
+  if (length === 0) {
+    buffer.labels = [];
+    buffer.labelSource = labels ?? null;
+    return;
+  }
+  if (labels && buffer.labelSource === labels && buffer.labels.length === length) {
+    return;
+  }
+  const useLabels = Array.isArray(labels) || (labels && typeof labels.length === 'number');
+  if (useLabels) {
+    const result = new Array(length);
+    for (let i = 0; i < length; i += 1) {
+      const raw = labels[i];
+      const normalized = typeof raw === 'string' ? raw.trim() : '';
+      result[i] = normalized.length > 0 ? normalized : buildFallbackLabel(buffer.prefix, i);
+    }
+    buffer.labels = result;
+    buffer.labelSource = labels;
+    return;
+  }
+
+  const fallback = new Array(length);
+  for (let i = 0; i < length; i += 1) {
+    fallback[i] = buildFallbackLabel(buffer.prefix, i);
+  }
+  buffer.labels = fallback;
+  buffer.labelSource = null;
+}
+
+function formatHudValue(value) {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+  const abs = Math.abs(value);
+  if (abs >= 100) {
+    return value.toFixed(0);
+  }
+  if (abs >= 10) {
+    return value.toFixed(1);
+  }
+  if (abs >= 1) {
+    return value.toFixed(2);
+  }
+  if (abs >= 0.1) {
+    return value.toFixed(3);
+  }
+  return value.toFixed(4);
+}
+
+function formatHudLabel(label) {
+  if (typeof label !== 'string') {
+    return '';
+  }
+  const trimmed = label.trim();
+  if (trimmed.length === 0) {
+    return '';
+  }
+  if (trimmed.length <= 18) {
+    return trimmed.toUpperCase();
+  }
+  return `${trimmed.slice(0, 17).toUpperCase()}…`;
+}
+
+function idleHudBuffer(buffer, dt) {
+  if (!buffer || buffer.display.length === 0) {
+    return;
+  }
+  const safeDt = Number.isFinite(dt) && dt > 0 ? dt : 0;
+  const decay = Math.exp(-safeDt * HUD_IDLE_DECAY_RATE);
+  for (let i = 0; i < buffer.display.length; i += 1) {
+    buffer.display[i] *= decay;
+    buffer.values[i] *= decay;
+    buffer.peaks[i] = Math.max(buffer.peaks[i] * decay, HUD_MIN_PEAK);
+  }
+}
+
+function updateHudBuffer(buffer, source, labels, dt) {
+  if (!buffer) {
+    return;
+  }
+  const length = ensureHudBufferSize(buffer, source && typeof source.length === 'number' ? source.length : 0);
+  assignHudLabels(buffer, labels);
+  if (length === 0) {
+    idleHudBuffer(buffer, dt);
+    return;
+  }
+
+  const safeDt = Number.isFinite(dt) && dt > 0 ? dt : 0;
+  const smoothing = clamp(1 - Math.exp(-safeDt * HUD_SMOOTH_HZ), 0, 1);
+  const peakDecay = Math.exp(-safeDt * HUD_PEAK_DECAY_RATE);
+
+  for (let i = 0; i < length; i += 1) {
+    const rawValue = source[i];
+    const value = Number.isFinite(rawValue) ? rawValue : 0;
+    buffer.values[i] = value;
+    const previousPeak = buffer.peaks[i];
+    const decayedPeak = previousPeak > 0 ? previousPeak * peakDecay : HUD_MIN_PEAK;
+    const nextPeak = Math.max(Math.abs(value), decayedPeak, HUD_MIN_PEAK);
+    buffer.peaks[i] = nextPeak;
+    const normalized = nextPeak > 0 ? clamp(value / nextPeak, -1, 1) : 0;
+    const previousDisplay = buffer.display[i];
+    buffer.display[i] = previousDisplay + (normalized - previousDisplay) * smoothing;
+  }
+}
+
+function updateHudVisuals(modelData, dt) {
+  const features = modelData && typeof modelData.features?.length === 'number' ? modelData.features : null;
+  if (features && features.length > 0) {
+    updateHudBuffer(state.hudLevels.features, features, modelData?.featureLabels, dt);
+  } else {
+    idleHudBuffer(state.hudLevels.features, dt);
+  }
+
+  const outputs = modelData && typeof modelData.outputs?.length === 'number' ? modelData.outputs : null;
+  if (outputs && outputs.length > 0) {
+    updateHudBuffer(state.hudLevels.outputs, outputs, modelData?.outputLabels, dt);
+  } else {
+    idleHudBuffer(state.hudLevels.outputs, dt);
+  }
+}
+
+function drawHudGroup(buffer, heading, x, y, width, style) {
+  if (!state.ctx || !buffer || buffer.display.length === 0 || width <= 0) {
+    return;
+  }
+
+  const count = buffer.display.length;
+  const availableHeight = Math.max(state.logicalHeight - HUD_MARGIN * 2, HUD_MIN_ROW_HEIGHT * count + HUD_HEADING_HEIGHT + HUD_PANEL_PADDING * 2);
+  const usableHeight = Math.max(availableHeight - HUD_HEADING_HEIGHT - HUD_PANEL_PADDING * 2, HUD_MIN_ROW_HEIGHT * count);
+  const rowHeight = clamp(usableHeight / Math.max(count, 1), HUD_MIN_ROW_HEIGHT, HUD_MAX_ROW_HEIGHT);
+  const panelHeight = HUD_HEADING_HEIGHT + HUD_PANEL_PADDING * 2 + rowHeight * count;
+  const innerLeft = HUD_PANEL_PADDING;
+  const innerRight = width - HUD_PANEL_PADDING;
+  const innerWidth = Math.max(innerRight - innerLeft, 1);
+  const centerX = innerLeft + innerWidth * 0.5;
+  const basePanelColor = style?.panelColor ?? state.palette.panelColor;
+  const accentMain = style?.accentMain ?? state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+  const accentDim = style?.accentDim ?? state.palette.gridColor;
+  const accentGlow = style?.accentGlow ?? 'rgba(255, 255, 255, 0.08)';
+  const gridColor = style?.gridColor ?? state.palette.gridColor;
+
+  const ctx = state.ctx;
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = basePanelColor;
+  ctx.fillRect(0, 0, width, panelHeight);
+
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = accentDim;
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(0.5, 0.5, Math.max(width - 1, 0), Math.max(panelHeight - 1, 0));
+
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = accentGlow;
+  ctx.fillRect(-8, 6, width + 16, Math.max(panelHeight - 12, 0));
+
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = accentMain;
+  ctx.font = '600 13px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(heading, HUD_PANEL_PADDING, HUD_PANEL_PADDING);
+
+  ctx.strokeStyle = accentDim;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(HUD_PANEL_PADDING, HUD_PANEL_PADDING + HUD_HEADING_HEIGHT - 4);
+  ctx.lineTo(width - HUD_PANEL_PADDING, HUD_PANEL_PADDING + HUD_HEADING_HEIGHT - 4);
+  ctx.stroke();
+
+  ctx.font = '11px "IBM Plex Mono", monospace';
+  ctx.textBaseline = 'middle';
+
+  const barMaxHeight = Math.min(HUD_BAR_THICKNESS, rowHeight * 0.6);
+  const startY = HUD_PANEL_PADDING + HUD_HEADING_HEIGHT;
+  for (let i = 0; i < count; i += 1) {
+    const label = formatHudLabel(buffer.labels[i] ?? buildFallbackLabel(buffer.prefix, i));
+    const value = buffer.values[i];
+    const normalized = clamp(buffer.display[i], -1, 1);
+    const rowTop = startY + i * rowHeight;
+    const barCenterY = rowTop + rowHeight * 0.68;
+    const textY = rowTop + rowHeight * 0.32;
+    const barHeight = Math.max(2, barMaxHeight);
+    const halfWidth = innerWidth * 0.5;
+
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = accentGlow;
+    ctx.fillRect(innerLeft, barCenterY - barHeight, innerWidth, barHeight * 2);
+
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = gridColor;
+    ctx.fillRect(innerLeft, barCenterY - 0.5, innerWidth, 1);
+
+    const positive = normalized > 0 ? normalized : 0;
+    const negative = normalized < 0 ? -normalized : 0;
+
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = accentMain;
+    if (positive > 0.001) {
+      const widthPos = halfWidth * clamp(positive, 0, 1);
+      ctx.fillRect(centerX, barCenterY - barHeight * 0.5, widthPos, barHeight);
+    }
+    if (negative > 0.001) {
+      const widthNeg = halfWidth * clamp(negative, 0, 1);
+      ctx.fillRect(centerX - widthNeg, barCenterY - barHeight * 0.5, widthNeg, barHeight);
+    }
+
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = accentMain;
+    ctx.textAlign = 'left';
+    ctx.fillText(label, innerLeft, textY);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = accentDim;
+    ctx.fillText(formatHudValue(value), innerRight, textY);
+
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = accentDim;
+    ctx.fillRect(centerX - 0.5, barCenterY - barHeight * 0.7, 1, barHeight * 1.4);
+  }
+
+  ctx.restore();
+}
+
+function drawHudOverlay() {
+  if (!state.ctx || (!state.hudLevels.features.display.length && !state.hudLevels.outputs.display.length)) {
+    return;
+  }
+
+  const ctx = state.ctx;
+  const accentHex = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+  const accentRgb = hexToRgb(accentHex);
+  const accentMain = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.88)`;
+  const accentDim = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.52)`;
+  const accentGlow = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`;
+  const panelColor = state.palette.panelColor;
+  const gridColor = state.palette.gridColor;
+
+  const hasFeatures = state.hudLevels.features.display.length > 0;
+  const hasOutputs = state.hudLevels.outputs.display.length > 0;
+
+  const segments = (hasFeatures ? 1 : 0) + (hasOutputs ? 1 : 0);
+  const width = state.logicalWidth;
+  const availableWidth = Math.max(width - HUD_MARGIN * 2, 0);
+  const maxPerPanel = segments > 0 ? availableWidth / segments : availableWidth;
+  const desiredWidth = clamp(width * 0.23, 110, 320);
+  const panelWidth = segments > 0 ? clamp(desiredWidth, Math.min(96, maxPerPanel), maxPerPanel) : desiredWidth;
+
+  ctx.save();
+  ctx.setTransform(state.pixelRatio * state.dynamicScale, 0, 0, state.pixelRatio * state.dynamicScale, 0, 0);
+
+  if (hasFeatures) {
+    drawHudGroup(state.hudLevels.features, 'INPUT LEVELS', HUD_MARGIN, HUD_MARGIN, panelWidth, {
+      panelColor,
+      accentMain,
+      accentDim,
+      accentGlow,
+      gridColor,
+    });
+  }
+
+  if (hasOutputs) {
+    const x = hasFeatures ? width - panelWidth - HUD_MARGIN : HUD_MARGIN;
+    drawHudGroup(state.hudLevels.outputs, 'OUTPUT LEVELS', x, HUD_MARGIN, panelWidth, {
+      panelColor,
+      accentMain,
+      accentDim,
+      accentGlow,
+      gridColor,
+    });
+  }
+
+  ctx.restore();
+}
+
+function createHudBuffer(prefix) {
+  return {
+    values: new Float32Array(0),
+    display: new Float32Array(0),
+    peaks: new Float32Array(0),
+    labels: [],
+    labelSource: null,
+    prefix,
+  };
+}
+
+function resetHudBuffer(buffer, prefix = buffer?.prefix ?? '') {
+  if (!buffer) {
+    return createHudBuffer(prefix);
+  }
+  buffer.values = new Float32Array(0);
+  buffer.display = new Float32Array(0);
+  buffer.peaks = new Float32Array(0);
+  buffer.labels = [];
+  buffer.labelSource = null;
+  buffer.prefix = prefix || buffer.prefix;
+  return buffer;
+}
+
 const state = {
   initialized: false,
   canvas: /** @type {HTMLCanvasElement|null} */ (null),
@@ -243,6 +593,10 @@ const state = {
     strength: 0.65,
     canvas: /** @type {HTMLCanvasElement|null} */ (null),
     ctx: /** @type {CanvasRenderingContext2D|null} */ (null),
+  },
+  hudLevels: {
+    features: createHudBuffer(HUD_FEATURE_PREFIX),
+    outputs: createHudBuffer(HUD_OUTPUT_PREFIX),
   },
   keyHandlersBound: false,
   resizeHandlerBound: false,
@@ -777,6 +1131,8 @@ export function init(options = {}) {
   state.canvas = canvas;
   state.ctx = ctx;
   applyPaletteToDom();
+  resetHudBuffer(state.hudLevels.features, HUD_FEATURE_PREFIX);
+  resetHudBuffer(state.hudLevels.outputs, HUD_OUTPUT_PREFIX);
 
   const hudRoot = assertElement(options.hud || document.getElementById('hud'), 'HUD element #hud is required.');
   const title = assertElement(options.trackTitle || document.getElementById('track-title'), 'HUD track title element missing.');
@@ -833,6 +1189,8 @@ export function destroy() {
   state.hud.fps = null;
   state.hud.volumeSlider = null;
   state.hud.volumeDisplay = null;
+  resetHudBuffer(state.hudLevels.features, HUD_FEATURE_PREFIX);
+  resetHudBuffer(state.hudLevels.outputs, HUD_OUTPUT_PREFIX);
 }
 
 export function getPalette() {
@@ -1071,7 +1429,7 @@ function drawParticles(particles, params, dt) {
   }
 }
 
-export function renderFrame(particles, renderParams = {}, metrics = {}) {
+export function renderFrame(particles, renderParams = {}, metrics = {}, modelData = null) {
   if (!state.initialized || !state.ctx) {
     return;
   }
@@ -1098,6 +1456,7 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
   ensureCanvasSize();
   adjustDynamicScale(frameTimeInstant, frameTimeAverage);
   updateFps(frameTimeInstant, fpsInstant, fpsAverage);
+  updateHudVisuals(modelData, dt);
 
   const params = resolveParams(renderParams);
   const fadeAlpha = clamp(1 - params.trailFade, 0.02, 0.35);
@@ -1110,6 +1469,8 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
   if (state.glow.enabled) {
     compositeGlow();
   }
+
+  drawHudOverlay();
 }
 
 export default {
