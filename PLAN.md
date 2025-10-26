@@ -276,6 +276,17 @@
 
 ---
 
+## Phase 22 — Video Export Pipeline
+- [x] Add an Export Video control to the HUD that is disabled when capture isn’t supported.
+- [x] Capture the canvas and audio element streams, wiring MediaRecorder to collect frames.
+- [x] Stream recordings to a dedicated worker that transcodes WebM captures into MP4 via ffmpeg.wasm.
+- [x] Provide status notifications, progress feedback, and automated tests for the exporter.
+
+**Acceptance:**
+- [x] Exporting creates an MP4 download after background processing, surfaces progress, and blocks concurrent runs.
+
+---
+
 ## Appendix — Quick Agent Bootstrap
 - [x] Generate stubs for every module with exported functions + TODOs.
 - [x] Insert minimal CSS for layout; render FPS counter to confirm loop.

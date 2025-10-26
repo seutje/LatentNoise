@@ -13,6 +13,7 @@ import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
 import { formatCorrelation } from './correlation-math.js';
 import { createRepeatController } from './repeat-controller.js';
+import * as videoExport from './video-export.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -332,10 +333,12 @@ function wrapHue(value) {
   return result;
 }
 
+const canvasElement = document.getElementById('c');
 const playlistSelect = document.getElementById('playlist');
 const playlistAttachButton = document.getElementById('playlist-attach');
 const playlistRenameButton = document.getElementById('playlist-rename');
 const playlistDeleteButton = document.getElementById('playlist-delete');
+const exportButton = document.getElementById('export-video');
 const audioElement = document.getElementById('player');
 const volumeSlider = document.getElementById('volume');
 const playButton = document.getElementById('play');
@@ -359,6 +362,7 @@ function dismissIntroOverlay() {
 }
 
 if (
+  !canvasElement ||
   !playlistSelect ||
   !audioElement ||
   !volumeSlider ||
@@ -368,6 +372,7 @@ if (
   !seekSlider ||
   !fullscreenButton ||
   !repeatButton ||
+  !exportButton ||
   !playlistAttachButton ||
   !playlistRenameButton ||
   !playlistDeleteButton ||
@@ -376,7 +381,7 @@ if (
   !byomDrawer
 ) {
   throw new Error(
-    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, repeat, playlist actions, fullscreen, or BYOM).',
+    'Required controls missing from DOM (canvas, playlist, audio, volume, play, prev, next, seek, repeat, export, playlist actions, fullscreen, or BYOM).',
   );
 }
 
@@ -411,6 +416,13 @@ const renderParams = { ...RENDER_PARAMS_DEFAULT };
 const simParams = { ...SIM_PARAMS_DEFAULT };
 let activePreset = getDefaultPreset();
 render.setPalette(activePreset?.palette);
+videoExport.init({
+  canvas: canvasElement,
+  audio: audioElement,
+  button: exportButton,
+  notify,
+  getFileName: resolveExportTitle,
+});
 const manualAdjustments = {
   spawnOffset: 0,
   glowOffset: 0,
@@ -547,6 +559,11 @@ function getCurrentEntry() {
 
 function isByomEntry(entry) {
   return entry && entry.type === 'byom';
+}
+
+function resolveExportTitle() {
+  const entry = getCurrentEntry();
+  return entry?.title ?? 'Latent Noise';
 }
 
 function renderPlaylistOptions(activeIndex = currentTrackIndex) {
@@ -1502,6 +1519,7 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
 
 function setTrack(index, options = {}) {
   clearAutoAdvanceTimer();
+  videoExport.cancel({ silent: true });
   if (!Number.isInteger(index) || index < 0 || index >= playlistEntries.length) {
     console.warn('[app] Ignoring out-of-range track index', index);
     return;
