@@ -28,7 +28,6 @@ const PARAM_SCRATCH = {
 
 const CONNECTION_FRACTION = 0.9;
 
-const HUD_SMOOTH_HZ = 12;
 const HUD_PEAK_DECAY_RATE = 1.45;
 const HUD_IDLE_DECAY_RATE = 1.8;
 const HUD_MIN_PEAK = 0.04;
@@ -336,7 +335,6 @@ function updateHudBuffer(buffer, source, labels, dt) {
   }
 
   const safeDt = Number.isFinite(dt) && dt > 0 ? dt : 0;
-  const smoothing = clamp(1 - Math.exp(-safeDt * HUD_SMOOTH_HZ), 0, 1);
   const peakDecay = Math.exp(-safeDt * HUD_PEAK_DECAY_RATE);
 
   for (let i = 0; i < length; i += 1) {
@@ -347,9 +345,8 @@ function updateHudBuffer(buffer, source, labels, dt) {
     const decayedPeak = previousPeak > 0 ? previousPeak * peakDecay : HUD_MIN_PEAK;
     const nextPeak = Math.max(Math.abs(value), decayedPeak, HUD_MIN_PEAK);
     buffer.peaks[i] = nextPeak;
-    const normalized = nextPeak > 0 ? clamp(value / nextPeak, -1, 1) : 0;
-    const previousDisplay = buffer.display[i];
-    buffer.display[i] = previousDisplay + (normalized - previousDisplay) * smoothing;
+    const normalized = clamp(value, -1, 1);
+    buffer.display[i] = normalized;
   }
 }
 

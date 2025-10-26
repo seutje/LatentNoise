@@ -315,3 +315,8 @@
 - Added smoothing, peak tracking, and graceful decay so the HUD levels animate responsively without jitter when data pauses.
 - Routed label metadata from the audio pipeline and mapper into the renderer to power the overlay readout.
 - Validated the overlay with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - HUD Linear Response
+- Removed the easing step from HUD level updates so meters respond immediately to value changes.
+- Normalized bar widths directly from the underlying feature values for a linear display instead of peak-relative scaling.
+- Rechecked automated coverage with `npm run lint` and `npm test -- --coverage`.
