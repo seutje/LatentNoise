@@ -39,6 +39,7 @@ const HUD_MIN_ROW_HEIGHT = 7;
 const HUD_MAX_ROW_HEIGHT = 18;
 const HUD_BAR_THICKNESS = 5;
 const HUD_FEATURE_PREFIX = 'IN';
+const HUD_HIDDEN_PREFIX = 'HL';
 const HUD_OUTPUT_PREFIX = 'OUT';
 const HUD_MAX_ITEMS = 64;
 
@@ -360,6 +361,37 @@ function updateHudVisuals(modelData, dt) {
     idleHudBuffer(state.hudLevels.features, dt);
   }
 
+  if (Array.isArray(modelData?.hiddenLayers)) {
+    const hiddenLayers = modelData.hiddenLayers;
+    if (hiddenLayers.length > 0) {
+      const hudLayers = ensureHiddenHudLayerCount(hiddenLayers.length);
+      for (let i = 0; i < hiddenLayers.length; i += 1) {
+        const layerInfo = hiddenLayers[i];
+        const layerState = hudLayers[i];
+        const prefix = `${HUD_HIDDEN_PREFIX}${i + 1}`;
+        layerState.buffer.prefix = prefix;
+        layerState.heading = formatHiddenLayerHeading(i, layerInfo);
+        const values = layerInfo && typeof layerInfo.values?.length === 'number' ? layerInfo.values : null;
+        const labels = layerInfo && (Array.isArray(layerInfo.labels) || typeof layerInfo.labels?.length === 'number')
+          ? layerInfo.labels
+          : null;
+        if (values && values.length > 0) {
+          updateHudBuffer(layerState.buffer, values, labels, dt);
+        } else {
+          idleHudBuffer(layerState.buffer, dt);
+        }
+      }
+    } else {
+      ensureHiddenHudLayerCount(0);
+    }
+  } else if (state.hudLevels.hidden.length > 0) {
+    for (let i = 0; i < state.hudLevels.hidden.length; i += 1) {
+      const layerState = state.hudLevels.hidden[i];
+      layerState.heading = layerState.heading || `HIDDEN LAYER ${i + 1}`;
+      idleHudBuffer(layerState.buffer, dt);
+    }
+  }
+
   const outputs = modelData && typeof modelData.outputs?.length === 'number' ? modelData.outputs : null;
   if (outputs && outputs.length > 0) {
     updateHudBuffer(state.hudLevels.outputs, outputs, modelData?.outputLabels, dt);
@@ -370,7 +402,7 @@ function updateHudVisuals(modelData, dt) {
 
 function drawHudGroup(buffer, heading, x, y, width, style) {
   if (!state.ctx || !buffer || buffer.display.length === 0 || width <= 0) {
-    return;
+    return 0;
   }
 
   const count = buffer.display.length;
@@ -471,10 +503,20 @@ function drawHudGroup(buffer, heading, x, y, width, style) {
   }
 
   ctx.restore();
+  return panelHeight;
 }
 
 function drawHudOverlay() {
-  if (!state.ctx || (!state.hudLevels.features.display.length && !state.hudLevels.outputs.display.length)) {
+  if (!state.ctx) {
+    return;
+  }
+
+  const hiddenLayers = Array.isArray(state.hudLevels.hidden) ? state.hudLevels.hidden : [];
+  const hasFeatures = state.hudLevels.features.display.length > 0;
+  const hasOutputs = state.hudLevels.outputs.display.length > 0;
+  const hasHidden = hiddenLayers.some((layer) => layer?.buffer?.display.length > 0);
+
+  if (!hasFeatures && !hasOutputs && !hasHidden) {
     return;
   }
 
@@ -487,38 +529,51 @@ function drawHudOverlay() {
   const panelColor = state.palette.panelColor;
   const gridColor = state.palette.gridColor;
 
-  const hasFeatures = state.hudLevels.features.display.length > 0;
-  const hasOutputs = state.hudLevels.outputs.display.length > 0;
-
-  const segments = (hasFeatures ? 1 : 0) + (hasOutputs ? 1 : 0);
+  const rightColumnActive = hasHidden || hasOutputs;
+  const segments = (hasFeatures ? 1 : 0) + (rightColumnActive ? 1 : 0);
   const width = state.logicalWidth;
   const availableWidth = Math.max(width - HUD_MARGIN * 2, 0);
-  const maxPerPanel = segments > 0 ? availableWidth / segments : availableWidth;
+  const maxPerPanel = segments > 0 ? availableWidth / Math.max(segments, 1) : availableWidth;
   const desiredWidth = clamp(width * 0.23, 110, 320);
   const panelWidth = segments > 0 ? clamp(desiredWidth, Math.min(96, maxPerPanel), maxPerPanel) : desiredWidth;
+
+  const panelStyle = {
+    panelColor,
+    accentMain,
+    accentDim,
+    accentGlow,
+    gridColor,
+  };
 
   ctx.save();
   ctx.setTransform(state.pixelRatio * state.dynamicScale, 0, 0, state.pixelRatio * state.dynamicScale, 0, 0);
 
   if (hasFeatures) {
-    drawHudGroup(state.hudLevels.features, 'INPUT LEVELS', HUD_MARGIN, HUD_MARGIN, panelWidth, {
-      panelColor,
-      accentMain,
-      accentDim,
-      accentGlow,
-      gridColor,
-    });
+    drawHudGroup(state.hudLevels.features, 'INPUT LEVELS', HUD_MARGIN, HUD_MARGIN, panelWidth, panelStyle);
   }
 
-  if (hasOutputs) {
-    const x = hasFeatures ? width - panelWidth - HUD_MARGIN : HUD_MARGIN;
-    drawHudGroup(state.hudLevels.outputs, 'OUTPUT LEVELS', x, HUD_MARGIN, panelWidth, {
-      panelColor,
-      accentMain,
-      accentDim,
-      accentGlow,
-      gridColor,
-    });
+  if (rightColumnActive) {
+    const x = hasFeatures && segments > 1 ? width - panelWidth - HUD_MARGIN : HUD_MARGIN;
+    let nextY = HUD_MARGIN;
+
+    if (hasHidden) {
+      for (let i = 0; i < hiddenLayers.length; i += 1) {
+        const layer = hiddenLayers[i];
+        const buffer = layer?.buffer;
+        if (!buffer || buffer.display.length === 0) {
+          continue;
+        }
+        const heading = layer?.heading || `HIDDEN LAYER ${i + 1}`;
+        const height = drawHudGroup(buffer, heading, x, nextY, panelWidth, panelStyle);
+        if (height > 0) {
+          nextY += height + HUD_MARGIN * 0.6;
+        }
+      }
+    }
+
+    if (hasOutputs) {
+      drawHudGroup(state.hudLevels.outputs, 'OUTPUT LEVELS', x, nextY, panelWidth, panelStyle);
+    }
   }
 
   ctx.restore();
@@ -546,6 +601,43 @@ function resetHudBuffer(buffer, prefix = buffer?.prefix ?? '') {
   buffer.labelSource = null;
   buffer.prefix = prefix || buffer.prefix;
   return buffer;
+}
+
+function ensureHiddenHudLayerCount(count) {
+  if (!Array.isArray(state.hudLevels.hidden)) {
+    state.hudLevels.hidden = [];
+  }
+  const layers = state.hudLevels.hidden;
+  for (let i = layers.length; i < count; i += 1) {
+    const index = i + 1;
+    const prefix = `${HUD_HIDDEN_PREFIX}${index}`;
+    layers.push({
+      buffer: createHudBuffer(prefix),
+      heading: `HIDDEN LAYER ${index}`,
+    });
+  }
+  if (layers.length > count) {
+    for (let i = count; i < layers.length; i += 1) {
+      resetHudBuffer(layers[i].buffer, `${HUD_HIDDEN_PREFIX}${i + 1}`);
+    }
+    layers.splice(count);
+  }
+  return layers;
+}
+
+function formatHiddenLayerHeading(index, layerData) {
+  const layerNumber = index + 1;
+  const activationRaw = typeof layerData?.activation === 'string' ? layerData.activation.trim() : '';
+  const activation = activationRaw.length > 0 ? activationRaw.toUpperCase() : '';
+  const valuesLength = layerData && typeof layerData.values?.length === 'number' ? layerData.values.length : 0;
+  const parts = [`HIDDEN LAYER ${layerNumber}`];
+  if (activation) {
+    parts.push(`· ${activation}`);
+  }
+  if (valuesLength > 0) {
+    parts.push(`(${valuesLength})`);
+  }
+  return parts.join(' ');
 }
 
 const state = {
@@ -596,6 +688,7 @@ const state = {
   },
   hudLevels: {
     features: createHudBuffer(HUD_FEATURE_PREFIX),
+    hidden: [],
     outputs: createHudBuffer(HUD_OUTPUT_PREFIX),
   },
   keyHandlersBound: false,
@@ -1131,6 +1224,7 @@ export function init(options = {}) {
   state.canvas = canvas;
   state.ctx = ctx;
   applyPaletteToDom();
+  state.hudLevels.hidden = [];
   resetHudBuffer(state.hudLevels.features, HUD_FEATURE_PREFIX);
   resetHudBuffer(state.hudLevels.outputs, HUD_OUTPUT_PREFIX);
 
@@ -1191,6 +1285,7 @@ export function destroy() {
   state.hud.volumeDisplay = null;
   resetHudBuffer(state.hudLevels.features, HUD_FEATURE_PREFIX);
   resetHudBuffer(state.hudLevels.outputs, HUD_OUTPUT_PREFIX);
+  state.hudLevels.hidden = [];
 }
 
 export function getPalette() {

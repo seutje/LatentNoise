@@ -2054,19 +2054,23 @@ function frame(now) {
 
   const currentEntry = getCurrentEntry();
   let nnOutputs = lastModelOutputs;
+  let hiddenLayerActivations = null;
   if (!nnBypass && currentEntry && activeModelEntryId === currentEntry.id) {
     try {
       const normalized = nn.normalize(features);
       nnOutputs = nn.forward(normalized);
+      hiddenLayerActivations = nn.getHiddenLayerActivations();
       lastModelOutputs = nnOutputs;
     } catch (error) {
       console.warn('[app] NN inference failed; using fallback outputs.', error);
       nnOutputs = FALLBACK_NN_OUTPUTS;
       lastModelOutputs = FALLBACK_NN_OUTPUTS;
+      hiddenLayerActivations = null;
     }
   } else if (nnBypass) {
     nnOutputs = FALLBACK_NN_OUTPUTS;
     lastModelOutputs = FALLBACK_NN_OUTPUTS;
+    hiddenLayerActivations = null;
   }
 
   const playbackSilent =
@@ -2106,6 +2110,7 @@ function frame(now) {
     featureLabels: FEATURE_LABELS,
     outputs: nnOutputs,
     outputLabels: OUTPUT_LABELS,
+    hiddenLayers: hiddenLayerActivations,
   });
   updateStatus(metrics);
 

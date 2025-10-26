@@ -204,6 +204,28 @@ export function forward(normalizedFeatures, outBuffer) {
   return forwardWithModel(currentModel, normalizedFeatures, outBuffer || currentModel.outputBuffer);
 }
 
+export function getHiddenLayerActivations() {
+  if (!currentModel) {
+    return [];
+  }
+  const { layers } = currentModel;
+  if (!Array.isArray(layers) || layers.length <= 1) {
+    return [];
+  }
+  const result = [];
+  for (let i = 0; i < layers.length - 1; i += 1) {
+    const layer = layers[i];
+    if (!layer || !layer.buffer) {
+      continue;
+    }
+    result.push({
+      values: layer.buffer,
+      activation: layer.activation,
+    });
+  }
+  return result;
+}
+
 function runSelfTest() {
   try {
     const rawModel = {
