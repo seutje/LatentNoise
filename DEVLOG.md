@@ -325,3 +325,8 @@
 - Removed the easing step from HUD level updates so meters respond immediately to value changes.
 - Normalized bar widths directly from the underlying feature values for a linear display instead of peak-relative scaling.
 - Rechecked automated coverage with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - High Fidelity Video Export
+- Scaled MediaRecorder capture bitrates with canvas resolution and audio presence, preserving WebM fallbacks and surfacing the active encoder options for diagnostics.
+- Lowered the ffmpeg worker CRF to retain sharpness when transcoding WebM captures into MP4 downloads.
+- Updated the video export Jest suite to assert the high-quality settings and re-ran `npm test -- --coverage --runInBand` to validate the change.

@@ -24,6 +24,12 @@ const FALLBACK_WEBM_MIME_TYPES = Object.freeze([
   'video/webm',
 ]);
 
+const BASE_EXPORT_RESOLUTION_PIXELS = 1920 * 1080;
+const BASE_EXPORT_VIDEO_BITRATE = 12_000_000;
+const MIN_EXPORT_VIDEO_BITRATE = 6_000_000;
+const MAX_EXPORT_VIDEO_BITRATE = 48_000_000;
+const EXPORT_AUDIO_BITRATE = 192_000;
+
 function defaultNotify() {}
 
 function defaultDownloadBlob(blob, filename) {
@@ -85,6 +91,20 @@ function clamp01(value) {
   return numeric;
 }
 
+function clampNumber(value, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return min;
+  }
+  if (numeric < min) {
+    return min;
+  }
+  if (numeric > max) {
+    return max;
+  }
+  return numeric;
+}
+
 function sanitizeTitleForFile(title) {
   if (typeof title !== 'string') {
     return 'latent-noise';
@@ -115,6 +135,81 @@ export function createDownloadFileName(title, date = new Date()) {
   const safeTitle = sanitizeTitleForFile(title);
   const timestamp = formatTimestamp(date);
   return `${safeTitle}-${timestamp}.mp4`;
+}
+
+function calculateVideoBitrate(width, height, frameRate = 60) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+    return 0;
+  }
+  const pixelCount = w * h;
+  const pixelScale = clampNumber(pixelCount / BASE_EXPORT_RESOLUTION_PIXELS, 0.35, 4);
+  const fps = Number(frameRate);
+  const fpsScale = Number.isFinite(fps) && fps > 0 ? clampNumber(fps / 60, 0.5, 1.2) : 1;
+  const target = BASE_EXPORT_VIDEO_BITRATE * pixelScale * fpsScale;
+  return Math.round(clampNumber(target, MIN_EXPORT_VIDEO_BITRATE, MAX_EXPORT_VIDEO_BITRATE));
+}
+
+function createRecorderQualityOptions(canvas, hasAudio, frameRate) {
+  if (!canvas) {
+    return null;
+  }
+  const videoBitsPerSecond = calculateVideoBitrate(canvas.width, canvas.height, frameRate);
+  const audioBitsPerSecond = hasAudio ? EXPORT_AUDIO_BITRATE : 0;
+  if (videoBitsPerSecond <= 0 && audioBitsPerSecond <= 0) {
+    return null;
+  }
+  const options = {};
+  if (videoBitsPerSecond > 0) {
+    options.videoBitsPerSecond = videoBitsPerSecond;
+  }
+  if (audioBitsPerSecond > 0) {
+    options.audioBitsPerSecond = audioBitsPerSecond;
+  }
+  const total = (videoBitsPerSecond > 0 ? videoBitsPerSecond : 0) + (audioBitsPerSecond > 0 ? audioBitsPerSecond : 0);
+  if (total > 0) {
+    options.bitsPerSecond = total;
+  }
+  return options;
+}
+
+function buildRecorderOptionAttempts(mimeType, qualityOptions) {
+  const attempts = [];
+  const videoBits = Math.round(Number(qualityOptions?.videoBitsPerSecond) || 0);
+  const audioBits = Math.round(Number(qualityOptions?.audioBitsPerSecond) || 0);
+  if (videoBits > 0 || audioBits > 0) {
+    const qualityAttempt = { mimeType };
+    if (videoBits > 0) {
+      qualityAttempt.videoBitsPerSecond = videoBits;
+    }
+    if (audioBits > 0) {
+      qualityAttempt.audioBitsPerSecond = audioBits;
+    }
+    const total = videoBits + audioBits;
+    if (total > 0) {
+      qualityAttempt.bitsPerSecond = total;
+    }
+    attempts.push(qualityAttempt);
+  }
+  attempts.push({ mimeType });
+  return attempts;
+}
+
+function resolveVideoFrameRate(tracks, fallback = 60) {
+  if (!Array.isArray(tracks)) {
+    return fallback;
+  }
+  for (const track of tracks) {
+    if (track && typeof track.getSettings === 'function') {
+      const settings = track.getSettings();
+      const candidate = Number(settings?.frameRate);
+      if (Number.isFinite(candidate) && candidate > 0) {
+        return candidate;
+      }
+    }
+  }
+  return fallback;
 }
 
 function resolveAudioCaptureStream(audioElement) {
@@ -232,6 +327,7 @@ export function createVideoExporter(dependencies = {}) {
     hasAudioTrack: false,
     pendingFileName: '',
     cancelRecording: false,
+    recorderQuality: null,
     worker: null,
     workerReady: false,
     pendingJobId: '',
@@ -249,6 +345,7 @@ export function createVideoExporter(dependencies = {}) {
     state.pendingJobId = '';
     state.processingProgress = 0;
     state.cancelRecording = false;
+    state.recorderQuality = null;
     state.pendingMimeCandidates = [];
   }
 
@@ -541,11 +638,26 @@ export function createVideoExporter(dependencies = {}) {
         continue;
       }
 
-      let recorder;
-      try {
-        recorder = createMediaRecorder(combinedStream, { mimeType: candidate.mimeType });
-      } catch (error) {
-        console.warn(`[video-export] Failed to create MediaRecorder for ${candidate.mimeType}`, error);
+      const optionAttempts = buildRecorderOptionAttempts(candidate.mimeType, state.recorderQuality);
+      let recorder = null;
+      let usedOptions = null;
+
+      for (let attemptIndex = 0; attemptIndex < optionAttempts.length; attemptIndex += 1) {
+        const attemptOptions = optionAttempts[attemptIndex];
+        try {
+          recorder = createMediaRecorder(combinedStream, attemptOptions);
+          usedOptions = attemptOptions;
+          break;
+        } catch (error) {
+          console.warn(
+            `[video-export] Failed to create MediaRecorder for ${candidate.mimeType} (attempt ${attemptIndex + 1})`,
+            error,
+          );
+          recorder = null;
+        }
+      }
+
+      if (!recorder) {
         continue;
       }
 
@@ -565,6 +677,7 @@ export function createVideoExporter(dependencies = {}) {
       state.pendingMimeCandidates = candidates.slice(index + 1);
       state.chunks = [];
       state.cancelRecording = false;
+      state.recorderQuality = usedOptions || null;
 
       try {
         recorder.start();
@@ -586,6 +699,7 @@ export function createVideoExporter(dependencies = {}) {
     state.recordingMimeType = '';
     state.recordingProducesMp4 = false;
     state.pendingMimeCandidates = [];
+    state.recorderQuality = null;
     return false;
   }
 
@@ -653,6 +767,8 @@ export function createVideoExporter(dependencies = {}) {
     }
 
     const baseTitle = typeof state.getFileName === 'function' ? state.getFileName() : 'latent-noise';
+    const frameRate = resolveVideoFrameRate(videoTracks, 60);
+    state.recorderQuality = createRecorderQualityOptions(state.canvas, hasAudio, frameRate);
     const started = tryStartRecorder(combinedStream, candidates, baseTitle);
 
     if (!started) {
@@ -775,6 +891,7 @@ export function createVideoExporter(dependencies = {}) {
       support: { ...state.support },
       recordingMimeType: state.recordingMimeType,
       recordingProducesMp4: state.recordingProducesMp4,
+      recordingQuality: state.recorderQuality ? { ...state.recorderQuality } : null,
     };
   }
 

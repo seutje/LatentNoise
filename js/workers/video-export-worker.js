@@ -40,7 +40,7 @@ async function convertToMp4({ jobId, buffer, hasAudio }) {
   const inputData = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   await ffmpeg.writeFile(inputName, inputData);
 
-  const args = ['-i', inputName, '-c:v', 'libx264', '-preset', 'medium', '-pix_fmt', 'yuv420p'];
+  const args = ['-i', inputName, '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p'];
   if (hasAudio) {
     args.push('-c:a', 'aac', '-b:a', '192k');
   } else {
@@ -87,4 +87,3 @@ self.onmessage = async (event) => {
     }
   }
 };
-

@@ -56,8 +56,11 @@ function createAudioElement(hasCapture = true, paused = false) {
   return audio;
 }
 
-function createMockRecorderFactory({ blobType }) {
-  return jest.fn(() => {
+function createMockRecorderFactory({ blobType, onCreate }) {
+  return jest.fn((stream, options = {}) => {
+    if (typeof onCreate === 'function') {
+      onCreate({ stream, options });
+    }
     const events = {};
     return {
       events,
@@ -141,6 +144,14 @@ describe('video-export utilities', () => {
     });
 
     expect(exporter.start()).toBe(true);
+    expect(recorderFactory).toHaveBeenCalledTimes(1);
+    const [, recorderOptions] = recorderFactory.mock.calls[0];
+    expect(recorderOptions).toMatchObject({
+      mimeType: expect.stringContaining('video/mp4'),
+    });
+    expect(recorderOptions.videoBitsPerSecond).toBeGreaterThanOrEqual(6_000_000);
+    expect(recorderOptions.audioBitsPerSecond).toBe(192_000);
+    expect(recorderOptions.bitsPerSecond).toBe(recorderOptions.videoBitsPerSecond + recorderOptions.audioBitsPerSecond);
     expect(button.textContent).toBe('Stop Export');
     expect(exporter.getState().status).toBe('recording');
 
@@ -189,6 +200,14 @@ describe('video-export utilities', () => {
     });
 
     exporter.start();
+    expect(recorderFactory).toHaveBeenCalledTimes(1);
+    const [, recorderOptions] = recorderFactory.mock.calls[0];
+    expect(recorderOptions).toMatchObject({
+      mimeType: expect.stringContaining('webm'),
+    });
+    expect(recorderOptions.videoBitsPerSecond).toBeGreaterThanOrEqual(6_000_000);
+    expect(recorderOptions.audioBitsPerSecond).toBe(192_000);
+    expect(recorderOptions.bitsPerSecond).toBe(recorderOptions.videoBitsPerSecond + recorderOptions.audioBitsPerSecond);
     exporter.stop();
 
     await Promise.resolve();
