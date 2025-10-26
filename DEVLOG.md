@@ -320,3 +320,8 @@
 - Removed the easing step from HUD level updates so meters respond immediately to value changes.
 - Normalized bar widths directly from the underlying feature values for a linear display instead of peak-relative scaling.
 - Rechecked automated coverage with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - Zoom Headroom Mapping
+- Added directional swing handling in the mapper so the zoom channel uses gentler pull when moving toward wide shots while retaining generous headroom for close-ins.
+- Tuned the zoom parameter spec with asymmetric swings to keep neural outputs away from hard clamps and improve mid-range responsiveness.
+- Confirmed stability with `npm test` and `npm run lint`.

@@ -148,8 +148,12 @@ const PARAM_SPECS = /** @type {const} */ ({
     index: 10,
     type: 'continuous',
     baseline: 1,
-    swing: 12,
-    safeSwing: 8,
+    swing: 6,
+    safeSwing: 4,
+    swingPositive: 8,
+    swingNegative: 0.7,
+    safeSwingPositive: 4.5,
+    safeSwingNegative: 0.5,
     min: 0.05,
     max: 20,
     safeMax: 15,
@@ -261,6 +265,19 @@ function resolveBounds(spec, safeMode) {
 function resolveSwing(spec, safeMode) {
   const swing = safeMode && typeof spec.safeSwing === 'number' ? spec.safeSwing : spec.swing;
   return Number.isFinite(swing) ? swing : 0;
+}
+
+function resolveDirectionalSwing(spec, safeMode, direction) {
+  const key = direction === 'positive' ? 'swingPositive' : 'swingNegative';
+  const safeKey = direction === 'positive' ? 'safeSwingPositive' : 'safeSwingNegative';
+
+  if (safeMode && Number.isFinite(spec[safeKey])) {
+    return spec[safeKey];
+  }
+  if (Number.isFinite(spec[key])) {
+    return spec[key];
+  }
+  return null;
 }
 
 function getTimestamp() {
@@ -426,6 +443,8 @@ function getImpulseState(name, spec) {
 
 function applyContinuous(name, spec, rawValue, dt, silence, forceSilence) {
   const swing = resolveSwing(spec, state.safeMode);
+  const swingPositive = resolveDirectionalSwing(spec, state.safeMode, 'positive');
+  const swingNegative = resolveDirectionalSwing(spec, state.safeMode, 'negative');
   const { min, max } = resolveBounds(spec, state.safeMode);
   const smoother = getSmoother(name, spec);
   const baseline = state.baselines[name] ?? spec.baseline;
@@ -438,7 +457,8 @@ function applyContinuous(name, spec, rawValue, dt, silence, forceSilence) {
     return;
   }
 
-  const target = silence ? rest : baseline + rawValue * swing;
+  const scaledSwing = rawValue >= 0 ? (swingPositive ?? swing) : (swingNegative ?? swing);
+  const target = silence ? rest : baseline + rawValue * scaledSwing;
   const clampedTarget = clamp(target, min, max);
   const value = smoother.update(clampedTarget, dt);
   state.params[name] = clamp(value, min, max);
