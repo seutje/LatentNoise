@@ -9,6 +9,8 @@ describe('video-export', () => {
   let render;
   let worker;
   let bitmap;
+  let audioCapture;
+  let audioChunk;
 
   class MockWorker {
     constructor() {
@@ -71,8 +73,27 @@ describe('video-export', () => {
     global.URL.revokeObjectURL = jest.fn();
     global.createImageBitmap = jest.fn().mockResolvedValue(bitmap);
     worker = new MockWorker();
+    audioChunk = { close: jest.fn() };
+    audioCapture = {
+      sampleRate: 48000,
+      numberOfChannels: 2,
+      codec: 'mp4a.40.2',
+      bitrate: 192000,
+      start: jest.fn((handler) => {
+        if (typeof handler === 'function') {
+          handler(audioChunk);
+        }
+        return Promise.resolve();
+      }),
+      stop: jest.fn(),
+    };
     videoExport.__resetForTests();
-    videoExport.configure({ createWorker: () => worker, frameRate: 30, keyframeInterval: 30 });
+    videoExport.configure({
+      createWorker: () => worker,
+      frameRate: 30,
+      keyframeInterval: 30,
+      createAudioCapture: async () => audioCapture,
+    });
   });
 
   afterEach(() => {
@@ -86,7 +107,21 @@ describe('video-export', () => {
     expect(button.disabled).toBe(false);
 
     button.click();
-    expect(worker.messages).toContainEqual(expect.objectContaining({ type: 'start', width: 640, height: 360 }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(worker.messages).toContainEqual(
+      expect.objectContaining({
+        type: 'start',
+        width: 640,
+        height: 360,
+        bitrate: 4_000_000,
+        audio: expect.objectContaining({
+          sampleRate: 48000,
+          numberOfChannels: 2,
+          codec: 'mp4a.40.2',
+        }),
+      }),
+    );
 
     worker.dispatchMessage({ type: 'started' });
     render.emit('frame', { timestamp: 0 });
@@ -94,9 +129,12 @@ describe('video-export', () => {
     await Promise.resolve();
     expect(global.createImageBitmap).toHaveBeenCalledWith(canvas);
     expect(worker.messages.some((message) => message.type === 'frame')).toBe(true);
+    expect(worker.messages.some((message) => message.type === 'audio')).toBe(true);
+    expect(audioCapture.start).toHaveBeenCalledTimes(1);
 
     button.click();
     expect(worker.messages.some((message) => message.type === 'stop')).toBe(true);
+    expect(audioCapture.stop).toHaveBeenCalledTimes(1);
 
     const buffer = new ArrayBuffer(8);
     worker.dispatchMessage({ type: 'done', buffer });

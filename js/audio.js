@@ -353,3 +353,62 @@ export function frame() {
 export function unlock() {
   return ensureContext();
 }
+
+/**
+ * Create a MediaStream tap of the mastered audio output for recording/export.
+ * The caller is responsible for disconnecting once finished.
+ * @returns {Promise<{stream: MediaStream, sampleRate: number, channelCount: number, disconnect: () => void} | null>}
+ */
+export async function createExportTap() {
+  try {
+    const context = await ensureContext();
+    if (!context) {
+      return null;
+    }
+    if (!gainNode) {
+      createGraph();
+    }
+    if (!gainNode) {
+      return null;
+    }
+
+    const destination = context.createMediaStreamDestination();
+    gainNode.connect(destination);
+    const stream = destination.stream;
+    const tracks = typeof stream.getAudioTracks === 'function' ? stream.getAudioTracks() : [];
+    const track = tracks.length > 0 ? tracks[0] : null;
+    const sampleRate = Number.isFinite(context.sampleRate) ? context.sampleRate : DEFAULT_SAMPLE_RATE;
+    const destinationChannelCount = Number.isFinite(destination.channelCount) ? destination.channelCount : null;
+    const trackChannelCount = track && typeof track.getSettings === 'function'
+      ? track.getSettings().channelCount
+      : null;
+    const channelCount = Number.isFinite(destinationChannelCount)
+      ? destinationChannelCount
+      : Number.isFinite(trackChannelCount)
+        ? trackChannelCount
+        : 2;
+
+    return {
+      stream,
+      sampleRate,
+      channelCount,
+      disconnect() {
+        try {
+          gainNode.disconnect(destination);
+        } catch (error) {
+          console.warn('[audio] failed to disconnect export tap', error);
+        }
+        if (track) {
+          try {
+            track.stop();
+          } catch (error) {
+            console.warn('[audio] failed to stop export tap track', error);
+          }
+        }
+      },
+    };
+  } catch (error) {
+    console.warn('[audio] failed to create export tap', error);
+    return null;
+  }
+}

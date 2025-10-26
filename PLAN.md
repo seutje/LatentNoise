@@ -281,6 +281,7 @@
 - [x] Capture rendered frames and stream them to a background worker without disrupting the main loop.
 - [x] Encode frames inside a worker using WebCodecs + MP4 muxer and surface errors gracefully.
 - [x] Cover export controller state transitions with automated tests.
+- [x] Add mastered audio capture/encoding to exports and scale video bitrate with resolution up to 50 Mbps at 4K.
 
 **Acceptance:**
 - [x] Export button produces an MP4 download when supported and reports unsupported states without breaking playback.

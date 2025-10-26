@@ -1,8 +1,14 @@
+import * as audio from './audio.js';
 import { notify as notifyDefault } from './notifications.js';
 
 const DEFAULT_FRAME_RATE = 60;
-const DEFAULT_BITRATE = 8_000_000;
+const BITRATE_BASE_RESOLUTION = 1920 * 1080;
+const BITRATE_BASELINE = 12_500_000;
+const BITRATE_MIN = 4_000_000;
+const BITRATE_MAX = 50_000_000;
 const KEYFRAME_INTERVAL = 120;
+const DEFAULT_AUDIO_CODEC = 'mp4a.40.2';
+const DEFAULT_AUDIO_BITRATE = 192_000;
 
 const state = {
   initialized: false,
@@ -20,13 +26,19 @@ const state = {
   ready: false,
   capturing: false,
   frameRate: DEFAULT_FRAME_RATE,
-  bitrate: DEFAULT_BITRATE,
+  bitrateOverride: null,
   keyframeInterval: KEYFRAME_INTERVAL,
   frameIndex: 0,
   nextCaptureAt: 0,
   captureWidth: 0,
   captureHeight: 0,
   downloadUrl: '',
+  audioCaptureFactory: defaultAudioCaptureFactory,
+  audioCapture: null,
+  audioCaptureActive: false,
+  audioCapturePumpPromise: null,
+  audioCodecOverride: null,
+  audioBitrateOverride: null,
 };
 
 function defaultWorkerFactory() {
@@ -39,6 +51,259 @@ function defaultWorkerFactory() {
     console.warn('[video-export] failed to create worker', error);
     return null;
   }
+}
+
+function calculateResolutionBitrate(width, height) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return BITRATE_MIN;
+  }
+  const pixels = Math.max(1, Math.floor(width) * Math.floor(height));
+  const target = (BITRATE_BASELINE * pixels) / BITRATE_BASE_RESOLUTION;
+  const clamped = Math.max(BITRATE_MIN, Math.min(BITRATE_MAX, Math.round(target)));
+  return clamped;
+}
+
+function resolveTargetBitrate(width, height) {
+  if (Number.isFinite(state.bitrateOverride) && state.bitrateOverride > 0) {
+    return state.bitrateOverride;
+  }
+  return calculateResolutionBitrate(width, height);
+}
+
+function extractAudioConfig(capture) {
+  if (!capture) {
+    return null;
+  }
+  const sampleRate = Number.isFinite(capture.sampleRate) && capture.sampleRate > 0
+    ? Math.floor(capture.sampleRate)
+    : 0;
+  const channelsSource = Number.isFinite(capture.numberOfChannels)
+    ? capture.numberOfChannels
+    : Number.isFinite(capture.channelCount)
+      ? capture.channelCount
+      : 0;
+  const numberOfChannels = channelsSource > 0 ? Math.floor(channelsSource) : 0;
+  if (!sampleRate || !numberOfChannels) {
+    return null;
+  }
+  const codecOverride = typeof state.audioCodecOverride === 'string' && state.audioCodecOverride.trim().length > 0
+    ? state.audioCodecOverride
+    : null;
+  const bitrateOverride = Number.isFinite(state.audioBitrateOverride) && state.audioBitrateOverride > 0
+    ? state.audioBitrateOverride
+    : null;
+  const codec = typeof capture.codec === 'string' && capture.codec.trim().length > 0
+    ? capture.codec
+    : codecOverride || DEFAULT_AUDIO_CODEC;
+  const bitrate = Number.isFinite(capture.bitrate) && capture.bitrate > 0
+    ? capture.bitrate
+    : bitrateOverride || DEFAULT_AUDIO_BITRATE;
+  return {
+    sampleRate,
+    numberOfChannels,
+    codec,
+    bitrate,
+  };
+}
+
+async function prepareAudioCapture() {
+  const factory = typeof state.audioCaptureFactory === 'function' ? state.audioCaptureFactory : defaultAudioCaptureFactory;
+  if (typeof factory !== 'function') {
+    return null;
+  }
+  try {
+    const capture = await factory();
+    if (!capture) {
+      return null;
+    }
+    state.audioCapture = capture;
+    state.audioCaptureActive = false;
+    state.audioCapturePumpPromise = null;
+    return capture;
+  } catch (error) {
+    console.warn('[video-export] failed to prepare audio capture', error);
+    return null;
+  }
+}
+
+function stopAudioCapture() {
+  const capture = state.audioCapture;
+  state.audioCaptureActive = false;
+  if (capture && typeof capture.stop === 'function') {
+    try {
+      capture.stop();
+    } catch (error) {
+      console.warn('[video-export] failed to stop audio capture', error);
+    }
+  }
+  state.audioCapture = null;
+}
+
+function handleAudioSample(audioData) {
+  if (!audioData) {
+    return;
+  }
+  const worker = state.worker;
+  if (!worker || (!state.recording && !state.finalizing)) {
+    if (typeof audioData.close === 'function') {
+      try {
+        audioData.close();
+      } catch (error) {
+        console.warn('[video-export] failed to release audio data', error);
+      }
+    }
+    return;
+  }
+  try {
+    if (typeof AudioData !== 'undefined' && audioData instanceof AudioData) {
+      worker.postMessage({ type: 'audio', audioData }, [audioData]);
+    } else {
+      worker.postMessage({ type: 'audio', audioData });
+    }
+  } catch (error) {
+    console.error('[video-export] failed to forward audio data', error);
+    if (typeof audioData.close === 'function') {
+      try {
+        audioData.close();
+      } catch (releaseError) {
+        console.warn('[video-export] failed to close audio data after error', releaseError);
+      }
+    }
+  }
+}
+
+function startAudioPump() {
+  if (!state.audioCapture || state.audioCaptureActive) {
+    return;
+  }
+  if (!state.recording) {
+    return;
+  }
+  if (typeof state.audioCapture.start !== 'function') {
+    return;
+  }
+  state.audioCaptureActive = true;
+  try {
+    const result = state.audioCapture.start(handleAudioSample);
+    if (result && typeof result.then === 'function') {
+      state.audioCapturePumpPromise = result
+        .catch((error) => {
+          console.warn('[video-export] audio capture pump failed', error);
+        })
+        .finally(() => {
+          state.audioCaptureActive = false;
+          state.audioCapturePumpPromise = null;
+        });
+    } else {
+      state.audioCapturePumpPromise = null;
+    }
+  } catch (error) {
+    console.warn('[video-export] failed to start audio capture', error);
+    state.audioCaptureActive = false;
+  }
+}
+
+async function defaultAudioCaptureFactory() {
+  if (!audio || typeof audio.createExportTap !== 'function') {
+    return null;
+  }
+  const tap = await audio.createExportTap();
+  if (!tap || !tap.stream) {
+    return null;
+  }
+  if (typeof MediaStreamTrackProcessor === 'undefined') {
+    if (typeof tap.disconnect === 'function') {
+      tap.disconnect();
+    }
+    return null;
+  }
+  const tracks = typeof tap.stream.getAudioTracks === 'function' ? tap.stream.getAudioTracks() : [];
+  const track = tracks && tracks.length > 0 ? tracks[0] : null;
+  if (!track) {
+    if (typeof tap.disconnect === 'function') {
+      tap.disconnect();
+    }
+    return null;
+  }
+  let reader;
+  try {
+    const processor = new MediaStreamTrackProcessor({ track });
+    reader = processor.readable.getReader();
+  } catch (error) {
+    if (typeof tap.disconnect === 'function') {
+      tap.disconnect();
+    }
+    console.warn('[video-export] failed to initialize audio processor', error);
+    return null;
+  }
+  let stopped = false;
+  let started = false;
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    if (reader) {
+      try {
+        reader.releaseLock();
+      } catch {
+        // ignore release errors
+      }
+    }
+    if (typeof tap.disconnect === 'function') {
+      try {
+        tap.disconnect();
+      } catch (error) {
+        console.warn('[video-export] failed to disconnect audio tap', error);
+      }
+    }
+  };
+
+  return {
+    sampleRate: tap.sampleRate,
+    numberOfChannels: tap.channelCount,
+    codec: DEFAULT_AUDIO_CODEC,
+    bitrate: DEFAULT_AUDIO_BITRATE,
+    start(handler) {
+      if (started) {
+        return Promise.resolve();
+      }
+      started = true;
+      if (typeof handler !== 'function') {
+        return Promise.resolve();
+      }
+      return (async () => {
+        while (!stopped) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+          if (value) {
+            handler(value);
+          }
+        }
+      })()
+        .catch((error) => {
+          console.warn('[video-export] audio capture loop error', error);
+        })
+        .finally(() => {
+          cleanup();
+        });
+    },
+    stop() {
+      if (stopped) {
+        return;
+      }
+      stopped = true;
+      try {
+        reader.cancel();
+      } catch {
+        // ignore cancel failures
+      }
+      cleanup();
+    },
+  };
 }
 
 function assertCanvas(element) {
@@ -70,6 +335,7 @@ function cleanupWorker() {
       console.warn('[video-export] failed to terminate worker', error);
     }
   }
+  stopAudioCapture();
   state.worker = null;
   state.ready = false;
 }
@@ -136,6 +402,9 @@ function handleWorkerMessage(event) {
   }
   if (data.type === 'started') {
     state.ready = true;
+    if (state.recording) {
+      startAudioPump();
+    }
     return;
   }
   if (data.type === 'error') {
@@ -205,7 +474,7 @@ function handleWorkerError(event) {
   abortRecording(message);
 }
 
-function startWorker(width, height) {
+function startWorker({ width, height, bitrate, audio: audioConfig }) {
   if (!state.workerFactory) {
     state.workerFactory = defaultWorkerFactory;
   }
@@ -229,8 +498,9 @@ function startWorker(width, height) {
     width,
     height,
     frameRate: state.frameRate,
-    bitrate: state.bitrate,
+    bitrate,
     keyInterval: state.keyframeInterval,
+    audio: audioConfig || null,
   });
   return worker;
 }
@@ -326,7 +596,12 @@ function handleToggle(event) {
     event.preventDefault();
   }
   if (!state.recording && !state.finalizing) {
-    startRecording();
+    startRecording().catch((error) => {
+      console.error('[video-export] failed to start recording', error);
+      if (state.notify) {
+        state.notify('Unable to start video export.', { tone: 'error' });
+      }
+    });
   } else if (state.recording) {
     stopRecording();
   }
@@ -345,7 +620,7 @@ function ensureSupport() {
   return true;
 }
 
-function startRecording() {
+async function startRecording() {
   if (state.recording || state.finalizing) {
     return;
   }
@@ -366,15 +641,7 @@ function startRecording() {
     }
     return;
   }
-  const worker = startWorker(width, height);
-  if (!worker) {
-    if (state.notify) {
-      state.notify('Video export worker is unavailable.', { tone: 'error' });
-    }
-    return;
-  }
-  updateDownloadLink(null);
-  state.worker = worker;
+  const bitrate = resolveTargetBitrate(width, height);
   state.recording = true;
   state.finalizing = false;
   state.capturing = false;
@@ -383,7 +650,28 @@ function startRecording() {
   state.nextCaptureAt = 0;
   state.captureWidth = width;
   state.captureHeight = height;
+  updateDownloadLink(null);
   updateButtonUi();
+
+  const capture = await prepareAudioCapture();
+  const audioConfig = extractAudioConfig(capture);
+  if (!audioConfig) {
+    stopAudioCapture();
+  }
+  const worker = startWorker({ width, height, bitrate, audio: audioConfig });
+  if (!worker) {
+    stopAudioCapture();
+    state.recording = false;
+    state.finalizing = false;
+    state.ready = false;
+    state.capturing = false;
+    updateButtonUi();
+    if (state.notify) {
+      state.notify('Video export worker is unavailable.', { tone: 'error' });
+    }
+    return;
+  }
+  state.worker = worker;
   if (state.notify) {
     state.notify('Video export started. Recording animation frames…', { tone: 'info', duration: 6000 });
   }
@@ -396,6 +684,7 @@ function stopRecording() {
   state.recording = false;
   state.finalizing = true;
   state.capturing = false;
+  stopAudioCapture();
   updateButtonUi();
   if (state.worker) {
     try {
@@ -413,14 +702,26 @@ export function configure(options = {}) {
   if (typeof options.frameRate === 'number' && options.frameRate > 5) {
     state.frameRate = options.frameRate;
   }
-  if (typeof options.bitrate === 'number' && options.bitrate > 0) {
-    state.bitrate = options.bitrate;
+  if (typeof options.bitrate === 'number') {
+    state.bitrateOverride = options.bitrate > 0 ? options.bitrate : null;
   }
   if (typeof options.keyframeInterval === 'number' && options.keyframeInterval > 0) {
     state.keyframeInterval = Math.max(1, Math.floor(options.keyframeInterval));
   }
   if (typeof options.createWorker === 'function') {
     state.workerFactory = options.createWorker;
+  }
+  if (typeof options.createAudioCapture === 'function') {
+    state.audioCaptureFactory = options.createAudioCapture;
+  } else if (options.createAudioCapture === null) {
+    state.audioCaptureFactory = null;
+  }
+  if (typeof options.audioCodec === 'string') {
+    const trimmed = options.audioCodec.trim();
+    state.audioCodecOverride = trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof options.audioBitrate === 'number') {
+    state.audioBitrateOverride = options.audioBitrate > 0 ? options.audioBitrate : null;
   }
 }
 
@@ -531,13 +832,19 @@ export function __resetForTests() {
     ready: false,
     capturing: false,
     frameRate: DEFAULT_FRAME_RATE,
-    bitrate: DEFAULT_BITRATE,
+    bitrateOverride: null,
     keyframeInterval: KEYFRAME_INTERVAL,
     frameIndex: 0,
     nextCaptureAt: 0,
     captureWidth: 0,
     captureHeight: 0,
     downloadUrl: '',
+    audioCaptureFactory: defaultAudioCaptureFactory,
+    audioCapture: null,
+    audioCaptureActive: false,
+    audioCapturePumpPromise: null,
+    audioCodecOverride: null,
+    audioBitrateOverride: null,
   });
 }
 
