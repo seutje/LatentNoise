@@ -998,10 +998,16 @@ function startAnalysis({ file, presetId, modelId, fileSignature }) {
   setInputsDisabled(true);
   setStatus(STATUS.ANALYZING);
 
+  const modelOption = resolveModelOption(modelId);
+  const modelDefinition = modelOption?.modelDefinition ?? null;
+  const modelUrl = modelOption?.url ? modelOption.url : modelId;
+
   analyzeFile({
     file,
     presetId,
-    modelUrl: modelId,
+    modelId,
+    modelUrl,
+    modelDefinition,
     signal: controller.signal,
     onProgress: (info) => {
       if (token !== state.analysisToken) {
@@ -1467,7 +1473,10 @@ function sanitizeModelOption(entry) {
   }
   const id = entry.id;
   const label = typeof entry.label === 'string' && entry.label.trim().length > 0 ? entry.label.trim() : id;
-  return { id, label };
+  const url = typeof entry.url === 'string' ? entry.url : '';
+  const modelDefinition = entry.modelDefinition && typeof entry.modelDefinition === 'object' ? entry.modelDefinition : null;
+  const entryId = typeof entry.entryId === 'string' ? entry.entryId : '';
+  return { id, label, url, modelDefinition, entryId };
 }
 
 function buildModelOptionEntries(modelOptions) {
@@ -1475,7 +1484,9 @@ function buildModelOptionEntries(modelOptions) {
   const entries = [];
   const seen = new Set();
   const providedFresh = source.find((entry) => entry && entry.id === FRESH_MODEL_ID);
-  const freshOption = sanitizeModelOption(providedFresh) ?? { id: FRESH_MODEL_ID, label: FRESH_MODEL_LABEL };
+  const freshOption =
+    sanitizeModelOption(providedFresh ?? { id: FRESH_MODEL_ID, label: FRESH_MODEL_LABEL, url: '' })
+    ?? { id: FRESH_MODEL_ID, label: FRESH_MODEL_LABEL, url: '', modelDefinition: null, entryId: '' };
   entries.push(freshOption);
   seen.add(FRESH_MODEL_ID);
   source.forEach((entry) => {
@@ -1487,6 +1498,13 @@ function buildModelOptionEntries(modelOptions) {
     seen.add(sanitized.id);
   });
   return entries;
+}
+
+function resolveModelOption(modelId) {
+  if (typeof modelId !== 'string' || modelId.length === 0) {
+    return null;
+  }
+  return state.options.modelOptions.find((entry) => entry && entry.id === modelId) ?? null;
 }
 
 function populateModelOptions(modelOptions) {

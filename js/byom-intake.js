@@ -156,7 +156,9 @@ function createDatasetSummary({
 export async function analyzeFile({
   file,
   presetId,
+  modelId,
   modelUrl,
+  modelDefinition,
   onProgress,
   signal,
 }) {
@@ -187,12 +189,21 @@ export async function analyzeFile({
     const frameStarts = buildFrameStarts(mono.length, hopSamples, FRAME_SIZE);
     const frameCount = frameStarts.length;
 
-    const isFreshModel = modelUrl === FRESH_MODEL_ID;
+    const resolvedModelId = typeof modelId === 'string' && modelId.length > 0 ? modelId : modelUrl;
+    const isFreshModel = resolvedModelId === FRESH_MODEL_ID;
     onProgress?.({ stage: 'model', value: PROGRESS_IMPORT + PROGRESS_DECODE });
     let model = null;
     let outputSize = OUTPUT_PARAM_NAMES.length;
     if (!isFreshModel) {
-      const rawModel = await loadModelDefinition(modelUrl);
+      const inlineDefinition = modelDefinition && typeof modelDefinition === 'object' ? modelDefinition : null;
+      const sourceUrl = typeof modelUrl === 'string' && modelUrl.length > 0 ? modelUrl : resolvedModelId;
+      let rawModel = inlineDefinition;
+      if (!rawModel) {
+        if (typeof sourceUrl !== 'string' || sourceUrl.length === 0) {
+          throw new Error('Model URL is required when analyzing a non-fresh model.');
+        }
+        rawModel = await loadModelDefinition(sourceUrl);
+      }
       model = createModel(rawModel);
       outputSize = model.outputSize;
     }
@@ -289,7 +300,17 @@ export async function analyzeFile({
         metadata: {
           duration,
           presetId,
-          modelUrl,
+          modelId: resolvedModelId ?? '',
+          modelUrl: !isFreshModel
+            ? typeof modelUrl === 'string' && modelUrl.length > 0
+              ? modelUrl
+              : resolvedModelId ?? ''
+            : '',
+          modelSource: !isFreshModel
+            ? typeof modelUrl === 'string' && modelUrl.length > 0
+              ? modelUrl
+              : resolvedModelId ?? ''
+            : '',
           sampleRate,
           channels,
           frameStarts,

@@ -281,3 +281,8 @@
 - Introduced Training/Manager tabs in the BYOM drawer, adding an indexed import/export manager for stored models with accessibility-friendly controls.
 - Persisted manager state through new storage helpers, refreshed the runtime playlist when models are imported, and covered utility logic with Jest tests.
 - Confirmed health via `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - BYOM Baseline Catalog
+- Synced the BYOM model picker with stored training results so previously trained models appear alongside the built-in album weights.
+- Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
+- Re-verified repository health using `npm run lint` and `npm test -- --runInBand`.

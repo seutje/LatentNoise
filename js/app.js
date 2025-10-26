@@ -476,6 +476,50 @@ const sessionObjectUrls = new Map();
 
 let pendingAttachEntryId = '';
 
+const baseModelOptions = [
+  { id: FRESH_MODEL_ID, label: FRESH_MODEL_LABEL },
+  ...albumEntries.map((entry) => ({
+    id: entry.modelUrl,
+    label: entry.title ?? entry.modelUrl,
+    url: entry.modelUrl,
+  })),
+];
+
+function buildStoredModelOption(entry) {
+  if (!entry || !entry.id) {
+    return null;
+  }
+  const label = entry.title ?? entry.file?.name ?? entry.id;
+  return {
+    id: `byom:${entry.id}`,
+    label,
+    entryId: entry.id,
+    modelDefinition: entry.modelDefinition ?? null,
+  };
+}
+
+function computeModelOptions() {
+  const storedOptions = byomEntries
+    .map((entry) => buildStoredModelOption(entry))
+    .filter(Boolean);
+  return [...baseModelOptions, ...storedOptions];
+}
+
+function syncByomModelOptions() {
+  if (typeof byom.setModelOptions === 'function') {
+    byom.setModelOptions(computeModelOptions());
+  }
+}
+
+function getStoredModelDefinition(modelId) {
+  if (typeof modelId !== 'string' || !modelId.startsWith('byom:')) {
+    return null;
+  }
+  const entryId = modelId.slice('byom:'.length);
+  const entry = byomEntries.find((candidate) => candidate.id === entryId);
+  return entry?.modelDefinition ?? null;
+}
+
 function rebuildPlaylistOrder() {
   playlistEntries = [...albumEntries, ...byomEntries];
   playlistEntries.forEach((entry, index) => {
@@ -685,6 +729,7 @@ function mergeStoredByomRecords(records, { replace = false } = {}) {
     byomEntries = records.map((record) => buildRuntimeByomEntry(record));
     rebuildPlaylistOrder();
     renderPlaylistOptions(currentTrackIndex);
+    syncByomModelOptions();
     return byomEntries.length > 0;
   }
   let changed = false;
@@ -706,6 +751,7 @@ function mergeStoredByomRecords(records, { replace = false } = {}) {
   if (changed) {
     rebuildPlaylistOrder();
     renderPlaylistOptions(currentTrackIndex);
+    syncByomModelOptions();
   }
   return changed;
 }
@@ -737,19 +783,12 @@ function handleImportedByomRecords(records) {
   }
 }
 
-const modelOptions = [
-  { id: FRESH_MODEL_ID, label: FRESH_MODEL_LABEL, mode: 'fresh' },
-  ...albumTracks.map((track, index) => ({
-    id: MODEL_FILES[index],
-    label: track.title ?? MODEL_FILES[index],
-    mode: 'tune',
-  })),
-];
+const initialModelOptions = computeModelOptions();
 
 byom.mount({
   drawer: byomDrawer,
   toggle: byomToggleButton,
-  modelOptions,
+  modelOptions: initialModelOptions,
 });
 
 let latestTrainingResult = null;
@@ -842,15 +881,22 @@ byom.setHandlers({
       mode: isFreshModel ? 'fresh' : 'tune',
     };
     byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
+    const inlineDefinition = isFreshModel ? null : getStoredModelDefinition(model);
+    const startOptions = {
+      dataset,
+      summary,
+      hyperparameters,
+      correlations: Array.isArray(correlations) ? correlations : [],
+      mode: isFreshModel ? 'fresh' : 'tune',
+    };
+    if (!isFreshModel) {
+      startOptions.modelUrl = model;
+      if (inlineDefinition) {
+        startOptions.modelDefinition = inlineDefinition;
+      }
+    }
     trainingController
-      .start({
-        dataset,
-        summary,
-        hyperparameters,
-        correlations: Array.isArray(correlations) ? correlations : [],
-        mode: isFreshModel ? 'fresh' : 'tune',
-        ...(isFreshModel ? {} : { modelUrl: model }),
-      })
+      .start(startOptions)
       .catch((error) => {
         console.error('[byom] training start failed', error);
         activeTrainingContext = null;
@@ -1412,6 +1458,7 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
   rebuildPlaylistOrder();
   renderPlaylistOptions(runtimeEntry.listIndex);
   updatePlaylistControls(runtimeEntry);
+  syncByomModelOptions();
   console.info('[byom] Stored BYOM entry "%s".', runtimeEntry.title);
 
   if (typeof byom.reset === 'function') {
@@ -1727,6 +1774,7 @@ playlistRenameButton.addEventListener('click', async () => {
     render.setTrackTitle(entry.title);
   }
   updatePlaylistControls(entry);
+  syncByomModelOptions();
 });
 
 playlistDeleteButton.addEventListener('click', async () => {
@@ -1760,6 +1808,7 @@ playlistDeleteButton.addEventListener('click', async () => {
   byomEntries = byomEntries.filter((candidate) => candidate.id !== entry.id);
   rebuildPlaylistOrder();
   renderPlaylistOptions(currentTrackIndex);
+  syncByomModelOptions();
 
   try {
     await byomStorage.deleteEntry(entry.id);
