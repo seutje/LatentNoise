@@ -2099,8 +2099,6 @@ function frame(now) {
     frameTimeAvg: averageFrameTime,
     fps: instantaneousFps,
     fpsAvg: averageFps,
-    features,
-    outputs: nnOutputs,
   });
   updateStatus(metrics);
 
