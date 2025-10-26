@@ -2,6 +2,7 @@ import { createFeatureExtractor, FEATURE_COUNT, mixToMono } from './audio-featur
 import { createModel, infer, loadModelDefinition } from './nn.js';
 import { FRESH_MODEL_ID } from './byom-constants.js';
 import { PARAM_NAMES as OUTPUT_PARAM_NAMES } from './map.js';
+import { getEntry as getStoredEntry, parseEntryModelUrl } from './byom-storage.js';
 
 const FRAME_SIZE = 2048;
 const TARGET_FPS = 60;
@@ -187,11 +188,19 @@ export async function analyzeFile({
     const frameStarts = buildFrameStarts(mono.length, hopSamples, FRAME_SIZE);
     const frameCount = frameStarts.length;
 
-    const isFreshModel = modelUrl === FRESH_MODEL_ID;
+    const storedModelEntryId = parseEntryModelUrl(modelUrl);
+    const isFreshModel = !storedModelEntryId && modelUrl === FRESH_MODEL_ID;
     onProgress?.({ stage: 'model', value: PROGRESS_IMPORT + PROGRESS_DECODE });
     let model = null;
     let outputSize = OUTPUT_PARAM_NAMES.length;
-    if (!isFreshModel) {
+    if (storedModelEntryId) {
+      const entry = await getStoredEntry(storedModelEntryId);
+      if (!entry || typeof entry.model !== 'object') {
+        throw new Error('Stored BYOM model is unavailable.');
+      }
+      model = createModel(entry.model);
+      outputSize = model.outputSize;
+    } else if (!isFreshModel) {
       const rawModel = await loadModelDefinition(modelUrl);
       model = createModel(rawModel);
       outputSize = model.outputSize;

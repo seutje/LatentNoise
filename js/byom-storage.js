@@ -3,6 +3,7 @@ const STORE_NAME = 'models';
 const DB_VERSION = 1;
 const MEMORY_STORE = new Map();
 const STORAGE_PATH = `${DB_NAME}.${STORE_NAME}`;
+const STORAGE_MODEL_URL_PREFIX = `indexeddb://${STORAGE_PATH}/`;
 
 let dbPromise = null;
 let dbDisabled = false;
@@ -347,6 +348,20 @@ export function createEntryPayload({
     model: model ? normalizeModel(model, { name: entryId }) : null,
     stats,
   });
+}
+
+export function makeEntryModelUrl(entryId) {
+  if (!entryId) {
+    return '';
+  }
+  return `${STORAGE_MODEL_URL_PREFIX}${entryId}`;
+}
+
+export function parseEntryModelUrl(modelUrl) {
+  if (typeof modelUrl !== 'string' || !modelUrl.startsWith(STORAGE_MODEL_URL_PREFIX)) {
+    return '';
+  }
+  return modelUrl.slice(STORAGE_MODEL_URL_PREFIX.length);
 }
 
 export { STORAGE_PATH };

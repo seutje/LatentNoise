@@ -9,6 +9,7 @@ import {
   listEntries as listStoredEntries,
   getEntry as getStoredEntry,
   putEntry as storeEntry,
+  makeEntryModelUrl,
   STORAGE_PATH,
 } from './byom-storage.js';
 import { extractImportEntries, createExportFileName } from './byom-manager-utils.js';
@@ -519,6 +520,8 @@ const state = {
     managerEmpty: null,
   },
   options: {
+    baseModelOptions: [],
+    storedModelOptions: [],
     modelOptions: [],
   },
   handlers: {
@@ -1489,13 +1492,29 @@ function buildModelOptionEntries(modelOptions) {
   return entries;
 }
 
-function populateModelOptions(modelOptions) {
+function buildStoredModelOptionEntries(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return [];
+  }
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || !entry.id || typeof entry.model !== 'object' || entry.model === null) {
+        return null;
+      }
+      const label = typeof entry.name === 'string' && entry.name.trim().length > 0 ? entry.name.trim() : entry.id;
+      return { id: makeEntryModelUrl(entry.id), label };
+    })
+    .filter(Boolean);
+}
+
+function populateModelSelect({ preserveValue = true } = {}) {
   if (!state.elements.modelSelect) {
     return;
   }
-  const previousValue = state.elements.modelSelect.value;
-  const options = buildModelOptionEntries(Array.isArray(modelOptions) ? modelOptions : state.options.modelOptions);
-  state.options.modelOptions = options;
+  const previousValue = preserveValue ? state.elements.modelSelect.value : '';
+  const options = Array.isArray(state.options.modelOptions)
+    ? state.options.modelOptions
+    : [];
   state.elements.modelSelect.innerHTML = '';
   const placeholder = document.createElement('option');
   placeholder.value = '';
@@ -1514,11 +1533,25 @@ function populateModelOptions(modelOptions) {
     state.elements.modelSelect.append(option);
   });
 
-  const defaultValue = options.some((entry) => entry.id === previousValue && entry.id) ? previousValue : FRESH_MODEL_ID;
+  const defaultValue =
+    preserveValue && options.some((entry) => entry.id === previousValue && entry.id) ? previousValue : FRESH_MODEL_ID;
   state.elements.modelSelect.value = defaultValue;
   if (state.elements.modelSelect.value !== defaultValue) {
     state.elements.modelSelect.value = FRESH_MODEL_ID;
   }
+}
+
+function updateModelOptions({ preserveSelection = true } = {}) {
+  const combined = [];
+  if (Array.isArray(state.options.baseModelOptions)) {
+    combined.push(...state.options.baseModelOptions);
+  }
+  if (Array.isArray(state.options.storedModelOptions)) {
+    combined.push(...state.options.storedModelOptions);
+  }
+  state.options.modelOptions = buildModelOptionEntries(combined);
+  populateModelSelect({ preserveValue: preserveSelection });
+  updateStatusFromInputs();
 }
 
 function getTabButtons() {
@@ -1797,6 +1830,8 @@ async function refreshManagerEntriesInternal({ silent = false } = {}) {
     }
     state.manager.entries = Array.isArray(entries) ? entries : [];
     state.manager.loaded = true;
+    state.options.storedModelOptions = buildStoredModelOptionEntries(state.manager.entries);
+    updateModelOptions({ preserveSelection: true });
     renderManagerEntries();
     if (!silent) {
       if (state.manager.entries.length === 0) {
@@ -1811,6 +1846,8 @@ async function refreshManagerEntriesInternal({ silent = false } = {}) {
       console.error('[byom] Failed to load stored BYOM models', error);
       state.manager.entries = [];
       state.manager.loaded = false;
+      state.options.storedModelOptions = [];
+      updateModelOptions({ preserveSelection: true });
       renderManagerEntries();
       setManagerStatus('Failed to load stored models.', MANAGER_STATUS_TONES.ERROR);
     }
@@ -2048,9 +2085,11 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.handlers.onTrain = typeof onTrain === 'function' ? onTrain : null;
   state.handlers.onCancel = typeof onCancel === 'function' ? onCancel : null;
 
-  state.options.modelOptions = Array.isArray(modelOptions) ? modelOptions.slice() : [];
+  state.options.baseModelOptions = Array.isArray(modelOptions) ? modelOptions.slice() : [];
+  state.options.storedModelOptions = [];
+  state.options.modelOptions = [];
   populatePresetOptions();
-  populateModelOptions(state.options.modelOptions);
+  updateModelOptions({ preserveSelection: false });
   populateCorrelationSelectors();
   renderCorrelationList();
   updateSupportVisibility();
@@ -2124,9 +2163,8 @@ export function getState() {
 }
 
 export function setModelOptions(modelOptions) {
-  state.options.modelOptions = Array.isArray(modelOptions) ? modelOptions.slice() : [];
-  populateModelOptions(state.options.modelOptions);
-  updateStatusFromInputs();
+  state.options.baseModelOptions = Array.isArray(modelOptions) ? modelOptions.slice() : [];
+  updateModelOptions({ preserveSelection: true });
 }
 
 export function setHandlers({ onTrain, onCancel, onPause, onResume, onImportEntries } = {}) {
