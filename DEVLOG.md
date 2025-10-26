@@ -305,3 +305,8 @@
 ## 2025-10-27 - BYOM Correlations Default Expansion
 - Set the correlations details box in the BYOM drawer to render expanded by default so the controls and empty state are immediately visible.
 - Reconfirmed repository health via `npm test -- --coverage` and `npm run lint`.
+
+## 2025-10-27 - Neural HUD Signal Overlay
+- Routed the audio feature vector and NN output levels into the renderer so a dual-panel HUD draws futuristic signal bars using the active preset accent palette.
+- Fed the new analytics payload through `renderFrame`, added smoothing for signed levels, and validated the overlay with a dedicated canvas test.
+- Re-verified health via `npm run lint` and `npm test -- --coverage`.

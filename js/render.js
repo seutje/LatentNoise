@@ -250,6 +250,12 @@ const state = {
   fullscreenChangeBound: false,
   frameSeed: 0,
   palette: paletteState,
+  hudLevels: {
+    inputs: new Float32Array(0),
+    outputs: new Float32Array(0),
+    featureLabels: /** @type {string[]} */ ([]),
+    outputLabels: /** @type {string[]} */ ([]),
+  },
 };
 
 applyPaletteToDom();
@@ -833,6 +839,10 @@ export function destroy() {
   state.hud.fps = null;
   state.hud.volumeSlider = null;
   state.hud.volumeDisplay = null;
+  state.hudLevels.inputs = new Float32Array(0);
+  state.hudLevels.outputs = new Float32Array(0);
+  state.hudLevels.featureLabels = [];
+  state.hudLevels.outputLabels = [];
 }
 
 export function getPalette() {
@@ -919,6 +929,323 @@ function prepareGlow(glowLevel) {
     ensureGlowCanvas();
     fadeGlow(1 - glowLevel * 0.6);
   }
+}
+
+function sanitizeHudLevel(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value > 1) {
+    return 1;
+  }
+  if (value < -1) {
+    return -1;
+  }
+  return value;
+}
+
+function isNumberSeries(values) {
+  if (!values) {
+    return false;
+  }
+  if (Array.isArray(values)) {
+    return values.length > 0;
+  }
+  return ArrayBuffer.isView(values) && typeof values.length === 'number' && values.length > 0;
+}
+
+function updateHudBuffer(key, values) {
+  let buffer = state.hudLevels[key];
+  if (!isNumberSeries(values)) {
+    for (let i = 0; i < buffer.length; i += 1) {
+      buffer[i] *= 0.82;
+    }
+    return;
+  }
+
+  const length = Math.max(0, values.length ?? 0);
+  if (length === 0) {
+    for (let i = 0; i < buffer.length; i += 1) {
+      buffer[i] *= 0.82;
+    }
+    return;
+  }
+
+  if (buffer.length !== length) {
+    buffer = new Float32Array(length);
+    state.hudLevels[key] = buffer;
+    for (let i = 0; i < length; i += 1) {
+      buffer[i] = sanitizeHudLevel(values[i]);
+    }
+    return;
+  }
+
+  for (let i = 0; i < length; i += 1) {
+    const current = buffer[i];
+    const target = sanitizeHudLevel(values[i]);
+    if (!Number.isFinite(current)) {
+      buffer[i] = target;
+    } else {
+      buffer[i] = current + (target - current) * 0.28;
+    }
+  }
+}
+
+function formatHudLabel(rawLabel, prefix, index) {
+  const fallback = `${prefix}${index + 1}`;
+  const source = typeof rawLabel === 'string' && rawLabel.length > 0 ? rawLabel : fallback;
+  const separated = source
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .trim();
+  const label = separated.length > 0 ? separated : fallback;
+  const id = String(index + 1).padStart(2, '0');
+  return `${id} ${label.toUpperCase()}`;
+}
+
+function formatHudValue(value) {
+  const clamped = sanitizeHudLevel(value);
+  const rounded = Math.abs(clamped) < 0.005 ? 0 : clamped;
+  const text = rounded.toFixed(2);
+  if (rounded > 0) {
+    return `+${text}`;
+  }
+  if (rounded === 0) {
+    return '+0.00';
+  }
+  return text;
+}
+
+function drawHudPanel(options) {
+  const {
+    ctx,
+    title,
+    values,
+    labels,
+    anchorX,
+    anchorY,
+    alignX,
+    alignY,
+    panelBg,
+    borderColor,
+    gridColor,
+    trackColor,
+    positiveColor,
+    negativeColor,
+    textColor,
+    valueColor,
+    defaultLabelPrefix,
+    maxColumns,
+  } = options;
+
+  const count = values.length;
+  if (count === 0) {
+    return;
+  }
+
+  const safeMaxColumns = Math.max(1, maxColumns || 3);
+  const estimatedColumns = count > 18 ? 3 : count > 10 ? 2 : 1;
+  const columns = Math.min(safeMaxColumns, Math.max(1, estimatedColumns));
+  const rows = Math.max(1, Math.ceil(count / columns));
+  const minDimension = Math.max(1, Math.min(state.logicalWidth, state.logicalHeight));
+  const innerPad = Math.max(12, Math.min(18, minDimension * 0.03));
+  const headerHeight = Math.max(18, Math.min(24, state.logicalHeight * 0.04));
+  const rowGap = Math.max(4, Math.min(10, state.logicalHeight * 0.016));
+  const barHeight = Math.max(6, Math.min(16, state.logicalHeight * 0.022));
+  const columnGap = Math.max(12, Math.min(22, state.logicalWidth * 0.03));
+  const maxPanelWidth = Math.min(Math.max(180, state.logicalWidth * 0.45), state.logicalWidth - innerPad * 2);
+  const minColumnWidth = Math.max(80, state.logicalWidth * 0.12);
+  const rawColumnWidth = (maxPanelWidth - innerPad * 2 - columnGap * (columns - 1)) / columns;
+  const columnWidth = Math.min(Math.max(minColumnWidth, rawColumnWidth), 220);
+  const panelWidth = innerPad * 2 + columns * columnWidth + (columns - 1) * columnGap;
+  const panelHeight = innerPad * 2 + headerHeight + rows * barHeight + Math.max(0, rows - 1) * rowGap;
+
+  let x = anchorX;
+  if (alignX === 'right') {
+    x -= panelWidth;
+  } else if (alignX === 'center') {
+    x -= panelWidth * 0.5;
+  }
+  let y = anchorY;
+  if (alignY === 'bottom') {
+    y -= panelHeight;
+  } else if (alignY === 'center') {
+    y -= panelHeight * 0.5;
+  }
+  x = clamp(x, 0, Math.max(0, state.logicalWidth - panelWidth));
+  y = clamp(y, 0, Math.max(0, state.logicalHeight - panelHeight));
+
+  const pixelScale = Math.max(0.001, state.pixelRatio * state.dynamicScale);
+  const borderWidth = Math.max(1, 1.2 / pixelScale);
+
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = panelBg;
+  ctx.fillRect(x, y, panelWidth, panelHeight);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = borderWidth;
+  ctx.strokeRect(x + borderWidth * 0.5, y + borderWidth * 0.5, panelWidth - borderWidth, panelHeight - borderWidth);
+
+  const titleSize = Math.max(12, Math.min(18, state.logicalHeight * 0.026));
+  ctx.fillStyle = textColor;
+  ctx.font = `${titleSize}px "Share Tech Mono", "IBM Plex Mono", monospace`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(title, x + innerPad, y + innerPad);
+
+  const dividerY = y + innerPad + headerHeight - rowGap * 0.5;
+  const dividerHeight = Math.max(1 / pixelScale, 1);
+  ctx.fillStyle = gridColor;
+  ctx.fillRect(x + innerPad * 0.4, dividerY, panelWidth - innerPad * 0.8, dividerHeight);
+
+  const labelSize = Math.max(10, Math.min(14, state.logicalHeight * 0.02));
+  ctx.font = `${labelSize}px "Share Tech Mono", "IBM Plex Mono", monospace`;
+  ctx.textBaseline = 'middle';
+
+  for (let i = 0; i < count; i += 1) {
+    const column = Math.floor(i / rows);
+    const row = i % rows;
+    const barX = x + innerPad + column * (columnWidth + columnGap);
+    const barY = y + innerPad + headerHeight + row * (barHeight + rowGap);
+
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = trackColor;
+    ctx.fillRect(barX, barY, columnWidth, barHeight);
+    ctx.globalAlpha = 1;
+
+    const midX = barX + columnWidth * 0.5;
+    const zeroWidth = Math.max(1.2 / pixelScale, 1);
+    ctx.fillStyle = gridColor;
+    ctx.fillRect(midX - zeroWidth * 0.5, barY, zeroWidth, barHeight);
+
+    const value = sanitizeHudLevel(values[i] ?? 0);
+    const positive = value > 0 ? value : 0;
+    const negative = value < 0 ? -value : 0;
+    if (negative > 0) {
+      ctx.fillStyle = negativeColor;
+      ctx.fillRect(midX - columnWidth * 0.5 * negative, barY, columnWidth * 0.5 * negative, barHeight);
+    }
+    if (positive > 0) {
+      ctx.fillStyle = positiveColor;
+      ctx.fillRect(midX, barY, columnWidth * 0.5 * positive, barHeight);
+    }
+
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = borderColor;
+    ctx.strokeRect(barX, barY, columnWidth, barHeight);
+    ctx.globalAlpha = 1;
+
+    const labelRaw = Array.isArray(labels) ? labels[i] : undefined;
+    const displayLabel = formatHudLabel(labelRaw, defaultLabelPrefix, i);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = textColor;
+    ctx.fillText(displayLabel, barX + 4, barY + barHeight * 0.5);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = valueColor;
+    ctx.fillText(formatHudValue(value), barX + columnWidth - 4, barY + barHeight * 0.5);
+  }
+
+  ctx.restore();
+}
+
+function updateHudData(metrics = {}) {
+  if (Array.isArray(metrics.featureLabels)) {
+    state.hudLevels.featureLabels = metrics.featureLabels;
+  }
+  if (Array.isArray(metrics.outputLabels)) {
+    state.hudLevels.outputLabels = metrics.outputLabels;
+  }
+
+  updateHudBuffer('inputs', metrics.features);
+  updateHudBuffer('outputs', metrics.outputs);
+}
+
+function drawHudLevels() {
+  if (!state.ctx) {
+    return;
+  }
+
+  const inputs = state.hudLevels.inputs;
+  const outputs = state.hudLevels.outputs;
+  const hasInputs = inputs.length > 0;
+  const hasOutputs = outputs.length > 0;
+  if (!hasInputs && !hasOutputs) {
+    return;
+  }
+
+  const ctx = state.ctx;
+  const accentHex = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+  const accentRgb = hexToRgb(accentHex);
+  const bgRgb = state.palette.backgroundRgb;
+  const trackRgb = mixRgb(accentRgb, bgRgb, 0.78);
+  const negativeRgb = mixRgb(accentRgb, bgRgb, 0.55);
+  const gridRgb = mixRgb(accentRgb, bgRgb, 0.32);
+  const panelRgb = mixRgb(bgRgb, accentRgb, 0.28);
+  const borderRgb = mixRgb(accentRgb, bgRgb, 0.44);
+
+  const panelBg = `rgba(${panelRgb.r}, ${panelRgb.g}, ${panelRgb.b}, 0.32)`;
+  const borderColor = `rgba(${borderRgb.r}, ${borderRgb.g}, ${borderRgb.b}, 0.55)`;
+  const gridColor = `rgba(${gridRgb.r}, ${gridRgb.g}, ${gridRgb.b}, 0.7)`;
+  const trackColor = `rgba(${trackRgb.r}, ${trackRgb.g}, ${trackRgb.b}, 0.6)`;
+  const positiveColor = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.85)`;
+  const negativeColor = `rgba(${negativeRgb.r}, ${negativeRgb.g}, ${negativeRgb.b}, 0.65)`;
+  const textColor = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.82)`;
+  const valueColor = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.96)`;
+
+  const margin = Math.max(18, Math.min(state.logicalWidth, state.logicalHeight) * 0.04);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+
+  if (hasInputs) {
+    drawHudPanel({
+      ctx,
+      title: 'INPUT VECTOR',
+      values: inputs,
+      labels: state.hudLevels.featureLabels,
+      anchorX: margin,
+      anchorY: state.logicalHeight - margin,
+      alignX: 'left',
+      alignY: 'bottom',
+      panelBg,
+      borderColor,
+      gridColor,
+      trackColor,
+      positiveColor,
+      negativeColor,
+      textColor,
+      valueColor,
+      defaultLabelPrefix: 'F',
+      maxColumns: 3,
+    });
+  }
+
+  if (hasOutputs) {
+    drawHudPanel({
+      ctx,
+      title: 'OUTPUT VECTOR',
+      values: outputs,
+      labels: state.hudLevels.outputLabels,
+      anchorX: state.logicalWidth - margin,
+      anchorY: state.logicalHeight - margin,
+      alignX: 'right',
+      alignY: 'bottom',
+      panelBg,
+      borderColor,
+      gridColor,
+      trackColor,
+      positiveColor,
+      negativeColor,
+      textColor,
+      valueColor,
+      defaultLabelPrefix: 'O',
+      maxColumns: 2,
+    });
+  }
+
+  ctx.restore();
 }
 
 function drawParticles(particles, params, dt) {
@@ -1107,9 +1434,13 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
   prepareGlow(params.glow);
   drawParticles(particles, params, dt);
 
+  updateHudData(metrics);
+
   if (state.glow.enabled) {
     compositeGlow();
   }
+
+  drawHudLevels();
 }
 
 export default {
