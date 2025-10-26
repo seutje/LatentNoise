@@ -90,6 +90,19 @@ function buildCorrelationNotification(stats) {
   return messageLines.join('\n');
 }
 
+function formatHiddenLayerTitle(layer) {
+  if (!layer) {
+    return '';
+  }
+  const index = Number.isFinite(layer.index) ? layer.index : 0;
+  const baseName = typeof layer.name === 'string' && layer.name.trim().length > 0 ? layer.name.trim() : `Layer ${index + 1}`;
+  const activation = typeof layer.activation === 'string' && layer.activation.length > 0 ? layer.activation.toUpperCase() : 'LINEAR';
+  const sizeSource = Number.isFinite(layer.size) ? layer.size : layer.activations?.length;
+  const neuronCount = Number.isFinite(sizeSource) ? Math.max(Math.trunc(sizeSource), 0) : 0;
+  const normalizedName = baseName.toUpperCase();
+  return neuronCount > 0 ? `${normalizedName} • ${activation} (${neuronCount})` : `${normalizedName} • ${activation}`;
+}
+
 const RENDER_PARAMS_DEFAULT = Object.freeze({
   trailFade: 0.68,
   glow: 0.55,
@@ -2054,19 +2067,25 @@ function frame(now) {
 
   const currentEntry = getCurrentEntry();
   let nnOutputs = lastModelOutputs;
+  let layerActivationsInfo = [];
   if (!nnBypass && currentEntry && activeModelEntryId === currentEntry.id) {
     try {
       const normalized = nn.normalize(features);
       nnOutputs = nn.forward(normalized);
+      layerActivationsInfo = nn.getLayerActivations();
       lastModelOutputs = nnOutputs;
     } catch (error) {
       console.warn('[app] NN inference failed; using fallback outputs.', error);
       nnOutputs = FALLBACK_NN_OUTPUTS;
       lastModelOutputs = FALLBACK_NN_OUTPUTS;
+      layerActivationsInfo = [];
     }
   } else if (nnBypass) {
     nnOutputs = FALLBACK_NN_OUTPUTS;
     lastModelOutputs = FALLBACK_NN_OUTPUTS;
+    layerActivationsInfo = [];
+  } else {
+    layerActivationsInfo = [];
   }
 
   const playbackSilent =
@@ -2095,6 +2114,14 @@ function frame(now) {
   const particles = physics.getParticles();
   const metrics = physics.getMetrics();
 
+  const hiddenLayerGroups = layerActivationsInfo
+    .filter((layer) => layer && !layer.isOutput)
+    .map((layer) => ({
+      title: formatHiddenLayerTitle(layer),
+      activations: layer.activations,
+      labels: layer.labels,
+    }));
+
   render.renderFrame(particles, renderParams, {
     dt: dtSeconds,
     frameTime: frameTimeMs,
@@ -2104,6 +2131,7 @@ function frame(now) {
   }, {
     features,
     featureLabels: FEATURE_LABELS,
+    hiddenLayers: hiddenLayerGroups,
     outputs: nnOutputs,
     outputLabels: OUTPUT_LABELS,
   });

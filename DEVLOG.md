@@ -311,3 +311,8 @@
 - Added smoothing, peak tracking, and graceful decay so the HUD levels animate responsively without jitter when data pauses.
 - Routed label metadata from the audio pipeline and mapper into the renderer to power the overlay readout.
 - Validated the overlay with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - Hidden Activation HUD Stack
+- Added a layered HUD panel that surfaces hidden-layer activation meters and shifted the output panel beneath it for a cleaner right-hand column layout.
+- Snapshotted per-layer activations from the neural runtime and fed them through the render loop so each neuron's activity animates alongside its layer heading.
+- Reconfirmed repository health via `npm run lint` and `npm test -- --coverage`.

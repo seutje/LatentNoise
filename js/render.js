@@ -40,6 +40,10 @@ const HUD_MAX_ROW_HEIGHT = 18;
 const HUD_BAR_THICKNESS = 5;
 const HUD_FEATURE_PREFIX = 'IN';
 const HUD_OUTPUT_PREFIX = 'OUT';
+const HUD_HIDDEN_PREFIX = 'HL';
+const HUD_PANEL_GAP = 16;
+const HUD_LAYER_HEADING_HEIGHT = 16;
+const HUD_LAYER_GROUP_GAP = 10;
 const HUD_MAX_ITEMS = 64;
 
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
@@ -366,11 +370,30 @@ function updateHudVisuals(modelData, dt) {
   } else {
     idleHudBuffer(state.hudLevels.outputs, dt);
   }
+
+  const hiddenLayers = Array.isArray(modelData?.hiddenLayers) ? modelData.hiddenLayers : null;
+  if (hiddenLayers && hiddenLayers.length > 0) {
+    const groups = ensureHiddenHudGroupCount(hiddenLayers.length);
+    for (let i = 0; i < hiddenLayers.length; i += 1) {
+      const layer = hiddenLayers[i];
+      const group = groups[i];
+      if (!group) {
+        continue;
+      }
+      group.title = typeof layer?.title === 'string' ? layer.title : '';
+      updateHudBuffer(group.buffer, layer?.activations, layer?.labels, dt);
+    }
+    for (let i = hiddenLayers.length; i < groups.length; i += 1) {
+      idleHudBuffer(groups[i]?.buffer, dt);
+    }
+  } else {
+    idleHiddenHudGroups(dt);
+  }
 }
 
 function drawHudGroup(buffer, heading, x, y, width, style) {
   if (!state.ctx || !buffer || buffer.display.length === 0 || width <= 0) {
-    return;
+    return 0;
   }
 
   const count = buffer.display.length;
@@ -471,10 +494,217 @@ function drawHudGroup(buffer, heading, x, y, width, style) {
   }
 
   ctx.restore();
+  return panelHeight;
+}
+
+function formatHudLayerHeading(title, index) {
+  if (typeof title === 'string') {
+    const trimmed = title.trim();
+    if (trimmed.length > 0) {
+      return trimmed.length <= 26 ? trimmed.toUpperCase() : `${trimmed.slice(0, 25).toUpperCase()}…`;
+    }
+  }
+  return `LAYER ${index + 1}`;
+}
+
+function ensureHiddenHudGroupCount(count) {
+  if (!state.hudLevels.hidden) {
+    state.hudLevels.hidden = { groups: [] };
+  }
+  const groups = state.hudLevels.hidden.groups;
+  const target = Math.max(0, Math.min(Number.isFinite(count) ? Math.trunc(count) : 0, 16));
+  while (groups.length < target) {
+    const index = groups.length;
+    const prefix = `${HUD_HIDDEN_PREFIX}${index + 1}`;
+    groups.push({
+      title: '',
+      buffer: createHudBuffer(prefix),
+    });
+  }
+  if (groups.length > target) {
+    for (let i = target; i < groups.length; i += 1) {
+      const group = groups[i];
+      if (group?.buffer) {
+        resetHudBuffer(group.buffer, group.buffer.prefix ?? `${HUD_HIDDEN_PREFIX}${i + 1}`);
+      }
+    }
+    groups.length = target;
+  }
+  return groups;
+}
+
+function idleHiddenHudGroups(dt) {
+  const groups = state.hudLevels.hidden?.groups ?? [];
+  for (let i = 0; i < groups.length; i += 1) {
+    idleHudBuffer(groups[i]?.buffer, dt);
+  }
+}
+
+function drawHudLayerPanel(hiddenState, heading, x, y, width, style) {
+  if (!state.ctx || !hiddenState || width <= 0) {
+    return 0;
+  }
+  const groupsRaw = hiddenState.groups ?? [];
+  const groups = groupsRaw.filter((group) => group && group.buffer && group.buffer.display.length > 0);
+  if (groups.length === 0) {
+    return 0;
+  }
+
+  let totalRows = 0;
+  for (let i = 0; i < groups.length; i += 1) {
+    totalRows += groups[i].buffer.display.length;
+  }
+  if (totalRows === 0) {
+    return 0;
+  }
+
+  const basePanelColor = style?.panelColor ?? state.palette.panelColor;
+  const accentMain = style?.accentMain ?? state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+  const accentDim = style?.accentDim ?? state.palette.gridColor;
+  const accentGlow = style?.accentGlow ?? 'rgba(255, 255, 255, 0.08)';
+  const gridColor = style?.gridColor ?? state.palette.gridColor;
+
+  const extraHeading = HUD_LAYER_HEADING_HEIGHT * groups.length;
+  const extraGap = HUD_LAYER_GROUP_GAP * Math.max(groups.length - 1, 0);
+  const availableHeight = Math.max(
+    state.logicalHeight - HUD_MARGIN * 2,
+    HUD_MIN_ROW_HEIGHT * totalRows + HUD_HEADING_HEIGHT + HUD_PANEL_PADDING * 2 + extraHeading + extraGap,
+  );
+  const usableHeight = Math.max(
+    availableHeight - HUD_HEADING_HEIGHT - HUD_PANEL_PADDING * 2 - extraHeading - extraGap,
+    HUD_MIN_ROW_HEIGHT * totalRows,
+  );
+  const rowHeight = clamp(usableHeight / Math.max(totalRows, 1), HUD_MIN_ROW_HEIGHT, HUD_MAX_ROW_HEIGHT);
+  const panelHeight = HUD_HEADING_HEIGHT + HUD_PANEL_PADDING * 2 + extraHeading + extraGap + rowHeight * totalRows;
+
+  const innerLeft = HUD_PANEL_PADDING;
+  const innerRight = width - HUD_PANEL_PADDING;
+  const innerWidth = Math.max(innerRight - innerLeft, 1);
+  const centerX = innerLeft + innerWidth * 0.5;
+  const barMaxHeight = Math.min(HUD_BAR_THICKNESS, rowHeight * 0.6);
+
+  const ctx = state.ctx;
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = basePanelColor;
+  ctx.fillRect(0, 0, width, panelHeight);
+
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = accentDim;
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(0.5, 0.5, Math.max(width - 1, 0), Math.max(panelHeight - 1, 0));
+
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = accentGlow;
+  ctx.fillRect(-8, 6, width + 16, Math.max(panelHeight - 12, 0));
+
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = accentMain;
+  ctx.font = '600 13px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(heading, HUD_PANEL_PADDING, HUD_PANEL_PADDING);
+
+  ctx.strokeStyle = accentDim;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(HUD_PANEL_PADDING, HUD_PANEL_PADDING + HUD_HEADING_HEIGHT - 4);
+  ctx.lineTo(width - HUD_PANEL_PADDING, HUD_PANEL_PADDING + HUD_HEADING_HEIGHT - 4);
+  ctx.stroke();
+
+  let cursorY = HUD_PANEL_PADDING + HUD_HEADING_HEIGHT;
+
+  for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+    const group = groups[groupIndex];
+    const buffer = group.buffer;
+    const groupTitle = formatHudLayerHeading(group.title, groupIndex);
+
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = accentMain;
+    ctx.font = '600 11px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(groupTitle, innerLeft, cursorY);
+
+    ctx.strokeStyle = accentDim;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(innerLeft, cursorY + HUD_LAYER_HEADING_HEIGHT - 4);
+    ctx.lineTo(innerRight, cursorY + HUD_LAYER_HEADING_HEIGHT - 4);
+    ctx.stroke();
+
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.textBaseline = 'middle';
+
+    const startY = cursorY + HUD_LAYER_HEADING_HEIGHT;
+    const count = buffer.display.length;
+    for (let i = 0; i < count; i += 1) {
+      const label = formatHudLabel(buffer.labels[i] ?? buildFallbackLabel(buffer.prefix, i));
+      const value = buffer.values[i];
+      const normalized = clamp(buffer.display[i], -1, 1);
+      const rowTop = startY + i * rowHeight;
+      const barCenterY = rowTop + rowHeight * 0.68;
+      const textY = rowTop + rowHeight * 0.32;
+      const barHeight = Math.max(2, barMaxHeight);
+      const halfWidth = innerWidth * 0.5;
+
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = accentGlow;
+      ctx.fillRect(innerLeft, barCenterY - barHeight, innerWidth, barHeight * 2);
+
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = gridColor;
+      ctx.fillRect(innerLeft, barCenterY - 0.5, innerWidth, 1);
+
+      const positive = normalized > 0 ? normalized : 0;
+      const negative = normalized < 0 ? -normalized : 0;
+
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = accentMain;
+      if (positive > 0.001) {
+        const widthPos = halfWidth * clamp(positive, 0, 1);
+        ctx.fillRect(centerX, barCenterY - barHeight * 0.5, widthPos, barHeight);
+      }
+      if (negative > 0.001) {
+        const widthNeg = halfWidth * clamp(negative, 0, 1);
+        ctx.fillRect(centerX - widthNeg, barCenterY - barHeight * 0.5, widthNeg, barHeight);
+      }
+
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = accentMain;
+      ctx.textAlign = 'left';
+      ctx.fillText(label, innerLeft, textY);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = accentDim;
+      ctx.fillText(formatHudValue(value), innerRight, textY);
+
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = accentDim;
+      ctx.fillRect(centerX - 0.5, barCenterY - barHeight * 0.7, 1, barHeight * 1.4);
+    }
+
+    cursorY = startY + rowHeight * count + HUD_LAYER_GROUP_GAP;
+  }
+
+  ctx.restore();
+  return panelHeight;
 }
 
 function drawHudOverlay() {
-  if (!state.ctx || (!state.hudLevels.features.display.length && !state.hudLevels.outputs.display.length)) {
+  if (!state.ctx) {
+    return;
+  }
+
+  const hiddenGroups = state.hudLevels.hidden?.groups ?? [];
+  const hasFeatures = state.hudLevels.features.display.length > 0;
+  const hasHidden = hiddenGroups.some((group) => group?.buffer?.display?.length > 0);
+  const hasOutputs = state.hudLevels.outputs.display.length > 0;
+
+  if (!hasFeatures && !hasHidden && !hasOutputs) {
     return;
   }
 
@@ -487,38 +717,43 @@ function drawHudOverlay() {
   const panelColor = state.palette.panelColor;
   const gridColor = state.palette.gridColor;
 
-  const hasFeatures = state.hudLevels.features.display.length > 0;
-  const hasOutputs = state.hudLevels.outputs.display.length > 0;
-
-  const segments = (hasFeatures ? 1 : 0) + (hasOutputs ? 1 : 0);
   const width = state.logicalWidth;
+  const rightColumn = hasHidden || hasOutputs;
+  const columns = (hasFeatures ? 1 : 0) + (rightColumn ? 1 : 0);
   const availableWidth = Math.max(width - HUD_MARGIN * 2, 0);
-  const maxPerPanel = segments > 0 ? availableWidth / segments : availableWidth;
+  const maxPerPanel = columns > 0 ? availableWidth / columns : availableWidth;
   const desiredWidth = clamp(width * 0.23, 110, 320);
-  const panelWidth = segments > 0 ? clamp(desiredWidth, Math.min(96, maxPerPanel), maxPerPanel) : desiredWidth;
+  const panelWidth = columns > 0 ? clamp(desiredWidth, Math.min(96, maxPerPanel), maxPerPanel) : desiredWidth;
+
+  const sharedStyle = {
+    panelColor,
+    accentMain,
+    accentDim,
+    accentGlow,
+    gridColor,
+  };
 
   ctx.save();
   ctx.setTransform(state.pixelRatio * state.dynamicScale, 0, 0, state.pixelRatio * state.dynamicScale, 0, 0);
 
   if (hasFeatures) {
-    drawHudGroup(state.hudLevels.features, 'INPUT LEVELS', HUD_MARGIN, HUD_MARGIN, panelWidth, {
-      panelColor,
-      accentMain,
-      accentDim,
-      accentGlow,
-      gridColor,
-    });
+    drawHudGroup(state.hudLevels.features, 'INPUT LEVELS', HUD_MARGIN, HUD_MARGIN, panelWidth, sharedStyle);
   }
 
-  if (hasOutputs) {
-    const x = hasFeatures ? width - panelWidth - HUD_MARGIN : HUD_MARGIN;
-    drawHudGroup(state.hudLevels.outputs, 'OUTPUT LEVELS', x, HUD_MARGIN, panelWidth, {
-      panelColor,
-      accentMain,
-      accentDim,
-      accentGlow,
-      gridColor,
-    });
+  if (rightColumn) {
+    const x = columns === 2 ? width - panelWidth - HUD_MARGIN : HUD_MARGIN;
+    let currentY = HUD_MARGIN;
+
+    if (hasHidden) {
+      const hiddenHeight = drawHudLayerPanel(state.hudLevels.hidden, 'HIDDEN ACTIVATIONS', x, currentY, panelWidth, sharedStyle);
+      if (hiddenHeight > 0) {
+        currentY += hiddenHeight + HUD_PANEL_GAP;
+      }
+    }
+
+    if (hasOutputs) {
+      drawHudGroup(state.hudLevels.outputs, 'OUTPUT LEVELS', x, currentY, panelWidth, sharedStyle);
+    }
   }
 
   ctx.restore();
@@ -597,6 +832,7 @@ const state = {
   hudLevels: {
     features: createHudBuffer(HUD_FEATURE_PREFIX),
     outputs: createHudBuffer(HUD_OUTPUT_PREFIX),
+    hidden: { groups: [] },
   },
   keyHandlersBound: false,
   resizeHandlerBound: false,
@@ -1133,6 +1369,7 @@ export function init(options = {}) {
   applyPaletteToDom();
   resetHudBuffer(state.hudLevels.features, HUD_FEATURE_PREFIX);
   resetHudBuffer(state.hudLevels.outputs, HUD_OUTPUT_PREFIX);
+  state.hudLevels.hidden.groups = [];
 
   const hudRoot = assertElement(options.hud || document.getElementById('hud'), 'HUD element #hud is required.');
   const title = assertElement(options.trackTitle || document.getElementById('track-title'), 'HUD track title element missing.');
@@ -1191,6 +1428,7 @@ export function destroy() {
   state.hud.volumeDisplay = null;
   resetHudBuffer(state.hudLevels.features, HUD_FEATURE_PREFIX);
   resetHudBuffer(state.hudLevels.outputs, HUD_OUTPUT_PREFIX);
+  state.hudLevels.hidden.groups = [];
 }
 
 export function getPalette() {

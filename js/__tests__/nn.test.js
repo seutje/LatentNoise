@@ -1,4 +1,4 @@
-import { loadModel, normalize, forward } from '../nn.js';
+import { getLayerActivations, loadModel, normalize, forward } from '../nn.js';
 
 function createDummyModel() {
   return {
@@ -47,5 +47,22 @@ describe('nn runtime', () => {
     const result = forward(normalized, outBuffer);
     expect(result).toBe(outBuffer);
     expect(Number.isFinite(result[0])).toBe(true);
+  });
+
+  test('getLayerActivations exposes hidden layer activations', async () => {
+    await loadModel(createDummyModel());
+    const normalized = normalize(new Float32Array([0.4, -0.2, 0.9]));
+    forward(normalized);
+    const layers = getLayerActivations();
+    expect(Array.isArray(layers)).toBe(true);
+    expect(layers.length).toBeGreaterThanOrEqual(2);
+    const hiddenLayers = layers.filter((layer) => !layer.isOutput);
+    expect(hiddenLayers.length).toBe(1);
+    const hidden = hiddenLayers[0];
+    expect(hidden.activations).toBeInstanceOf(Float32Array);
+    expect(hidden.activations.length).toBe(2);
+    for (let i = 0; i < hidden.activations.length; i += 1) {
+      expect(Number.isFinite(hidden.activations[i])).toBe(true);
+    }
   });
 });

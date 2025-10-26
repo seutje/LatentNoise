@@ -86,9 +86,25 @@ function buildModel(raw) {
   }
 
   let prevSize = inputSize;
-  const layers = rawLayers.map((layerRaw) => {
+  const layerMeta = [];
+  const layerActivations = [];
+  const layers = rawLayers.map((layerRaw, index) => {
     const layer = createLayer(layerRaw, prevSize);
     prevSize = layer.outputSize;
+    const labelSource =
+      typeof layerRaw?.label === 'string' && layerRaw.label.trim().length > 0
+        ? layerRaw.label
+        : typeof layerRaw?.name === 'string' && layerRaw.name.trim().length > 0
+          ? layerRaw.name
+          : '';
+    layerMeta.push({
+      index,
+      size: layer.outputSize,
+      activation: layer.activation,
+      name: labelSource.trim(),
+      isOutput: index === rawLayers.length - 1,
+    });
+    layerActivations.push(new Float32Array(layer.outputSize));
     return layer;
   });
 
@@ -103,6 +119,8 @@ function buildModel(raw) {
     normBuffer: new Float32Array(inputSize),
     inputBuffer: new Float32Array(inputSize),
     outputBuffer: new Float32Array(outputSize),
+    layerMeta,
+    layerActivations,
   };
 }
 
@@ -118,7 +136,7 @@ function normalizeWithModel(model, features) {
 }
 
 function forwardWithModel(model, normalizedFeatures, outBuffer) {
-  const { layers, inputBuffer, outputBuffer, inputSize } = model;
+  const { layers, inputBuffer, outputBuffer, inputSize, layerActivations } = model;
   const source = inputBuffer;
   const len = normalizedFeatures.length;
   for (let i = 0; i < inputSize; i += 1) {
@@ -129,6 +147,7 @@ function forwardWithModel(model, normalizedFeatures, outBuffer) {
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
     const { weights, biases, inputSize: layerInputSize, outputSize, activationFn, buffer } = layer;
+    const activationBuffer = layerActivations[layerIndex];
 
     for (let outIndex = 0; outIndex < outputSize; outIndex += 1) {
       let sum = biases[outIndex];
@@ -136,7 +155,11 @@ function forwardWithModel(model, normalizedFeatures, outBuffer) {
       for (let inIndex = 0; inIndex < layerInputSize; inIndex += 1) {
         sum += weights[weightOffset + inIndex] * current[inIndex];
       }
-      buffer[outIndex] = assertFinite(activationFn(sum));
+      const activated = assertFinite(activationFn(sum));
+      buffer[outIndex] = activated;
+      if (activationBuffer && activationBuffer.length > outIndex) {
+        activationBuffer[outIndex] = activated;
+      }
     }
     current = buffer;
   }
@@ -257,4 +280,28 @@ export function getCurrentModelInfo() {
     outputSize: currentModel.outputSize,
     layers: currentModel.layers.length,
   };
+}
+
+export function getLayerActivations() {
+  if (!currentModel) {
+    return [];
+  }
+  const { layerMeta, layerActivations } = currentModel;
+  if (!Array.isArray(layerMeta) || !Array.isArray(layerActivations)) {
+    return [];
+  }
+  const count = Math.min(layerMeta.length, layerActivations.length);
+  const result = new Array(count);
+  for (let i = 0; i < count; i += 1) {
+    const meta = layerMeta[i];
+    result[i] = {
+      index: meta?.index ?? i,
+      size: meta?.size ?? layerActivations[i].length,
+      activation: meta?.activation ?? 'linear',
+      name: typeof meta?.name === 'string' ? meta.name : '',
+      isOutput: Boolean(meta?.isOutput),
+      activations: layerActivations[i],
+    };
+  }
+  return result;
 }
