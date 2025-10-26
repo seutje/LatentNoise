@@ -287,6 +287,10 @@
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
 - Re-verified repository health using `npm run lint` and `npm test -- --runInBand`.
 
+## 2025-10-27 - BYOM Form Persistence
+- Stopped clearing BYOM drawer inputs after a training run so settings remain available for immediate retraining.
+- Confirmed automated coverage with `npm test`. `npm run lint` currently flags an unrelated unused variable in `js/physics.js`.
+
 ## 2025-10-27 - Repeat Toggle Control
 - Added a Repeat toggle to the control strip with stored preference, updated styling, and accessible pressed state indicators.
 - Restarted the active track after the intermission when repeat is enabled and introduced a dedicated controller module with Jest coverage.
