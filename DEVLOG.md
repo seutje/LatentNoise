@@ -305,3 +305,8 @@
 ## 2025-10-27 - BYOM Correlations Default Expansion
 - Set the correlations details box in the BYOM drawer to render expanded by default so the controls and empty state are immediately visible.
 - Reconfirmed repository health via `npm test -- --coverage` and `npm run lint`.
+
+## 2025-10-27 - Model HUD Telemetry
+- Layered futuristic HUD meters over the canvas to visualize NN input features and output activations using each preset's accent palette.
+- Added smoothing/state caching for meter levels plus a renderer snapshot helper covered by new Jest assertions.
+- Verified the changes with `npm run lint` and `npm test`.
