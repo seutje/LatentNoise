@@ -292,3 +292,12 @@
 - Increased the overlay backdrop blur to keep the intro content legible without the gradient wash.
 - Removed a stray unused variable in the physics module to satisfy the lint suite.
 - Validated the change set with `npm run lint` and `npm test`.
+
+## 2025-10-27 - BYOM Form Persistence
+- Stopped clearing BYOM drawer inputs after a training run so settings remain available for immediate retraining.
+- Confirmed automated coverage with `npm test`. `npm run lint` currently flags an unrelated unused variable in `js/physics.js`.
+
+## 2025-10-27 - Repeat Toggle Control
+- Added a Repeat toggle to the control strip with stored preference, updated styling, and accessible pressed state indicators.
+- Restarted the active track after the intermission when repeat is enabled and introduced a dedicated controller module with Jest coverage.
+- Validated the update with `npm run lint` and `npm test -- --coverage`.
