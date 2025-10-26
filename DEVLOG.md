@@ -325,3 +325,8 @@
 - Added an Export MP4 control and download link to the HUD, wiring it to a capture controller.
 - Streamed rendered frames into a dedicated worker that encodes MP4 via WebCodecs/mp4-muxer and reports errors cleanly.
 - Covered the export flow with Jest and verified `npm run lint` plus `npm test -- --coverage`.
+
+## 2025-10-27 - Video Export Level Scaling Fix
+- Raised the worker's codec level dynamically so high-resolution exports choose an AVC level that fits the aligned frame size.
+- Left room for manual overrides while preserving baseline profile defaults for hardware compatibility.
+- Re-ran `npm run lint` and `npm test -- --coverage` to confirm the export pipeline stays green.

@@ -4,7 +4,30 @@
 import { ArrayBufferTarget, Muxer } from '../vendor/mp4-muxer.js';
 
 const DEFAULT_BITRATE = 8_000_000;
-const DEFAULT_CODEC = 'avc1.42001E';
+const BASELINE_PROFILE_HEX = '42';
+
+const AVC_LEVEL_LIMITS = [
+  { maxMacroblocks: 1620, levelHex: '1E' },
+  { maxMacroblocks: 3600, levelHex: '1F' },
+  { maxMacroblocks: 5120, levelHex: '20' },
+  { maxMacroblocks: 8192, levelHex: '28' },
+  { maxMacroblocks: 8704, levelHex: '2A' },
+  { maxMacroblocks: 22080, levelHex: '32' },
+  { maxMacroblocks: 36864, levelHex: '33' },
+  { maxMacroblocks: Number.POSITIVE_INFINITY, levelHex: '34' },
+];
+
+function selectCodec(width, height, preferredCodec) {
+  if (typeof preferredCodec === 'string' && preferredCodec.trim().length > 0) {
+    return preferredCodec;
+  }
+  const safeWidth = Math.max(1, Math.floor(width));
+  const safeHeight = Math.max(1, Math.floor(height));
+  const macroblocks = Math.ceil(safeWidth / 16) * Math.ceil(safeHeight / 16);
+  const entry = AVC_LEVEL_LIMITS.find(({ maxMacroblocks }) => macroblocks <= maxMacroblocks);
+  const levelHex = entry ? entry.levelHex : AVC_LEVEL_LIMITS[AVC_LEVEL_LIMITS.length - 1].levelHex;
+  return `avc1.${BASELINE_PROFILE_HEX}00${levelHex}`;
+}
 
 let muxer = null;
 let target = null;
@@ -55,6 +78,7 @@ function start(options) {
   frameRate = Number.isFinite(options.frameRate) && options.frameRate > 0 ? options.frameRate : 60;
   keyInterval = Number.isFinite(options.keyInterval) && options.keyInterval > 0 ? Math.floor(options.keyInterval) : 60;
   const bitrate = Number.isFinite(options.bitrate) && options.bitrate > 0 ? options.bitrate : DEFAULT_BITRATE;
+  const codec = selectCodec(width, height, options.codec);
 
   if (typeof VideoEncoder === 'undefined') {
     post('error', { message: 'VideoEncoder API is not available.' });
@@ -81,7 +105,7 @@ function start(options) {
   encoder = new VideoEncoder({ output: handleChunk, error: handleError });
   try {
     encoder.configure({
-      codec: DEFAULT_CODEC,
+      codec,
       width: Math.floor(width),
       height: Math.floor(height),
       bitrate,
