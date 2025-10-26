@@ -127,6 +127,28 @@ function mixRgb(a, b, amount) {
   };
 }
 
+function rgbaString(rgb, alpha = 1) {
+  const r = clamp(Math.round(rgb.r ?? 0), 0, 255);
+  const g = clamp(Math.round(rgb.g ?? 0), 0, 255);
+  const b = clamp(Math.round(rgb.b ?? 0), 0, 255);
+  const a = clamp(Number.isFinite(alpha) ? alpha : 1, 0, 1);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function drawRoundedRectPath(ctx, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, Math.min(width, height) * 0.5));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+}
+
 function wrapHue360(value) {
   if (!Number.isFinite(value)) {
     return DEFAULT_BASE_HUE;
@@ -1071,6 +1093,151 @@ function drawParticles(particles, params, dt) {
   }
 }
 
+function drawHudTelemetry(features, outputs) {
+  if (!state.ctx) {
+    return;
+  }
+  const hasFeatures = features && typeof features.length === 'number' && features.length > 0;
+  const hasOutputs = outputs && typeof outputs.length === 'number' && outputs.length > 0;
+  if (!hasFeatures && !hasOutputs) {
+    return;
+  }
+
+  const width = state.logicalWidth;
+  const height = state.logicalHeight;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return;
+  }
+
+  const ctx = state.ctx;
+  const accentHex = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+  const accentRgb = hexToRgb(accentHex);
+  const strokeColor = rgbaString(accentRgb, 0.85);
+  const glowColor = rgbaString(accentRgb, 0.4);
+  const fillColor = rgbaString(accentRgb, 0.12);
+  const gridColor = rgbaString(accentRgb, 0.25);
+
+  const padding = Math.min(width, height) * 0.045;
+  const panelHeight = Math.min(height * 0.22, 160);
+  const baseY = height - padding;
+  const panelTop = baseY - panelHeight;
+  const centerLine = panelTop + panelHeight * 0.5;
+  const panelCount = hasFeatures && hasOutputs ? 2 : 1;
+  const spacing = panelCount === 2 ? Math.min(width * 0.05, 54) : 0;
+  const availableWidth = width - padding * 2 - spacing;
+  if (availableWidth <= 0) {
+    return;
+  }
+  const panelWidth = availableWidth / panelCount;
+
+  ctx.save();
+  ctx.setTransform(state.pixelRatio * state.dynamicScale, 0, 0, state.pixelRatio * state.dynamicScale, 0, 0);
+  ctx.globalCompositeOperation = 'screen';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const fontLarge = Math.max(12, Math.round(Math.min(panelHeight * 0.22, 24)));
+  const fontSmall = Math.max(10, Math.round(Math.min(panelHeight * 0.17, 18)));
+  const labelFont = `${fontLarge}px 'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif`;
+  const metaFont = `${fontSmall}px 'Rajdhani', 'Orbitron', 'Segoe UI', sans-serif`;
+
+  /**
+   * @param {ArrayLike<number>} values
+   * @param {string} label
+   * @param {number} startX
+   */
+  function drawSet(values, label, startX) {
+    if (!values || typeof values.length !== 'number' || values.length === 0) {
+      return;
+    }
+    const total = values.length;
+    const count = Math.min(total, 48);
+    const step = count > 0 ? panelWidth / count : panelWidth;
+    const radius = Math.min(panelHeight * 0.28, 18);
+
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = fillColor;
+    drawRoundedRectPath(ctx, startX, panelTop, panelWidth, panelHeight, radius);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.4;
+    drawRoundedRectPath(ctx, startX, panelTop, panelWidth, panelHeight, radius);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = gridColor;
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(startX + 10, centerLine);
+    ctx.lineTo(startX + panelWidth - 10, centerLine);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const maxLength = panelHeight * 0.4;
+    const stride = total > count ? total / count : 1;
+    let sample = 0;
+    const barThickness = Math.max(1.1, Math.min(step * 0.55, 5));
+
+    for (let i = 0; i < count; i += 1) {
+      const index = Math.min(total - 1, Math.floor(sample));
+      sample += stride;
+      const raw = Number(values[index]) || 0;
+      const normalized = Math.tanh(raw);
+      const amplitude = Math.abs(normalized);
+      if (amplitude < 1e-3) {
+        continue;
+      }
+      const sign = normalized >= 0 ? -1 : 1;
+      const barLength = amplitude * maxLength;
+      const x = startX + step * i + step * 0.5;
+      const y = centerLine + sign * barLength;
+
+      ctx.globalAlpha = 0.35 + amplitude * 0.35;
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = barThickness * 1.8;
+      ctx.beginPath();
+      ctx.moveTo(x, centerLine);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.6 + amplitude * 0.35;
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = barThickness;
+      ctx.beginPath();
+      ctx.moveTo(x, centerLine);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = strokeColor;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.font = `600 ${labelFont}`;
+    ctx.fillText(label, startX + 12, panelTop + 10);
+
+    ctx.globalAlpha = 0.75;
+    ctx.font = `400 ${metaFont}`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${total} ch`, startX + panelWidth - 12, panelTop + 10);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  if (hasFeatures) {
+    drawSet(features, 'Inputs', padding);
+  }
+  if (hasOutputs) {
+    const startX = hasFeatures ? padding + panelWidth + spacing : padding;
+    drawSet(outputs, 'Outputs', startX);
+  }
+
+  ctx.restore();
+}
+
 export function renderFrame(particles, renderParams = {}, metrics = {}) {
   if (!state.initialized || !state.ctx) {
     return;
@@ -1110,6 +1277,8 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
   if (state.glow.enabled) {
     compositeGlow();
   }
+
+  drawHudTelemetry(metrics.features, metrics.outputs);
 }
 
 export default {
