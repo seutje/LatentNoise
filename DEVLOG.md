@@ -286,3 +286,8 @@
 - Synced the BYOM model picker with stored training results so previously trained models appear alongside the built-in album weights.
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
 - Re-verified repository health using `npm run lint` and `npm test -- --runInBand`.
+
+## 2025-10-27 - Repeat Toggle Control
+- Added a Repeat toggle to the control strip with stored preference, updated styling, and accessible pressed state indicators.
+- Restarted the active track after the intermission when repeat is enabled and introduced a dedicated controller module with Jest coverage.
+- Validated the update with `npm run lint` and `npm test -- --coverage`.
