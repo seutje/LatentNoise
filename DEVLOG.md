@@ -301,3 +301,7 @@
 - Added a Repeat toggle to the control strip with stored preference, updated styling, and accessible pressed state indicators.
 - Restarted the active track after the intermission when repeat is enabled and introduced a dedicated controller module with Jest coverage.
 - Validated the update with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - BYOM Correlations Default Expansion
+- Set the correlations details box in the BYOM drawer to render expanded by default so the controls and empty state are immediately visible.
+- Reconfirmed repository health via `npm test -- --coverage` and `npm run lint`.
