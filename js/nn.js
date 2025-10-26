@@ -6,6 +6,7 @@ const ACTIVATIONS = /** @type {const} */ ({
 });
 
 let currentModel = null;
+let lastHiddenActivations = [];
 
 function assertFinite(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
@@ -94,6 +95,8 @@ function buildModel(raw) {
 
   const outputSize = layers[layers.length - 1].outputSize;
 
+  lastHiddenActivations = [];
+
   return {
     inputSize,
     outputSize,
@@ -126,6 +129,7 @@ function forwardWithModel(model, normalizedFeatures, outBuffer) {
   }
 
   let current = source;
+  lastHiddenActivations.length = 0;
   for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
     const layer = layers[layerIndex];
     const { weights, biases, inputSize: layerInputSize, outputSize, activationFn, buffer } = layer;
@@ -139,6 +143,14 @@ function forwardWithModel(model, normalizedFeatures, outBuffer) {
       buffer[outIndex] = assertFinite(activationFn(sum));
     }
     current = buffer;
+
+    if (layerIndex < layers.length - 1) {
+      lastHiddenActivations[layerIndex] = buffer;
+    }
+  }
+
+  if (lastHiddenActivations.length > layers.length - 1) {
+    lastHiddenActivations.length = layers.length - 1;
   }
 
   const target = outBuffer || outputBuffer;
@@ -171,6 +183,7 @@ export async function loadModel(urlOrObject) {
     inputSize: model.inputSize,
     outputSize: model.outputSize,
     layers: model.layers.length,
+    hiddenSizes: model.layers.slice(0, -1).map((layer) => layer.outputSize),
   };
 }
 
@@ -202,6 +215,10 @@ export function forward(normalizedFeatures, outBuffer) {
     throw new Error('No model loaded. Call loadModel() before forward().');
   }
   return forwardWithModel(currentModel, normalizedFeatures, outBuffer || currentModel.outputBuffer);
+}
+
+export function getHiddenLayerActivations() {
+  return lastHiddenActivations.slice();
 }
 
 function runSelfTest() {
@@ -256,5 +273,6 @@ export function getCurrentModelInfo() {
     inputSize: currentModel.inputSize,
     outputSize: currentModel.outputSize,
     layers: currentModel.layers.length,
+    hiddenSizes: currentModel.layers.slice(0, -1).map((layer) => layer.outputSize),
   };
 }
