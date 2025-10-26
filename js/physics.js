@@ -605,9 +605,6 @@ function updateDynamicCap(frameTimeInstant, frameTimeAverage) {
 
   state.dynamicCap = clamp(Math.floor(state.dynamicCap), state.minCap, state.capacity);
 
-  if (state.dynamicCap !== previousCap) {
-    console.info('[physics] dynamicCap', state.dynamicCap);
-  }
 }
 
 function trimToDynamicCap() {
