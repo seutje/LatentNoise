@@ -330,3 +330,8 @@
 - Raised the worker's codec level dynamically so high-resolution exports choose an AVC level that fits the aligned frame size.
 - Left room for manual overrides while preserving baseline profile defaults for hardware compatibility.
 - Re-ran `npm run lint` and `npm test -- --coverage` to confirm the export pipeline stays green.
+
+## 2025-10-27 - Video Export Profile Upgrade
+- Broke out AVC codec selection into a shared helper that promotes high-resolution exports to main/high profiles with the proper level id.
+- Updated the worker to consume the helper and verified 3K+ exports negotiate Level 5.1 instead of failing on Level 3.0 caps.
+- Added Jest coverage for the codec selector and re-ran `npm run lint` plus `npm test -- --coverage`.
