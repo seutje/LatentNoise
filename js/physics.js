@@ -561,7 +561,6 @@ function integrateParticles(dt, params) {
 }
 
 function updateDynamicCap(frameTimeInstant, frameTimeAverage) {
-  const previousCap = state.dynamicCap;
   const instant = Number.isFinite(frameTimeInstant) && frameTimeInstant > 0 ? frameTimeInstant : Number.NaN;
   const rolling = Number.isFinite(frameTimeAverage) && frameTimeAverage > 0 ? frameTimeAverage : Number.NaN;
   const overloadCheck = Number.isFinite(instant)
