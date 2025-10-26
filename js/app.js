@@ -13,6 +13,7 @@ import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
 import { formatCorrelation } from './correlation-math.js';
 import { createRepeatController } from './repeat-controller.js';
+import * as videoExport from './video-export.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -386,6 +387,8 @@ render.init();
 render.setWorldSize(2, 2);
 render.setStatus('Idle · Particles 0');
 updateFullscreenButtonUi(render.getToggles().fullscreen);
+
+videoExport.init({ render, notify });
 
 physics.configure({
   bounds: { width: 2, height: 2, mode: 'wrap' },

@@ -352,7 +352,8 @@ body.fullscreen-active #byom-drawer {
 }
 
 #controls button,
-#controls select {
+#controls select,
+#controls a.export-download {
   font: inherit;
   color: var(--text);
   background: rgba(255, 255, 255, 0.08);
@@ -361,12 +362,15 @@ body.fullscreen-active #byom-drawer {
   border-radius: 999px;
   cursor: pointer;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  text-decoration: none;
 }
 
 #controls button:hover,
 #controls button:focus-visible,
 #controls select:hover,
-#controls select:focus-visible {
+#controls select:focus-visible,
+#controls a.export-download:hover,
+#controls a.export-download:focus-visible {
   outline: none;
   border-color: rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.18);

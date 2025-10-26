@@ -1562,6 +1562,17 @@ export function renderFrame(particles, renderParams = {}, metrics = {}, modelDat
   }
 
   drawHudOverlay();
+
+  emit('frame', {
+    timestamp: now,
+    frame: state.frameCounter,
+    dt,
+    fps: fpsInstant,
+    fpsAvg: fpsAverage,
+    canvas: state.canvas,
+    width: state.canvas ? state.canvas.width : 0,
+    height: state.canvas ? state.canvas.height : 0,
+  });
 }
 
 export default {

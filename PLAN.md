@@ -276,6 +276,17 @@
 
 ---
 
+## Phase 22 — Video Export Pipeline
+- [x] Add HUD control to start/stop MP4 export and expose completed downloads in the UI.
+- [x] Capture rendered frames and stream them to a background worker without disrupting the main loop.
+- [x] Encode frames inside a worker using WebCodecs + MP4 muxer and surface errors gracefully.
+- [x] Cover export controller state transitions with automated tests.
+
+**Acceptance:**
+- [x] Export button produces an MP4 download when supported and reports unsupported states without breaking playback.
+
+---
+
 ## Appendix — Quick Agent Bootstrap
 - [x] Generate stubs for every module with exported functions + TODOs.
 - [x] Insert minimal CSS for layout; render FPS counter to confirm loop.

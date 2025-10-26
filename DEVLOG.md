@@ -320,3 +320,8 @@
 - Removed the easing step from HUD level updates so meters respond immediately to value changes.
 - Normalized bar widths directly from the underlying feature values for a linear display instead of peak-relative scaling.
 - Rechecked automated coverage with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - Video Export Worker
+- Added an Export MP4 control and download link to the HUD, wiring it to a capture controller.
+- Streamed rendered frames into a dedicated worker that encodes MP4 via WebCodecs/mp4-muxer and reports errors cleanly.
+- Covered the export flow with Jest and verified `npm run lint` plus `npm test -- --coverage`.
