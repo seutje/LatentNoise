@@ -79,6 +79,10 @@
 - Rewired the audio graph so analyser measurements occur before gain adjustments, keeping the derived activity metric stable regardless of the HUD volume slider and ensuring diagnostics reflect the underlying track energy.
 - Verified behavior with `npm test` and `npm run lint`.
 
+## 2025-10-24 - HUD Telemetry Expansion
+- Shifted the output-level meters to a lower HUD slot and added per-layer hidden activation panels styled like the existing meters so neural diagnostics are easier to read during playback.
+- Validated the update with `npm run lint` and `npm test -- --coverage`.
+
 ## 2025-10-24 - Activity Scaling Fix
 - Re-mapped the audio RMS signal to a perceptual activity scale with a -55 dB floor so debug overlays and silence detection reflect musical intensity, exposed the helper via `audio.getActivityLevel`, and updated the render loop to consume the normalized metric. Added unit coverage for the conversion and confirmed `npm test` plus `npm run lint` continue to pass.
 

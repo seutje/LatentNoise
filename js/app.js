@@ -949,6 +949,7 @@ const storedRepeat = readStoredBoolean(STORAGE_KEYS.REPEAT, false);
 const safeModeEnabled = storedSafeMode;
 const nnBypass = storedBypass;
 let lastModelOutputs = FALLBACK_NN_OUTPUTS;
+let lastHiddenLayers = [];
 let currentTrackIndex = -1;
 
 map.configure({ safeMode: safeModeEnabled });
@@ -1397,6 +1398,7 @@ async function prepareModelForEntry(entry) {
     const normalized = nn.normalize(features);
     const warmupOutputs = nn.forward(normalized);
     lastModelOutputs = warmupOutputs || FALLBACK_NN_OUTPUTS;
+    lastHiddenLayers = warmupOutputs ? nn.getHiddenLayerActivations() : [];
     activeModelEntryId = entry.id;
     if (info) {
       console.info(`[app] Model ready for "${entry.title ?? entry.id}" (${info.layers} layers)`);
@@ -1530,6 +1532,7 @@ function setTrack(index, options = {}) {
     audioElement.load();
     activeModelEntryId = '';
     lastModelOutputs = FALLBACK_NN_OUTPUTS;
+    lastHiddenLayers = [];
     playback.status = 'Idle';
     updateStatus(physics.getMetrics());
     render.setTrackTitle(entry.title ?? `Track ${index + 1}`);
@@ -1564,6 +1567,7 @@ function setTrack(index, options = {}) {
   playback.status = autoplay ? 'Buffering' : 'Idle';
   updateStatus(physics.getMetrics());
   lastModelOutputs = FALLBACK_NN_OUTPUTS;
+  lastHiddenLayers = [];
 
   if (preset) {
     console.info('[app] Applied preset:', preset.title);
@@ -2054,19 +2058,26 @@ function frame(now) {
 
   const currentEntry = getCurrentEntry();
   let nnOutputs = lastModelOutputs;
+  let hiddenActivations = lastHiddenLayers;
   if (!nnBypass && currentEntry && activeModelEntryId === currentEntry.id) {
     try {
       const normalized = nn.normalize(features);
       nnOutputs = nn.forward(normalized);
+      hiddenActivations = nn.getHiddenLayerActivations();
       lastModelOutputs = nnOutputs;
+      lastHiddenLayers = hiddenActivations;
     } catch (error) {
       console.warn('[app] NN inference failed; using fallback outputs.', error);
       nnOutputs = FALLBACK_NN_OUTPUTS;
+      hiddenActivations = [];
       lastModelOutputs = FALLBACK_NN_OUTPUTS;
+      lastHiddenLayers = [];
     }
   } else if (nnBypass) {
     nnOutputs = FALLBACK_NN_OUTPUTS;
+    hiddenActivations = [];
     lastModelOutputs = FALLBACK_NN_OUTPUTS;
+    lastHiddenLayers = [];
   }
 
   const playbackSilent =
@@ -2106,6 +2117,7 @@ function frame(now) {
     featureLabels: FEATURE_LABELS,
     outputs: nnOutputs,
     outputLabels: OUTPUT_LABELS,
+    hiddenLayers: hiddenActivations,
   });
   updateStatus(metrics);
 
