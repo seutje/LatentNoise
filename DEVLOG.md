@@ -320,3 +320,7 @@
 - Removed the easing step from HUD level updates so meters respond immediately to value changes.
 - Normalized bar widths directly from the underlying feature values for a linear display instead of peak-relative scaling.
 - Rechecked automated coverage with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - Zoom Input Curve Balancing
+- Applied an asymmetric input curve to the zoom mapping so moderate neural outputs no longer slam into the renderer's min/max clamps and can linger in mid-range scales.
+- Added a mapper unit test that asserts both negative and positive zoom outputs retain headroom away from the hard bounds, then verified health with `npm run lint` and `npm test -- --coverage`.

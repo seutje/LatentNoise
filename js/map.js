@@ -155,6 +155,10 @@ const PARAM_SPECS = /** @type {const} */ ({
     safeMax: 15,
     rest: 1,
     smoothingHz: 1.8,
+    inputCurve: {
+      positive: 1.4,
+      negative: 2.4,
+    },
   },
 });
 
@@ -235,6 +239,34 @@ function sanitizeArrayLike(values) {
     result[i] = Number.isFinite(value) ? clamp(value, -1, 1) : 0;
   }
   return result;
+}
+
+function applyInputCurve(value, spec) {
+  let shaped = Number.isFinite(value) ? clamp(value, -1, 1) : 0;
+  const curve = spec && typeof spec.inputCurve === 'object' ? spec.inputCurve : null;
+
+  if (!curve) {
+    return shaped;
+  }
+
+  const positiveExponent = Number.isFinite(curve.positive)
+    ? curve.positive
+    : Number.isFinite(curve.exponent)
+      ? curve.exponent
+      : null;
+  const negativeExponent = Number.isFinite(curve.negative)
+    ? curve.negative
+    : Number.isFinite(curve.exponent)
+      ? curve.exponent
+      : null;
+
+  if (shaped >= 0 && typeof positiveExponent === 'number' && positiveExponent > 0 && positiveExponent !== 1) {
+    shaped = Math.pow(shaped, positiveExponent);
+  } else if (shaped < 0 && typeof negativeExponent === 'number' && negativeExponent > 0 && negativeExponent !== 1) {
+    shaped = -Math.pow(-shaped, negativeExponent);
+  }
+
+  return clamp(shaped, -1, 1);
 }
 
 function resolveBounds(spec, safeMode) {
@@ -438,7 +470,8 @@ function applyContinuous(name, spec, rawValue, dt, silence, forceSilence) {
     return;
   }
 
-  const target = silence ? rest : baseline + rawValue * swing;
+  const shaped = applyInputCurve(rawValue, spec);
+  const target = silence ? rest : baseline + shaped * swing;
   const clampedTarget = clamp(target, min, max);
   const value = smoother.update(clampedTarget, dt);
   state.params[name] = clamp(value, min, max);

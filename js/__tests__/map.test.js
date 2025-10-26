@@ -44,6 +44,27 @@ describe('map module', () => {
     }
   });
 
+  test('zoom channel retains headroom around baseline', () => {
+    const zoomSpec = getParamSpec('zoom');
+    expect(zoomSpec).not.toBeNull();
+
+    const outputs = new Float32Array(getParamNames().length);
+    outputs.fill(0);
+
+    outputs[zoomSpec.index] = -0.2;
+    let params = update(outputs, { dt: 1 / 60, activity: 1 });
+    params = update(outputs, { dt: 1 / 60, activity: 1 });
+
+    const minBound = typeof zoomSpec.min === 'number' ? zoomSpec.min : 0;
+    expect(params.zoom).toBeGreaterThan(minBound + 0.2);
+
+    outputs[zoomSpec.index] = 0.7;
+    params = update(outputs, { dt: 1 / 60, activity: 1 });
+
+    const maxBound = typeof zoomSpec.max === 'number' ? zoomSpec.max : Number.POSITIVE_INFINITY;
+    expect(params.zoom).toBeLessThan(maxBound - 2);
+  });
+
   test('respects custom baselines passed to reset', () => {
     const outputs = new Float32Array(getParamNames().length);
     const custom = {
