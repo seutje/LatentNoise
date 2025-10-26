@@ -320,3 +320,8 @@
 - Removed the easing step from HUD level updates so meters respond immediately to value changes.
 - Normalized bar widths directly from the underlying feature values for a linear display instead of peak-relative scaling.
 - Rechecked automated coverage with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - MP4 Video Export
+- Added an Export Video control that captures the canvas and audio graph to MediaRecorder, assembled via a worker so the main loop stays responsive.
+- Wired automatic download handling, track-change cancellation, and BYOM-safe cleanup with persistent MP4 output naming.
+- Validated the addition with `npm run lint` and `npm test -- --coverage`.

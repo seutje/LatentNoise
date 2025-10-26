@@ -13,6 +13,7 @@ import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
 import { formatCorrelation } from './correlation-math.js';
 import { createRepeatController } from './repeat-controller.js';
+import { createVideoExporter } from './video-export.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -344,6 +345,7 @@ const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
 const fullscreenButton = document.getElementById('fullscreen');
 const repeatButton = document.getElementById('repeat');
+const exportVideoButton = document.getElementById('export-video');
 const byomAttachInput = document.getElementById('byom-attach-input');
 const introOverlay = document.getElementById('intro-overlay');
 const introPlayButton = document.getElementById('intro-play');
@@ -368,6 +370,7 @@ if (
   !seekSlider ||
   !fullscreenButton ||
   !repeatButton ||
+  !exportVideoButton ||
   !playlistAttachButton ||
   !playlistRenameButton ||
   !playlistDeleteButton ||
@@ -376,8 +379,230 @@ if (
   !byomDrawer
 ) {
   throw new Error(
-    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, repeat, playlist actions, fullscreen, or BYOM).',
+    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, repeat, export, playlist actions, fullscreen, or BYOM).',
   );
+}
+
+let videoExporterController = null;
+let videoExportEnabled = false;
+let videoExportPendingStop = false;
+let pendingVideoDownloadUrl = '';
+
+function revokePendingVideoUrl() {
+  if (pendingVideoDownloadUrl) {
+    try {
+      URL.revokeObjectURL(pendingVideoDownloadUrl);
+    } catch {
+      // Ignore revocation failures (URL may have been cleared already).
+    }
+    pendingVideoDownloadUrl = '';
+  }
+}
+
+function setVideoExportAvailability(available, message) {
+  videoExportEnabled = available;
+  if (!exportVideoButton) {
+    return;
+  }
+  if (available) {
+    exportVideoButton.disabled = false;
+    exportVideoButton.dataset.state = 'idle';
+    exportVideoButton.title = 'Export the current performance to MP4';
+    updateVideoExportButtonUi('idle');
+  } else {
+    exportVideoButton.disabled = true;
+    exportVideoButton.dataset.state = 'disabled';
+    if (typeof message === 'string' && message.length > 0) {
+      exportVideoButton.title = message;
+    }
+  }
+}
+
+function updateVideoExportButtonUi(state) {
+  if (!exportVideoButton) {
+    return;
+  }
+  if (state === 'recording') {
+    exportVideoButton.textContent = 'Stop Export';
+    exportVideoButton.dataset.state = 'recording';
+  } else if (state === 'processing') {
+    exportVideoButton.textContent = 'Processing...';
+    exportVideoButton.dataset.state = 'processing';
+  } else {
+    exportVideoButton.textContent = 'Export Video';
+    exportVideoButton.dataset.state = 'idle';
+  }
+}
+
+function setVideoExportProcessingState() {
+  updateVideoExportButtonUi('processing');
+  if (exportVideoButton) {
+    exportVideoButton.disabled = true;
+  }
+}
+
+function buildVideoExportFilename(metadata = {}) {
+  const sourceTitle = typeof metadata.trackTitle === 'string' && metadata.trackTitle.length > 0
+    ? metadata.trackTitle
+    : getCurrentEntry()?.title ?? 'Latent Noise';
+  const normalized = sourceTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const slug = normalized.length > 0 ? normalized : 'latent-noise';
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `${slug}-${timestamp}.mp4`;
+}
+
+function triggerVideoDownload(blob, metadata) {
+  revokePendingVideoUrl();
+  const url = URL.createObjectURL(blob);
+  pendingVideoDownloadUrl = url;
+  const filename = buildVideoExportFilename(metadata);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body?.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => {
+    if (pendingVideoDownloadUrl === url) {
+      revokePendingVideoUrl();
+    } else {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore double revocation attempts.
+      }
+    }
+  }, 60_000);
+  notify(`Video export ready! Downloading ${filename}.`);
+}
+
+function handleVideoExportResult(result, reason = '') {
+  videoExportPendingStop = false;
+  if (!exportVideoButton) {
+    return;
+  }
+  updateVideoExportButtonUi('idle');
+  exportVideoButton.disabled = !videoExportEnabled;
+  if (!result) {
+    return;
+  }
+  if (result.cancelled) {
+    if (reason !== 'track-change') {
+      notify('Video export cancelled.', { duration: 4000 });
+    }
+    return;
+  }
+  const { blob, metadata } = result;
+  if (!(blob instanceof Blob) || blob.size === 0) {
+    notify('Video export failed: received an empty recording.', { tone: 'error' });
+    return;
+  }
+  try {
+    triggerVideoDownload(blob, metadata);
+  } catch (error) {
+    console.error('[app] Failed to trigger video download', error);
+    notify('Video export is ready, but automatic download failed. Check console for details.', { tone: 'error' });
+  }
+}
+
+function handleVideoExportError(error) {
+  videoExportPendingStop = false;
+  updateVideoExportButtonUi('idle');
+  if (exportVideoButton) {
+    exportVideoButton.disabled = !videoExportEnabled;
+  }
+  const message = error?.message ? String(error.message) : 'Unknown error';
+  notify(`Video export failed: ${message}`, { tone: 'error', duration: 7000 });
+  console.error('[app] Video export error', error);
+}
+
+function cancelVideoExport(reason = '') {
+  if (!videoExporterController || !videoExporterController.isRecording() || videoExportPendingStop) {
+    return;
+  }
+  videoExportPendingStop = true;
+  setVideoExportProcessingState();
+  Promise.resolve(videoExporterController.cancel())
+    .then((result) => {
+      handleVideoExportResult(result, reason);
+    })
+    .catch((error) => {
+      handleVideoExportError(error);
+    });
+}
+
+async function handleExportVideoClick() {
+  if (!videoExporterController) {
+    notify('Video export is not available in this environment.', { tone: 'error' });
+    return;
+  }
+  if (!videoExportEnabled) {
+    notify('Video export requires MP4 MediaRecorder support in this browser.', { tone: 'error' });
+    return;
+  }
+  if (videoExporterController.isRecording()) {
+    videoExportPendingStop = true;
+    setVideoExportProcessingState();
+    try {
+      const result = await videoExporterController.stop();
+      handleVideoExportResult(result);
+    } catch (error) {
+      handleVideoExportError(error);
+    }
+    return;
+  }
+
+  if (exportVideoButton) {
+    exportVideoButton.disabled = true;
+  }
+  try {
+    const entry = getCurrentEntry();
+    const metadata = {
+      trackTitle: entry?.title ?? 'Latent Noise',
+      trackId: entry?.id ?? null,
+    };
+    await videoExporterController.start(metadata);
+    updateVideoExportButtonUi('recording');
+    if (exportVideoButton) {
+      exportVideoButton.disabled = false;
+    }
+    notify('Video export started. Recording will continue until you stop or the track ends.');
+  } catch (error) {
+    handleVideoExportError(error);
+  } finally {
+    if (!videoExporterController.isRecording() && exportVideoButton) {
+      exportVideoButton.disabled = !videoExportEnabled;
+    }
+  }
+}
+
+function initializeVideoExporter() {
+  if (!exportVideoButton) {
+    return;
+  }
+  const canvasElement = render.getCanvasElement();
+  if (!canvasElement) {
+    setVideoExportAvailability(false, 'Canvas is not ready for capture.');
+    return;
+  }
+  try {
+    videoExporterController = createVideoExporter({
+      canvas: canvasElement,
+      requestAudioStream: () => audio.createRecordingStream(),
+    });
+    if (!videoExporterController.canRecord()) {
+      setVideoExportAvailability(false, 'Video export requires MP4 MediaRecorder support in this browser.');
+      return;
+    }
+    setVideoExportAvailability(true);
+    updateVideoExportButtonUi('idle');
+  } catch (error) {
+    console.warn('[app] Video export unavailable', error);
+    videoExporterController = null;
+    setVideoExportAvailability(false, 'Video export is not supported on this device.');
+  }
 }
 
 initNotifications(document);
@@ -386,6 +611,11 @@ render.init();
 render.setWorldSize(2, 2);
 render.setStatus('Idle · Particles 0');
 updateFullscreenButtonUi(render.getToggles().fullscreen);
+
+initializeVideoExporter();
+exportVideoButton.addEventListener('click', () => {
+  void handleExportVideoClick();
+});
 
 physics.configure({
   bounds: { width: 2, height: 2, mode: 'wrap' },
@@ -1502,6 +1732,7 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
 
 function setTrack(index, options = {}) {
   clearAutoAdvanceTimer();
+  cancelVideoExport('track-change');
   if (!Number.isInteger(index) || index < 0 || index >= playlistEntries.length) {
     console.warn('[app] Ignoring out-of-range track index', index);
     return;
@@ -1986,6 +2217,17 @@ audioElement.addEventListener('ended', () => {
   updateStatus(physics.getMetrics());
   updatePlayButtonUi();
   clearAutoAdvanceTimer();
+  if (videoExporterController && videoExporterController.isRecording() && !videoExportPendingStop) {
+    videoExportPendingStop = true;
+    setVideoExportProcessingState();
+    Promise.resolve(videoExporterController.stop())
+      .then((result) => {
+        handleVideoExportResult(result);
+      })
+      .catch((error) => {
+        handleVideoExportError(error);
+      });
+  }
   const endedIndex = currentTrackIndex;
   startParticleIntermission(TRACK_INTERMISSION_MS);
   autoAdvanceTimer = window.setTimeout(() => {

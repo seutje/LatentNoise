@@ -265,6 +265,7 @@
 ---
 
 ## Phase 21 — BYOM QA, Safety, & Polish
+- [x] Add MP4 video export pipeline with worker assembly and UI controls.
 - [ ] Add guard rails for hyperparameters (safe ranges, warnings) and photosensitive presets in BYOM mode.
 - [ ] Implement BYOM diagnostics overlay (loss curves, sample outputs) toggle via `?debug=1` or HUD control.
 - [ ] Write documentation snippet (README/DEVLOG) summarizing BYOM workflow and limitations.

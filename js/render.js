@@ -1284,6 +1284,10 @@ export function destroy() {
   state.hudLevels.hidden.length = 0;
 }
 
+export function getCanvasElement() {
+  return state.canvas ?? null;
+}
+
 export function getPalette() {
   return {
     background: state.palette.backgroundHex,

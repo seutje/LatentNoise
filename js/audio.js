@@ -350,6 +350,40 @@ export function frame() {
  * Expose a manual unlock helper for other modules (optional future use).
  * @returns {Promise<AudioContext>}
  */
+export async function createRecordingStream() {
+  const context = await ensureContext();
+  if (!gainNode || !context) {
+    throw new Error('Audio graph is not initialized.');
+  }
+  const destination = context.createMediaStreamDestination();
+  gainNode.connect(destination);
+  let released = false;
+  const release = () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    try {
+      gainNode.disconnect(destination);
+    } catch (error) {
+      console.warn('[audio] Failed to disconnect recording destination', error);
+    }
+    const tracks = typeof destination.stream?.getTracks === 'function' ? destination.stream.getTracks() : [];
+    tracks.forEach((track) => {
+      try {
+        track.stop();
+      } catch {
+        // Ignore track stop failures when cleaning up recording stream.
+      }
+    });
+  };
+  return {
+    stream: destination.stream,
+    release,
+    disconnect: release,
+  };
+}
+
 export function unlock() {
   return ensureContext();
 }
