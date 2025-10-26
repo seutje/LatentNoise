@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 
-import { destroy, init, setPalette } from '../render.js';
+import { destroy, getModelHudSnapshot, init, renderFrame, setPalette } from '../render.js';
 
 beforeAll(() => {
   Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -20,7 +20,10 @@ beforeAll(() => {
         stroke: jest.fn(),
         moveTo: jest.fn(),
         lineTo: jest.fn(),
+        quadraticCurveTo: jest.fn(),
+        closePath: jest.fn(),
         drawImage: jest.fn(),
+        fillText: jest.fn(),
         globalAlpha: 1,
         globalCompositeOperation: 'source-over',
         filter: 'none',
@@ -99,4 +102,58 @@ test('setPalette applies gradient background after render init', () => {
 
   const root = document.documentElement;
   expect(root.style.getPropertyValue('--accent')).toBe('#ffaa00');
+});
+
+test('renderFrame updates model HUD snapshot from audio features and outputs', () => {
+  setupRenderDom();
+  init();
+
+  const particles = {
+    positions: { x: new Float32Array(0), y: new Float32Array(0) },
+    life: new Float32Array(0),
+    maxLife: new Float32Array(0),
+    masses: new Float32Array(0),
+    alive: new Uint8Array(0),
+    indices: new Uint32Array(0),
+    count: 0,
+  };
+
+  const metricsWithData = {
+    dt: 1 / 60,
+    frameTime: 1000 / 60,
+    frameTimeAvg: 1000 / 60,
+    fps: 60,
+    fpsAvg: 60,
+    features: new Float32Array([0, 0.5, 1.2, 0.1]),
+    outputs: new Float32Array([0.2, -0.6, 0.9]),
+  };
+
+  for (let i = 0; i < 4; i += 1) {
+    renderFrame(particles, {}, metricsWithData);
+  }
+
+  const snapshot = getModelHudSnapshot();
+  expect(snapshot.features).toHaveLength(4);
+  expect(snapshot.outputs).toHaveLength(3);
+  snapshot.features.forEach((value) => {
+    expect(value).toBeGreaterThanOrEqual(0);
+    expect(value).toBeLessThanOrEqual(1);
+  });
+  const initialSum = snapshot.features.reduce((sum, value) => sum + value, 0);
+  expect(snapshot.features[3]).toBeGreaterThan(snapshot.features[0]);
+  expect(snapshot.outputs[2]).toBeGreaterThan(snapshot.outputs[0]);
+
+  for (let i = 0; i < 6; i += 1) {
+    renderFrame(particles, {}, {
+      dt: 1 / 60,
+      frameTime: 1000 / 60,
+      frameTimeAvg: 1000 / 60,
+      fps: 60,
+      fpsAvg: 60,
+    });
+  }
+
+  const decayed = getModelHudSnapshot();
+  const decayedSum = decayed.features.reduce((sum, value) => sum + value, 0);
+  expect(decayedSum).toBeLessThan(initialSum);
 });
