@@ -286,3 +286,7 @@
 - Synced the BYOM model picker with stored training results so previously trained models appear alongside the built-in album weights.
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
 - Re-verified repository health using `npm run lint` and `npm test -- --runInBand`.
+
+## 2025-10-27 - BYOM Form Persistence
+- Stopped clearing BYOM drawer inputs after a training run so settings remain available for immediate retraining.
+- Confirmed automated coverage with `npm test`. `npm run lint` currently flags an unrelated unused variable in `js/physics.js`.

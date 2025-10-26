@@ -1461,9 +1461,6 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
   syncByomModelOptions();
   console.info('[byom] Stored BYOM entry "%s".', runtimeEntry.title);
 
-  if (typeof byom.reset === 'function') {
-    byom.reset();
-  }
   if (typeof byom.close === 'function') {
     byom.close({ restoreFocus: false });
   }
