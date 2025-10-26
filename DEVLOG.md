@@ -287,6 +287,12 @@
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
 - Re-verified repository health using `npm run lint` and `npm test -- --runInBand`.
 
+## 2025-10-27 - Transparent Intro Overlay
+- Replaced the intro overlay gradient with a fully transparent surface so the scene remains visible behind the blur.
+- Increased the overlay backdrop blur to keep the intro content legible without the gradient wash.
+- Removed a stray unused variable in the physics module to satisfy the lint suite.
+- Validated the change set with `npm run lint` and `npm test`.
+
 ## 2025-10-27 - BYOM Form Persistence
 - Stopped clearing BYOM drawer inputs after a training run so settings remain available for immediate retraining.
 - Confirmed automated coverage with `npm test`. `npm run lint` currently flags an unrelated unused variable in `js/physics.js`.

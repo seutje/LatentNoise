@@ -42,11 +42,9 @@ body.fullscreen-active #byom-drawer {
   padding: clamp(2.5rem, 10vh, 7rem) 1.5rem 2rem;
   text-align: center;
   color: var(--text);
-  background: radial-gradient(circle at 20% 20%, rgba(30, 28, 45, 0.36), transparent 58%),
-    radial-gradient(circle at 80% 15%, rgba(82, 64, 150, 0.22), transparent 55%),
-    linear-gradient(155deg, rgba(5, 5, 8, 0.96), rgba(10, 12, 20, 0.98));
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: transparent;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   transition: opacity 0.6s ease, visibility 0.6s ease;
 }
 
