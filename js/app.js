@@ -12,6 +12,7 @@ import { createController as createTrainingController } from './training.js';
 import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
 import { formatCorrelation } from './correlation-math.js';
+import { createRepeatController } from './repeat-controller.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -31,6 +32,7 @@ const STORAGE_KEYS = Object.freeze({
   TRACK_INDEX: 'ln.lastTrack',
   SAFE_MODE: 'ln.safeMode',
   NN_BYPASS: 'ln.nnBypass',
+  REPEAT: 'ln.repeat',
 });
 
 const MAP_PARAM_COUNT = map.PARAM_NAMES.length;
@@ -339,6 +341,7 @@ const prevButton = document.getElementById('prev');
 const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
 const fullscreenButton = document.getElementById('fullscreen');
+const repeatButton = document.getElementById('repeat');
 const byomAttachInput = document.getElementById('byom-attach-input');
 const introOverlay = document.getElementById('intro-overlay');
 const introPlayButton = document.getElementById('intro-play');
@@ -362,6 +365,7 @@ if (
   !nextButton ||
   !seekSlider ||
   !fullscreenButton ||
+  !repeatButton ||
   !playlistAttachButton ||
   !playlistRenameButton ||
   !playlistDeleteButton ||
@@ -370,7 +374,7 @@ if (
   !byomDrawer
 ) {
   throw new Error(
-    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, playlist actions, fullscreen, or BYOM).',
+    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, repeat, playlist actions, fullscreen, or BYOM).',
   );
 }
 
@@ -938,6 +942,7 @@ byom.setHandlers({
 
 const storedSafeMode = readStoredBoolean(STORAGE_KEYS.SAFE_MODE, false);
 const storedBypass = readStoredBoolean(STORAGE_KEYS.NN_BYPASS, false);
+const storedRepeat = readStoredBoolean(STORAGE_KEYS.REPEAT, false);
 
 const safeModeEnabled = storedSafeMode;
 const nnBypass = storedBypass;
@@ -970,6 +975,14 @@ const playback = {
   status: 'Idle',
   lastStatusText: '',
 };
+
+const repeatController = createRepeatController({
+  initialEnabled: storedRepeat,
+  onChange(enabled) {
+    updateRepeatButtonUi(enabled);
+    writeStorage(STORAGE_KEYS.REPEAT, enabled ? '1' : '0');
+  },
+});
 
 let autoAdvanceTimer = 0;
 let pendingPlayTimer = 0;
@@ -1199,6 +1212,16 @@ function updatePlayButtonUi() {
     return;
   }
   playButton.textContent = audioElement.paused ? 'Play' : 'Pause';
+}
+
+function updateRepeatButtonUi(nextState = repeatController.isEnabled()) {
+  if (!repeatButton) {
+    return;
+  }
+  const active = Boolean(nextState);
+  repeatButton.textContent = active ? 'Repeat On' : 'Repeat';
+  repeatButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+  repeatButton.setAttribute('title', active ? 'Disable repeat' : 'Repeat current track');
 }
 
 function updateFullscreenButtonUi(active) {
@@ -1495,6 +1518,7 @@ function setTrack(index, options = {}) {
   const autoplayDelayMs = Number.isFinite(options.autoplayDelayMs)
     ? Math.max(0, options.autoplayDelayMs)
     : 0;
+  const forceReload = options.forceReload === true;
 
   if (isByomEntry(entry) && !entry.objectUrl) {
     currentTrackIndex = index;
@@ -1516,7 +1540,7 @@ function setTrack(index, options = {}) {
     return;
   }
 
-  if (index === currentTrackIndex && activeModelEntryId === entry.id && entry.type === 'album') {
+  if (!forceReload && index === currentTrackIndex && activeModelEntryId === entry.id && entry.type === 'album') {
     return;
   }
 
@@ -1529,6 +1553,9 @@ function setTrack(index, options = {}) {
     audioElement.src = entry.objectUrl;
   } else {
     audioElement.src = entry.audioUrl;
+  }
+  if (forceReload) {
+    audioElement.load();
   }
 
   const preset = applyPresetForEntry(entry, { forceSilence: !autoplay });
@@ -1677,6 +1704,7 @@ volumeSlider.value = initialVolume.toFixed(2);
 audio.setVolume(initialVolume);
 render.updateVolume(initialVolume);
 updatePlayButtonUi();
+updateRepeatButtonUi();
 
 if (introPlayButton) {
   const supportsPointer = typeof window !== 'undefined' && 'PointerEvent' in window;
@@ -1700,6 +1728,10 @@ volumeSlider.addEventListener('input', () => {
 fullscreenButton.addEventListener('click', () => {
   const toggles = render.getToggles();
   render.setToggle('fullscreen', !toggles.fullscreen);
+});
+
+repeatButton.addEventListener('click', () => {
+  repeatController.toggle();
 });
 
 playButton.addEventListener('click', () => {
@@ -1951,9 +1983,18 @@ audioElement.addEventListener('ended', () => {
   updateStatus(physics.getMetrics());
   updatePlayButtonUi();
   clearAutoAdvanceTimer();
+  const endedIndex = currentTrackIndex;
   startParticleIntermission(TRACK_INTERMISSION_MS);
   autoAdvanceTimer = window.setTimeout(() => {
     autoAdvanceTimer = 0;
+    if (repeatController.isEnabled()) {
+      setTrack(endedIndex, {
+        autoplay: true,
+        autoplayDelayMs: 0,
+        forceReload: true,
+      });
+      return;
+    }
     nextTrack(1, { autoplay: true, skipIntermission: true });
   }, TRACK_INTERMISSION_MS);
 });
