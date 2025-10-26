@@ -13,6 +13,7 @@ import * as byomStorage from './byom-storage.js';
 import { init as initNotifications, notify } from './notifications.js';
 import { formatCorrelation } from './correlation-math.js';
 import { createRepeatController } from './repeat-controller.js';
+import { exportVideo, buildExportFileName, selectMp4MimeType } from './video-export.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -193,6 +194,16 @@ const visibilityState = {
 
 console.debug('[app] visibility state bootstrap', visibilityState.hidden);
 
+let exportStatusTimerId = 0;
+let exportInProgress = false;
+let activeExportUrl = '';
+const globalSetTimeout = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
+  ? window.setTimeout.bind(window)
+  : setTimeout;
+const globalClearTimeout = typeof window !== 'undefined' && typeof window.clearTimeout === 'function'
+  ? window.clearTimeout.bind(window)
+  : clearTimeout;
+
 function ensureNumberArray(source, expectedLength, label, contextLabel, options = {}) {
   if (!Array.isArray(source)) {
     throw new Error(`[${contextLabel}] ${label} must be an array of numbers.`);
@@ -344,6 +355,8 @@ const nextButton = document.getElementById('next');
 const seekSlider = document.getElementById('seek');
 const fullscreenButton = document.getElementById('fullscreen');
 const repeatButton = document.getElementById('repeat');
+const exportButton = document.getElementById('export-video');
+const exportStatusElement = document.getElementById('export-status');
 const byomAttachInput = document.getElementById('byom-attach-input');
 const introOverlay = document.getElementById('intro-overlay');
 const introPlayButton = document.getElementById('intro-play');
@@ -358,6 +371,84 @@ function dismissIntroOverlay() {
   introOverlay.setAttribute('aria-hidden', 'true');
 }
 
+function releaseActiveExportUrl() {
+  if (!activeExportUrl) {
+    return;
+  }
+  try {
+    URL.revokeObjectURL(activeExportUrl);
+  } catch {
+    // Ignore revoke failures.
+  }
+  activeExportUrl = '';
+}
+
+function updateExportStatus(message, tone = 'info') {
+  if (!exportStatusElement) {
+    return;
+  }
+  if (exportStatusTimerId) {
+    globalClearTimeout(exportStatusTimerId);
+    exportStatusTimerId = 0;
+  }
+  exportStatusElement.hidden = false;
+  exportStatusElement.textContent = message;
+  if (tone === 'error') {
+    exportStatusElement.dataset.tone = 'error';
+  } else if (tone === 'success') {
+    exportStatusElement.dataset.tone = 'success';
+  } else {
+    exportStatusElement.removeAttribute('data-tone');
+  }
+}
+
+function scheduleExportStatusClear(delayMs = 0) {
+  if (!exportStatusElement) {
+    return;
+  }
+  if (exportStatusTimerId) {
+    globalClearTimeout(exportStatusTimerId);
+  }
+  exportStatusTimerId = globalSetTimeout(() => {
+    exportStatusElement.hidden = true;
+    exportStatusElement.textContent = '';
+    exportStatusElement.removeAttribute('data-tone');
+    exportStatusTimerId = 0;
+  }, Math.max(delayMs, 0));
+}
+
+function formatExportTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return '--:--';
+  }
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainder = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${remainder.toString().padStart(2, '0')}`;
+}
+
+function buildExportProgressMessage(currentSeconds, durationSeconds) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return 'Recording…';
+  }
+  const current = Math.max(0, Number(currentSeconds) || 0);
+  const duration = Math.max(durationSeconds, 0.001);
+  const ratio = Math.min(Math.max(current / duration, 0), 1);
+  const percent = Math.round(ratio * 100);
+  return `Recording… ${formatExportTime(current)} / ${formatExportTime(duration)} (${percent}%)`;
+}
+
+function triggerVideoDownload(url, filename) {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  anchor.style.display = 'none';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 if (
   !playlistSelect ||
   !audioElement ||
@@ -368,6 +459,8 @@ if (
   !seekSlider ||
   !fullscreenButton ||
   !repeatButton ||
+  !exportButton ||
+  !exportStatusElement ||
   !playlistAttachButton ||
   !playlistRenameButton ||
   !playlistDeleteButton ||
@@ -376,16 +469,28 @@ if (
   !byomDrawer
 ) {
   throw new Error(
-    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, repeat, playlist actions, fullscreen, or BYOM).',
+    'Required controls missing from DOM (playlist, audio, volume, play, prev, next, seek, repeat, export, playlist actions, fullscreen, or BYOM).',
   );
 }
 
 initNotifications(document);
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    releaseActiveExportUrl();
+  });
+}
+
 render.init();
 render.setWorldSize(2, 2);
 render.setStatus('Idle · Particles 0');
 updateFullscreenButtonUi(render.getToggles().fullscreen);
+
+const mp4ExportSupported = selectMp4MimeType() !== null;
+if (!mp4ExportSupported) {
+  exportButton.disabled = true;
+  exportButton.title = 'MP4 export is not supported in this browser.';
+}
 
 physics.configure({
   bounds: { width: 2, height: 2, mode: 'wrap' },
@@ -1909,6 +2014,88 @@ byomAttachInput.addEventListener('change', async () => {
       autoplay: !audioElement.paused,
       autoplayDelayMs: 0,
     });
+  }
+});
+
+exportButton.addEventListener('click', async () => {
+  if (exportInProgress) {
+    return;
+  }
+  if (!mp4ExportSupported) {
+    updateExportStatus('MP4 export is not supported in this browser.', 'error');
+    scheduleExportStatusClear(6000);
+    notify('MP4 export is not supported in this browser.', { tone: 'error' });
+    return;
+  }
+  const currentEntry = getCurrentEntry();
+  if (!currentEntry) {
+    notify('Select a track before exporting a video.', { tone: 'warning' });
+    return;
+  }
+  const canvasElement = render.getCanvasElement();
+  if (!canvasElement) {
+    updateExportStatus('Canvas is not ready for export yet.', 'error');
+    scheduleExportStatusClear(6000);
+    notify('Canvas is not ready for export yet.', { tone: 'error' });
+    return;
+  }
+  const trackDuration = Number(audioElement?.duration);
+  if (!Number.isFinite(trackDuration) || trackDuration <= 0) {
+    updateExportStatus('Load the track before exporting a video.', 'error');
+    scheduleExportStatusClear(6000);
+    notify('Load the track before exporting a video.', { tone: 'warning' });
+    return;
+  }
+
+  releaseActiveExportUrl();
+  exportInProgress = true;
+  exportButton.disabled = true;
+  updateExportStatus('Preparing export…');
+  dismissIntroOverlay();
+
+  try {
+    await audio.unlock();
+    const result = await exportVideo({
+      canvas: canvasElement,
+      audioElement,
+      requestAudioStream: () => audio.getRecordingStream(),
+      onStateChange: (event) => {
+        if (!event || !event.state) {
+          return;
+        }
+        if (event.state === 'preparing') {
+          updateExportStatus('Preparing export…');
+        } else if (event.state === 'recording') {
+          updateExportStatus('Recording…');
+        } else if (event.state === 'finalizing') {
+          updateExportStatus('Finalizing recording…');
+        } else if (event.state === 'error' && event.error) {
+          updateExportStatus(event.error.message || 'Video export failed.', 'error');
+        }
+      },
+      onProgress: ({ currentTime, duration }) => {
+        updateExportStatus(buildExportProgressMessage(currentTime, duration));
+      },
+    });
+
+    const fileName = buildExportFileName(currentEntry.title ?? 'latent-noise');
+    activeExportUrl = result.url;
+    triggerVideoDownload(result.url, fileName);
+    updateExportStatus('Export ready! Downloading…', 'success');
+    notify(`Video export ready: ${fileName}`, { tone: 'success', timeout: 8000 });
+    scheduleExportStatusClear(6000);
+    globalSetTimeout(() => {
+      releaseActiveExportUrl();
+    }, 12000);
+  } catch (error) {
+    console.error('[export] Video export failed', error);
+    const message = error?.message || 'Video export failed.';
+    updateExportStatus(message, 'error');
+    notify(message, { tone: 'error' });
+    scheduleExportStatusClear(6000);
+  } finally {
+    exportInProgress = false;
+    exportButton.disabled = !mp4ExportSupported;
   }
 });
 

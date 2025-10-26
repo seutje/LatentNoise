@@ -21,6 +21,7 @@ let audioContext = null;
 let sourceNode = null;
 let gainNode = null;
 let analyserNode = null;
+let recordingDestination = null;
 
 let desiredVolume = DEFAULT_VOLUME;
 let unlockHandlersBound = false;
@@ -174,10 +175,33 @@ function createGraph() {
   analyserNode.connect(gainNode);
   gainNode.connect(audioContext.destination);
 
+  if (recordingDestination) {
+    try {
+      gainNode.connect(recordingDestination);
+    } catch (error) {
+      console.warn('[audio] Failed to reconnect recording destination', error);
+    }
+  }
+
   featureExtractor.reset();
   featureExtractor.setTrackPosition(getTrackPositionValue());
   lastFrameTimestamp = 0;
   applyVolume(desiredVolume, true);
+}
+
+function ensureRecordingDestination() {
+  if (!audioContext || !gainNode) {
+    return null;
+  }
+  if (!recordingDestination) {
+    recordingDestination = audioContext.createMediaStreamDestination();
+    try {
+      gainNode.connect(recordingDestination);
+    } catch (error) {
+      console.warn('[audio] Failed to connect recording destination', error);
+    }
+  }
+  return recordingDestination;
 }
 
 async function ensureContext() {
@@ -352,4 +376,13 @@ export function frame() {
  */
 export function unlock() {
   return ensureContext();
+}
+
+export async function getRecordingStream() {
+  await ensureContext();
+  const destination = ensureRecordingDestination();
+  if (!destination) {
+    throw new Error('Recording destination is not available.');
+  }
+  return destination.stream;
 }

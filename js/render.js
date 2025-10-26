@@ -1255,6 +1255,10 @@ export function init(options = {}) {
   emit('ready');
 }
 
+export function getCanvasElement() {
+  return state.canvas ?? null;
+}
+
 export function destroy() {
   if (!state.initialized) {
     return;

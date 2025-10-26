@@ -276,6 +276,16 @@
 
 ---
 
+## Phase 22 — Video Export Capture
+- [x] Add an MP4 MediaRecorder pipeline that captures the canvas and audio in a background process with progress updates.
+- [x] Surface an Export Video control with live status messaging and automatic download handling once encoding completes.
+- [x] Cover export helpers with automated Jest tests.
+
+**Acceptance:**
+- [x] Exporting the active track yields an MP4 download with synchronized audio/visual playback while the UI remains responsive.
+
+---
+
 ## Appendix — Quick Agent Bootstrap
 - [x] Generate stubs for every module with exported functions + TODOs.
 - [x] Insert minimal CSS for layout; render FPS counter to confirm loop.

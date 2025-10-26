@@ -407,6 +407,24 @@ body.fullscreen-active #byom-drawer {
   transform: translateY(0.5px);
 }
 
+#controls .export-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 0.35rem 2.2rem rgba(0, 0, 0, 0.6);
+}
+
+#controls .export-status[data-tone='error'] {
+  color: #fca5a5;
+}
+
+#controls .export-status[data-tone='success'] {
+  color: #bbf7d0;
+}
+
 #player {
   display: none;
 }
