@@ -310,3 +310,8 @@
 - Layered futuristic HUD meters over the canvas to visualize NN input features and output activations using each preset's accent palette.
 - Added smoothing/state caching for meter levels plus a renderer snapshot helper covered by new Jest assertions.
 - Verified the changes with `npm run lint` and `npm test`.
+
+## 2025-10-27 - Hidden Activation HUD Stack
+- Dropped the output activation meter toward the lower-right edge and stacked a matching hidden-layer panel above it while keeping the input meter anchored left.
+- Captured the penultimate layer activations inside the NN runtime so the renderer and debug overlay can surface smoothed hidden-node telemetry.
+- Re-ran `npm run lint` and `npm test -- --coverage` to confirm the updated HUD and telemetry plumbing remain stable.

@@ -7,6 +7,27 @@ const ACTIVATIONS = /** @type {const} */ ({
 
 let currentModel = null;
 
+function createHiddenSnapshot(layers) {
+  if (!Array.isArray(layers) || layers.length < 2) {
+    return {
+      index: -1,
+      buffer: new Float32Array(0),
+    };
+  }
+  const hiddenLayerIndex = layers.length - 2;
+  const hiddenLayer = layers[hiddenLayerIndex];
+  if (!hiddenLayer || !Number.isFinite(hiddenLayer.outputSize) || hiddenLayer.outputSize <= 0) {
+    return {
+      index: -1,
+      buffer: new Float32Array(0),
+    };
+  }
+  return {
+    index: hiddenLayerIndex,
+    buffer: new Float32Array(hiddenLayer.outputSize),
+  };
+}
+
 function assertFinite(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
@@ -94,6 +115,8 @@ function buildModel(raw) {
 
   const outputSize = layers[layers.length - 1].outputSize;
 
+  const hiddenSnapshot = createHiddenSnapshot(layers);
+
   return {
     inputSize,
     outputSize,
@@ -103,6 +126,8 @@ function buildModel(raw) {
     normBuffer: new Float32Array(inputSize),
     inputBuffer: new Float32Array(inputSize),
     outputBuffer: new Float32Array(outputSize),
+    hiddenLayerIndex: hiddenSnapshot.index,
+    hiddenSnapshot: hiddenSnapshot.buffer,
   };
 }
 
@@ -118,7 +143,7 @@ function normalizeWithModel(model, features) {
 }
 
 function forwardWithModel(model, normalizedFeatures, outBuffer) {
-  const { layers, inputBuffer, outputBuffer, inputSize } = model;
+  const { layers, inputBuffer, outputBuffer, inputSize, hiddenLayerIndex, hiddenSnapshot } = model;
   const source = inputBuffer;
   const len = normalizedFeatures.length;
   for (let i = 0; i < inputSize; i += 1) {
@@ -139,6 +164,12 @@ function forwardWithModel(model, normalizedFeatures, outBuffer) {
       buffer[outIndex] = assertFinite(activationFn(sum));
     }
     current = buffer;
+
+    if (layerIndex === hiddenLayerIndex && hiddenSnapshot.length >= buffer.length) {
+      for (let i = 0; i < buffer.length; i += 1) {
+        hiddenSnapshot[i] = buffer[i];
+      }
+    }
   }
 
   const target = outBuffer || outputBuffer;
@@ -257,4 +288,11 @@ export function getCurrentModelInfo() {
     outputSize: currentModel.outputSize,
     layers: currentModel.layers.length,
   };
+}
+
+export function getHiddenActivations() {
+  if (!currentModel) {
+    return new Float32Array(0);
+  }
+  return currentModel.hiddenSnapshot;
 }

@@ -27,11 +27,34 @@ const PARAM_SCRATCH = {
 };
 
 const MODEL_HUD_MAX_FEATURES = 32;
+const MODEL_HUD_MAX_HIDDEN = 48;
 const MODEL_HUD_MAX_OUTPUTS = 16;
 const MODEL_LEVEL_SMOOTHING = 0.28;
 const MODEL_LEVEL_DECAY = 0.18;
 const MODEL_LEVEL_RESPONSE = 1.35;
 const MODEL_LEVEL_THRESHOLD = 0.0015;
+
+const HUD_GROUP_CONFIG = /** @type {const} */ ({
+  feature: {
+    levelKey: 'featureLevels',
+    polarityKey: 'featurePolarity',
+    visibleKey: 'featureVisible',
+  },
+  hidden: {
+    levelKey: 'hiddenLevels',
+    polarityKey: 'hiddenPolarity',
+    visibleKey: 'hiddenVisible',
+  },
+  output: {
+    levelKey: 'outputLevels',
+    polarityKey: 'outputPolarity',
+    visibleKey: 'outputVisible',
+  },
+});
+
+function getHudGroupConfig(kind) {
+  return HUD_GROUP_CONFIG[kind] ?? HUD_GROUP_CONFIG.feature;
+}
 
 const CONNECTION_FRACTION = 0.9;
 
@@ -265,9 +288,12 @@ const state = {
   modelHud: {
     featureLevels: new Float32Array(0),
     featurePolarity: new Int8Array(0),
+    hiddenLevels: new Float32Array(0),
+    hiddenPolarity: new Int8Array(0),
     outputLevels: new Float32Array(0),
     outputPolarity: new Int8Array(0),
     featureVisible: 0,
+    hiddenVisible: 0,
     outputVisible: 0,
   },
 };
@@ -854,10 +880,13 @@ export function destroy() {
   state.hud.volumeSlider = null;
   state.hud.volumeDisplay = null;
   state.modelHud.featureLevels = new Float32Array(0);
+  state.modelHud.hiddenLevels = new Float32Array(0);
   state.modelHud.outputLevels = new Float32Array(0);
   state.modelHud.featurePolarity = new Int8Array(0);
+  state.modelHud.hiddenPolarity = new Int8Array(0);
   state.modelHud.outputPolarity = new Int8Array(0);
   state.modelHud.featureVisible = 0;
+  state.modelHud.hiddenVisible = 0;
   state.modelHud.outputVisible = 0;
 }
 
@@ -1110,9 +1139,7 @@ function ensureModelHudCapacity(kind, required) {
     return;
   }
   const hud = state.modelHud;
-  const levelKey = kind === 'feature' ? 'featureLevels' : 'outputLevels';
-  const polarityKey = kind === 'feature' ? 'featurePolarity' : 'outputPolarity';
-  const visibleKey = kind === 'feature' ? 'featureVisible' : 'outputVisible';
+  const { levelKey, polarityKey, visibleKey } = getHudGroupConfig(kind);
   const currentLevels = hud[levelKey];
   if (currentLevels.length >= required) {
     return;
@@ -1143,9 +1170,7 @@ function computeNormalizedLevel(value) {
 
 function updateHudGroup(kind, source, limit) {
   const hud = state.modelHud;
-  const levelKey = kind === 'feature' ? 'featureLevels' : 'outputLevels';
-  const polarityKey = kind === 'feature' ? 'featurePolarity' : 'outputPolarity';
-  const visibleKey = kind === 'feature' ? 'featureVisible' : 'outputVisible';
+  const { levelKey, polarityKey, visibleKey } = getHudGroupConfig(kind);
   const count = Math.min(getArrayLengthLike(source), limit);
   if (count > 0) {
     ensureModelHudCapacity(kind, count);
@@ -1174,9 +1199,7 @@ function updateHudGroup(kind, source, limit) {
 
 function finalizeHudGroup(kind, activeCount) {
   const hud = state.modelHud;
-  const levelKey = kind === 'feature' ? 'featureLevels' : 'outputLevels';
-  const polarityKey = kind === 'feature' ? 'featurePolarity' : 'outputPolarity';
-  const visibleKey = kind === 'feature' ? 'featureVisible' : 'outputVisible';
+  const { levelKey, polarityKey, visibleKey } = getHudGroupConfig(kind);
   const levels = hud[levelKey];
   const polarity = hud[polarityKey];
   const visible = Math.max(hud[visibleKey], activeCount);
@@ -1204,10 +1227,12 @@ function finalizeHudGroup(kind, activeCount) {
   hud[visibleKey] = Math.max(activeCount, trimmed);
 }
 
-function updateModelHudLevels(featuresInput, outputsInput) {
+function updateModelHudLevels(featuresInput, hiddenInput, outputsInput) {
   const featureCount = updateHudGroup('feature', featuresInput, MODEL_HUD_MAX_FEATURES);
+  const hiddenCount = updateHudGroup('hidden', hiddenInput, MODEL_HUD_MAX_HIDDEN);
   const outputCount = updateHudGroup('output', outputsInput, MODEL_HUD_MAX_OUTPUTS);
   finalizeHudGroup('feature', featureCount);
+  finalizeHudGroup('hidden', hiddenCount);
   finalizeHudGroup('output', outputCount);
 }
 
@@ -1249,6 +1274,7 @@ function drawVerticalBars({
   colors,
   valueFont,
   labelY,
+  labelPrefix = 'F',
 }) {
   if (count <= 0) {
     return;
@@ -1290,7 +1316,7 @@ function drawVerticalBars({
   ctx.fillStyle = colors.value;
   for (let i = 0; i < count; i += 1) {
     const textX = x + i * (barWidth + gap) + barWidth * 0.5;
-    ctx.fillText(`F${i + 1}`, textX, labelY);
+    ctx.fillText(`${labelPrefix}${i + 1}`, textX, labelY);
   }
   ctx.restore();
 }
@@ -1307,6 +1333,7 @@ function drawHorizontalBars({
   valueFont,
   labelX,
   valueX,
+  labelPrefix = 'O',
 }) {
   if (count <= 0) {
     return;
@@ -1348,7 +1375,7 @@ function drawHorizontalBars({
     const centerY = y + i * (barHeight + gap) + barHeight * 0.5;
     ctx.textAlign = 'center';
     ctx.fillStyle = colors.valueDim;
-    ctx.fillText(`O${i + 1}`, labelX, centerY);
+    ctx.fillText(`${labelPrefix}${i + 1}`, labelX, centerY);
     ctx.textAlign = 'left';
     ctx.fillStyle = colors.value;
     const percent = Math.round(clamp(levels[i] ?? 0, 0, 1) * 100);
@@ -1369,6 +1396,7 @@ function drawHudPanel({
   colors,
   orientation,
   gridLines,
+  labelPrefix = 'F',
 }) {
   if (count <= 0) {
     return;
@@ -1443,6 +1471,7 @@ function drawHudPanel({
       colors,
       valueFont,
       labelY,
+      labelPrefix,
     });
   } else {
     const labelColumn = Math.max(40, contentWidth * 0.18);
@@ -1463,6 +1492,7 @@ function drawHudPanel({
       valueFont,
       labelX,
       valueX,
+      labelPrefix,
     });
   }
 }
@@ -1472,10 +1502,12 @@ function drawModelHud() {
     return;
   }
   const featuresVisible = state.modelHud.featureVisible;
+  const hiddenVisible = state.modelHud.hiddenVisible;
   const outputsVisible = state.modelHud.outputVisible;
   const hasFeatures = featuresVisible > 0 && hasActiveLevels(state.modelHud.featureLevels, featuresVisible);
+  const hasHidden = hiddenVisible > 0 && hasActiveLevels(state.modelHud.hiddenLevels, hiddenVisible);
   const hasOutputs = outputsVisible > 0 && hasActiveLevels(state.modelHud.outputLevels, outputsVisible);
-  if (!hasFeatures && !hasOutputs) {
+  if (!hasFeatures && !hasHidden && !hasOutputs) {
     return;
   }
 
@@ -1489,6 +1521,7 @@ function drawModelHud() {
   const margin = Math.max(16, Math.min(width, height) * 0.04);
   const panelHeight = Math.max(120, height * 0.24);
   const baseY = height - margin - panelHeight;
+  const columnGap = Math.max(16, margin * 0.5);
 
   const accentHex = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
   const accentRgb = hexToRgb(accentHex);
@@ -1524,24 +1557,53 @@ function drawModelHud() {
       colors: hudColors,
       orientation: 'vertical',
       gridLines: 6,
+      labelPrefix: 'F',
     });
   }
 
-  if (hasOutputs) {
-    const outputsWidth = Math.max(220, width * 0.32);
-    drawHudPanel({
-      ctx,
-      x: width - outputsWidth - margin,
-      y: baseY,
-      width: outputsWidth,
-      height: panelHeight,
-      label: 'NN OUTPUT LEVELS',
-      levels: state.modelHud.outputLevels,
-      count: outputsVisible,
-      colors: hudColors,
-      orientation: 'horizontal',
-      gridLines: 5,
-    });
+  if (hasHidden || hasOutputs) {
+    const columnWidth = Math.max(220, width * 0.32);
+    const columnX = width - columnWidth - margin;
+    let nextBottomY = height - margin;
+
+    if (hasOutputs) {
+      const outputsHeight = Math.max(140, height * 0.26);
+      const outputsY = Math.max(margin, nextBottomY - outputsHeight);
+      drawHudPanel({
+        ctx,
+        x: columnX,
+        y: outputsY,
+        width: columnWidth,
+        height: outputsHeight,
+        label: 'NN OUTPUT LEVELS',
+        levels: state.modelHud.outputLevels,
+        count: outputsVisible,
+        colors: hudColors,
+        orientation: 'horizontal',
+        gridLines: 5,
+        labelPrefix: 'O',
+      });
+      nextBottomY = outputsY - columnGap;
+    }
+
+    if (hasHidden) {
+      const hiddenHeight = Math.max(120, height * 0.22);
+      const hiddenY = Math.max(margin, nextBottomY - hiddenHeight);
+      drawHudPanel({
+        ctx,
+        x: columnX,
+        y: hiddenY,
+        width: columnWidth,
+        height: hiddenHeight,
+        label: 'HIDDEN NODE ACTIVATIONS',
+        levels: state.modelHud.hiddenLevels,
+        count: hiddenVisible,
+        colors: hudColors,
+        orientation: 'vertical',
+        gridLines: 6,
+        labelPrefix: 'H',
+      });
+    }
   }
 
   ctx.restore();
@@ -1552,7 +1614,7 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
     return;
   }
 
-  updateModelHudLevels(metrics.features, metrics.outputs);
+  updateModelHudLevels(metrics.features, metrics.hidden, metrics.outputs);
 
   const now = performance.now();
   const dt = Number.isFinite(metrics.dt) ? Math.max(metrics.dt, 1 / 120) : state.lastTime > 0 ? (now - state.lastTime) / 1000 : 1 / 60;
@@ -1595,6 +1657,7 @@ export function renderFrame(particles, renderParams = {}, metrics = {}) {
 export function getModelHudSnapshot() {
   return {
     features: Array.from(state.modelHud.featureLevels.slice(0, state.modelHud.featureVisible)),
+    hidden: Array.from(state.modelHud.hiddenLevels.slice(0, state.modelHud.hiddenVisible)),
     outputs: Array.from(state.modelHud.outputLevels.slice(0, state.modelHud.outputVisible)),
   };
 }

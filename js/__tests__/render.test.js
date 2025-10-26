@@ -125,6 +125,7 @@ test('renderFrame updates model HUD snapshot from audio features and outputs', (
     fps: 60,
     fpsAvg: 60,
     features: new Float32Array([0, 0.5, 1.2, 0.1]),
+    hidden: new Float32Array([0.25, -0.75, 0.1]),
     outputs: new Float32Array([0.2, -0.6, 0.9]),
   };
 
@@ -134,8 +135,13 @@ test('renderFrame updates model HUD snapshot from audio features and outputs', (
 
   const snapshot = getModelHudSnapshot();
   expect(snapshot.features).toHaveLength(4);
+  expect(snapshot.hidden).toHaveLength(3);
   expect(snapshot.outputs).toHaveLength(3);
   snapshot.features.forEach((value) => {
+    expect(value).toBeGreaterThanOrEqual(0);
+    expect(value).toBeLessThanOrEqual(1);
+  });
+  snapshot.hidden.forEach((value) => {
     expect(value).toBeGreaterThanOrEqual(0);
     expect(value).toBeLessThanOrEqual(1);
   });
@@ -156,4 +162,6 @@ test('renderFrame updates model HUD snapshot from audio features and outputs', (
   const decayed = getModelHudSnapshot();
   const decayedSum = decayed.features.reduce((sum, value) => sum + value, 0);
   expect(decayedSum).toBeLessThan(initialSum);
+  const hiddenSum = decayed.hidden.reduce((sum, value) => sum + value, 0);
+  expect(hiddenSum).toBeLessThan(snapshot.hidden.reduce((sum, value) => sum + value, 0));
 });

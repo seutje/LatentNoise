@@ -2052,19 +2052,33 @@ function frame(now) {
 
   const currentEntry = getCurrentEntry();
   let nnOutputs = lastModelOutputs;
+  let hiddenActivations;
   if (!nnBypass && currentEntry && activeModelEntryId === currentEntry.id) {
     try {
       const normalized = nn.normalize(features);
       nnOutputs = nn.forward(normalized);
       lastModelOutputs = nnOutputs;
+      hiddenActivations = nn.getHiddenActivations();
     } catch (error) {
       console.warn('[app] NN inference failed; using fallback outputs.', error);
       nnOutputs = FALLBACK_NN_OUTPUTS;
       lastModelOutputs = FALLBACK_NN_OUTPUTS;
+      hiddenActivations = nn.getHiddenActivations();
+      if (hiddenActivations && hiddenActivations.length > 0) {
+        hiddenActivations.fill(0);
+      }
     }
   } else if (nnBypass) {
     nnOutputs = FALLBACK_NN_OUTPUTS;
     lastModelOutputs = FALLBACK_NN_OUTPUTS;
+    hiddenActivations = nn.getHiddenActivations();
+    if (hiddenActivations && hiddenActivations.length > 0) {
+      hiddenActivations.fill(0);
+    }
+  }
+
+  if (!hiddenActivations) {
+    hiddenActivations = nn.getHiddenActivations();
   }
 
   const playbackSilent =
@@ -2100,6 +2114,7 @@ function frame(now) {
     fps: instantaneousFps,
     fpsAvg: averageFps,
     features,
+    hidden: hiddenActivations,
     outputs: nnOutputs,
   });
   updateStatus(metrics);
@@ -2109,6 +2124,7 @@ function frame(now) {
     fpsAvg: averageFps,
     activity,
     features,
+    hidden: hiddenActivations,
     outputs: nnOutputs,
     modelInfo: nn.getCurrentModelInfo(),
     params: {
