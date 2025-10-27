@@ -325,6 +325,9 @@ function isNotReadableError(error) {
   if (!message) {
     return false;
   }
+  if (/failed to fetch/i.test(message)) {
+    return true;
+  }
   return /notreadable/i.test(message) || /could not be read/i.test(message);
 }
 

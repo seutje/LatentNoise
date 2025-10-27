@@ -282,6 +282,68 @@ describe('video-export utilities', () => {
     expect(downloadBlob).not.toHaveBeenCalled();
   });
 
+  test('recovers when recorded blob arrayBuffer throws TypeError failed to fetch', async () => {
+    const canvas = createCanvasElement();
+    const audio = createAudioElement(true, true);
+    const button = document.createElement('button');
+    const downloadBlob = jest.fn();
+    const failedFetchError = Object.assign(new TypeError('Failed to fetch'), {
+      name: 'TypeError',
+    });
+
+    const recorderFactory = createMockRecorderFactory({
+      blobType: 'video/mp4',
+      createChunk: () => {
+        const blob = new Blob(['chunk'], { type: 'video/mp4' });
+        Object.defineProperty(blob, 'arrayBuffer', {
+          configurable: true,
+          value: jest.fn(() => Promise.reject(failedFetchError)),
+        });
+        return blob;
+      },
+    });
+
+    const worker = {
+      listeners: {},
+      addEventListener: jest.fn(function add(type, handler) {
+        this.listeners[type] = handler;
+      }),
+      postMessage: jest.fn(),
+    };
+
+    const exporter = createVideoExporter({
+      MediaRecorderClass: class {
+        static isTypeSupported(type) {
+          return type.includes('video/mp4');
+        }
+      },
+      createMediaRecorder: recorderFactory,
+      createStream: () => new MockStream(),
+      createWorker: () => worker,
+      downloadBlob,
+    });
+
+    exporter.init({
+      canvas,
+      audio,
+      button,
+      notify: jest.fn(),
+      getFileName: () => 'Test Clip',
+    });
+
+    expect(exporter.start()).toBe(true);
+    expect(exporter.stop()).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+
+    const convertCall = worker.postMessage.mock.calls.find(([message]) => message.type === 'convert');
+    expect(convertCall).toBeDefined();
+    const [convertMessage] = convertCall;
+    expect(convertMessage.hasAudio).toBe(true);
+    expect(downloadBlob).not.toHaveBeenCalled();
+  });
+
   test('uses worker conversion when MP4 is not supported by MediaRecorder', async () => {
     const canvas = createCanvasElement();
     const audio = createAudioElement(true, true);

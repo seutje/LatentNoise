@@ -340,3 +340,8 @@
 - Scaled MediaRecorder capture bitrates with canvas resolution and audio presence, preserving WebM fallbacks and surfacing the active encoder options for diagnostics.
 - Lowered the ffmpeg worker CRF to retain sharpness when transcoding WebM captures into MP4 downloads.
 - Updated the video export Jest suite to assert the high-quality settings and re-ran `npm test -- --coverage --runInBand` to validate the change.
+
+## 2025-10-27 - Video Export TypeError Recovery
+- Treated `TypeError: Failed to fetch` blob reads as transient so the exporter retries with Response/FileReader fallbacks instead of aborting the mux pipeline.
+- Added Jest coverage to confirm MP4 conversions proceed when the primary arrayBuffer path rejects with the browser-specific TypeError.
+- Re-verified the suite with `npm test` and `npm run lint`.
