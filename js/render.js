@@ -181,6 +181,10 @@ function buildPalette(paletteInput = {}) {
 
   const panelColor = `rgba(${backgroundRgb.r}, ${backgroundRgb.g}, ${backgroundRgb.b}, 0.82)`;
   const accentPrimary = accentHexes[0];
+  const accentPrimaryRgb = hexToRgb(accentPrimary ?? DEFAULT_PALETTE.accents[0]);
+  const accentMain = `rgba(${accentPrimaryRgb.r}, ${accentPrimaryRgb.g}, ${accentPrimaryRgb.b}, 0.88)`;
+  const accentDim = `rgba(${accentPrimaryRgb.r}, ${accentPrimaryRgb.g}, ${accentPrimaryRgb.b}, 0.52)`;
+  const accentGlow = `rgba(${accentPrimaryRgb.r}, ${accentPrimaryRgb.g}, ${accentPrimaryRgb.b}, 0.12)`;
 
   return {
     backgroundHex,
@@ -192,6 +196,9 @@ function buildPalette(paletteInput = {}) {
     gridColor,
     panelColor,
     accentPrimary,
+    accentMain,
+    accentDim,
+    accentGlow,
   };
 }
 
@@ -202,6 +209,12 @@ function applyPaletteToDom() {
     root.style.setProperty('--panel', state.palette.panelColor);
     const accent = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
     root.style.setProperty('--accent', accent);
+    const accentMain = state.palette.accentMain ?? `rgba(167, 139, 250, 0.88)`;
+    const accentDim = state.palette.accentDim ?? `rgba(167, 139, 250, 0.52)`;
+    const accentGlow = state.palette.accentGlow ?? `rgba(167, 139, 250, 0.12)`;
+    root.style.setProperty('--accent-strong', accentMain);
+    root.style.setProperty('--accent-dim', accentDim);
+    root.style.setProperty('--accent-glow', accentGlow);
   }
   if (state.canvas) {
     state.canvas.style.background = state.palette.canvasBackground;
@@ -441,9 +454,9 @@ function drawHudGroup(buffer, heading, x, y, width, style) {
   const centerX = innerLeft + innerWidth * 0.5;
   const mode = buffer.mode === 'unipolar' ? 'unipolar' : 'bipolar';
   const basePanelColor = style?.panelColor ?? state.palette.panelColor;
-  const accentMain = style?.accentMain ?? state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
-  const accentDim = style?.accentDim ?? state.palette.gridColor;
-  const accentGlow = style?.accentGlow ?? 'rgba(255, 255, 255, 0.08)';
+  const accentMain = style?.accentMain ?? state.palette.accentMain ?? state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+  const accentDim = style?.accentDim ?? state.palette.accentDim ?? state.palette.gridColor;
+  const accentGlow = style?.accentGlow ?? state.palette.accentGlow ?? 'rgba(255, 255, 255, 0.08)';
   const gridColor = style?.gridColor ?? state.palette.gridColor;
 
   const ctx = state.ctx;
@@ -570,11 +583,9 @@ function drawHudOverlay() {
   }
 
   const ctx = state.ctx;
-  const accentHex = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
-  const accentRgb = hexToRgb(accentHex);
-  const accentMain = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.88)`;
-  const accentDim = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.52)`;
-  const accentGlow = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`;
+  const accentMain = state.palette.accentMain ?? state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+  const accentDim = state.palette.accentDim ?? state.palette.gridColor;
+  const accentGlow = state.palette.accentGlow ?? 'rgba(255, 255, 255, 0.08)';
   const panelColor = state.palette.panelColor;
   const gridColor = state.palette.gridColor;
 
@@ -887,6 +898,10 @@ function ensureCanvasSize(force = false) {
 
 function updateVolumeDisplay(value) {
   state.volume = clamp(value, VOLUME_MIN, VOLUME_MAX);
+  if (state.hud.volumeSlider) {
+    const fill = `${(state.volume * 100).toFixed(2)}%`;
+    state.hud.volumeSlider.style.setProperty('--meter-fill', fill);
+  }
   if (state.hud.volumeDisplay) {
     const percent = Math.round(state.volume * 100);
     state.hud.volumeDisplay.textContent = `${percent}%`;

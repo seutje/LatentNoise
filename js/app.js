@@ -1260,11 +1260,13 @@ function updateSeekUi(currentSeconds, durationSeconds) {
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     seekSlider.value = '0';
     seekSlider.disabled = true;
+    seekSlider.style.setProperty('--meter-fill', '0%');
     return;
   }
   const percent = clamp((currentSeconds / durationSeconds) * 100, 0, 100);
   seekSlider.value = percent.toFixed(2);
   seekSlider.disabled = false;
+  seekSlider.style.setProperty('--meter-fill', `${percent.toFixed(2)}%`);
 }
 
 function handleSeekInput() {

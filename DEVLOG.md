@@ -310,6 +310,11 @@
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
 - Re-verified repository health using `npm run lint` and `npm test -- --runInBand`.
 
+## 2025-10-27 - HUD Control Surface Alignment
+- Restyled the HTML HUD and control strip to mirror the in-canvas meters, using the active preset accent palette with sharp, rectangular panels.
+- Re-skinned the volume and seek sliders as illuminated meters and propagated palette-derived accent variants into CSS variables for consistent tinting.
+- Updated automated coverage to reflect the new palette bindings with `npm run lint` and `npm test -- --coverage`.
+
 ## 2025-10-27 - Transparent Intro Overlay
 - Replaced the intro overlay gradient with a fully transparent surface so the scene remains visible behind the blur.
 - Increased the overlay backdrop blur to keep the intro content legible without the gradient wash.
