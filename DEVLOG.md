@@ -39,6 +39,10 @@
 ## 2025-10-21 - Phase 12
 - Added frame-time monitoring with rolling FPS sampling, dynamic particle cap scaling, and render resolution throttling so the system proactively sheds load during stress and restores quality after sustained recovery. Reused scratch buffers in the renderer and physics bounds handling to eliminate per-frame allocations, and verified resize/visibility work is debounced so quality changes remain smooth.
 
+## 2025-10-27 - Phase 9
+- Refreshed the HUD and transport controls to match the retro meter styling, removing rounded corners, adding grid-lined panels, and aligning text treatments with the active track palette.
+- Plumbed accent-derived CSS variables from the renderer into the DOM so both HUD and control sliders render accent progress fills and respond instantly to palette changes.
+
 ## 2025-10-21 - Phase 13
 - Introduced repository automation by wiring ESLint configuration, Jest scripts, and a startup diagnostics harness that exercises NN and mapping modules at boot with clear console pass/fail logs. Added JSON schema validation for model files to surface descriptive errors before NN load, created a query-driven debug overlay that streams features, NN outputs, and mapped parameters, and added Jest unit tests covering NN normalization/forward paths plus map safety clamps; all suites pass via `npm test`.
 

@@ -202,6 +202,16 @@ function applyPaletteToDom() {
     root.style.setProperty('--panel', state.palette.panelColor);
     const accent = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
     root.style.setProperty('--accent', accent);
+    const accentRgb = hexToRgb(accent);
+    const accentStrong = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.88)`;
+    const accentDim = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.52)`;
+    const accentSoft = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.18)`;
+    const accentFaint = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.08)`;
+    root.style.setProperty('--accent-strong', accentStrong);
+    root.style.setProperty('--accent-dim', accentDim);
+    root.style.setProperty('--accent-soft', accentSoft);
+    root.style.setProperty('--accent-faint', accentFaint);
+    root.style.setProperty('--hud-grid', state.palette.gridColor);
   }
   if (state.canvas) {
     state.canvas.style.background = state.palette.canvasBackground;
@@ -887,9 +897,13 @@ function ensureCanvasSize(force = false) {
 
 function updateVolumeDisplay(value) {
   state.volume = clamp(value, VOLUME_MIN, VOLUME_MAX);
+  const percentValue = clamp(state.volume * 100, 0, 100);
+  const percentRounded = Math.round(percentValue);
   if (state.hud.volumeDisplay) {
-    const percent = Math.round(state.volume * 100);
-    state.hud.volumeDisplay.textContent = `${percent}%`;
+    state.hud.volumeDisplay.textContent = `${percentRounded}%`;
+  }
+  if (state.hud.volumeSlider) {
+    state.hud.volumeSlider.style.setProperty('--value', `${percentValue.toFixed(2)}%`);
   }
 }
 
