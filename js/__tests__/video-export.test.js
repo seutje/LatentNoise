@@ -76,7 +76,7 @@ function createAudioElement(hasCapture = true, paused = false) {
   return audio;
 }
 
-function createMockRecorderFactory({ blobType, onCreate }) {
+function createMockRecorderFactory({ blobType, onCreate, createChunk }) {
   return jest.fn((stream, options = {}) => {
     if (typeof onCreate === 'function') {
       onCreate({ stream, options });
@@ -91,11 +91,15 @@ function createMockRecorderFactory({ blobType, onCreate }) {
       stop: jest.fn(function stop() {
         this.state = 'inactive';
         if (events.dataavailable) {
-          const blob = new Blob(['chunk'], { type: blobType });
-          Object.defineProperty(blob, 'arrayBuffer', {
-            configurable: true,
-            value: jest.fn(() => Promise.resolve(new Uint8Array([1, 2, 3]).buffer)),
-          });
+          const blob = typeof createChunk === 'function'
+            ? createChunk({ stream, options })
+            : new Blob(['chunk'], { type: blobType });
+          if (typeof blob.arrayBuffer !== 'function') {
+            Object.defineProperty(blob, 'arrayBuffer', {
+              configurable: true,
+              value: jest.fn(() => Promise.resolve(new Uint8Array([1, 2, 3]).buffer)),
+            });
+          }
           events.dataavailable({ data: blob });
         }
         if (events.stop) {
@@ -214,6 +218,68 @@ describe('video-export utilities', () => {
     expect(blob.type).toContain('video/mp4');
     expect(filename).toMatch(/^test-clip-/);
     expect(exporter.getState().status).toBe('idle');
+  });
+
+  test('recovers when recorded blob arrayBuffer throws NotReadableError', async () => {
+    const canvas = createCanvasElement();
+    const audio = createAudioElement(true, true);
+    const button = document.createElement('button');
+    const downloadBlob = jest.fn();
+    const notReadableError = Object.assign(new Error('The requested file could not be read.'), {
+      name: 'NotReadableError',
+    });
+
+    const recorderFactory = createMockRecorderFactory({
+      blobType: 'video/mp4',
+      createChunk: () => {
+        const blob = new Blob(['chunk'], { type: 'video/mp4' });
+        Object.defineProperty(blob, 'arrayBuffer', {
+          configurable: true,
+          value: jest.fn(() => Promise.reject(notReadableError)),
+        });
+        return blob;
+      },
+    });
+
+    const worker = {
+      listeners: {},
+      addEventListener: jest.fn(function add(type, handler) {
+        this.listeners[type] = handler;
+      }),
+      postMessage: jest.fn(),
+    };
+
+    const exporter = createVideoExporter({
+      MediaRecorderClass: class {
+        static isTypeSupported(type) {
+          return type.includes('video/mp4');
+        }
+      },
+      createMediaRecorder: recorderFactory,
+      createStream: () => new MockStream(),
+      createWorker: () => worker,
+      downloadBlob,
+    });
+
+    exporter.init({
+      canvas,
+      audio,
+      button,
+      notify: jest.fn(),
+      getFileName: () => 'Test Clip',
+    });
+
+    expect(exporter.start()).toBe(true);
+    expect(exporter.stop()).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+
+    const convertCall = worker.postMessage.mock.calls.find(([message]) => message.type === 'convert');
+    expect(convertCall).toBeDefined();
+    const [convertMessage] = convertCall;
+    expect(convertMessage.hasAudio).toBe(true);
+    expect(downloadBlob).not.toHaveBeenCalled();
   });
 
   test('uses worker conversion when MP4 is not supported by MediaRecorder', async () => {

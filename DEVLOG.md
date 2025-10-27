@@ -296,6 +296,11 @@
 - Routed the recorded export path through the ffmpeg worker so native MP4 captures also receive the stabilized audio mixdown.
 - Extended the Jest suite to cover the new worker flow, mocked fetch for audio retrieval, and re-ran `npm test` plus `npm run lint`.
 
+## 2025-10-27 - Video Export Blob Fallbacks
+- Added defensive blob readers so MP4 captures recover from `NotReadableError` by cloning or re-reading data before muxing.
+- Triggered a graceful download fallback when the recording buffer stays unreadable while preserving worker conversions otherwise.
+- Extended the video export Jest suite to cover the new recovery path and reran `npm test` plus `npm run lint` for regression checks.
+
 ## 2025-10-27 - BYOM Baseline Catalog
 - Synced the BYOM model picker with stored training results so previously trained models appear alongside the built-in album weights.
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.

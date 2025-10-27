@@ -313,6 +313,84 @@ function guessAudioMimeFromUrl(url) {
   return '';
 }
 
+function isNotReadableError(error) {
+  if (!error) {
+    return false;
+  }
+  const name = typeof error.name === 'string' ? error.name : '';
+  if (name === 'NotReadableError' || name === 'NS_ERROR_FILE_ACCESS_DENIED') {
+    return true;
+  }
+  const message = typeof error.message === 'string' ? error.message : '';
+  if (!message) {
+    return false;
+  }
+  return /notreadable/i.test(message) || /could not be read/i.test(message);
+}
+
+function readBlobWithFileReader(blob) {
+  if (typeof FileReader !== 'function') {
+    return Promise.reject(new Error('FileReader is unavailable.'));
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader();
+      reader.onerror = () => {
+        reject(reader.error || new Error('Failed to read blob with FileReader.'));
+      };
+      reader.onload = () => {
+        resolve(reader.result);
+      };
+      reader.readAsArrayBuffer(blob);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function readBlobFallback(blob) {
+  if (typeof Response === 'function') {
+    try {
+      return new Response(blob).arrayBuffer();
+    } catch (error) {
+      if (!isNotReadableError(error)) {
+        return Promise.reject(error);
+      }
+    }
+  }
+  return readBlobWithFileReader(blob);
+}
+
+function readBlobAsArrayBuffer(blob) {
+  if (!(blob instanceof Blob)) {
+    return Promise.reject(new TypeError('Expected Blob instance.'));
+  }
+
+  const attemptDirect = typeof blob.arrayBuffer === 'function' ? blob.arrayBuffer() : readBlobFallback(blob);
+
+  return attemptDirect.catch((error) => {
+    if (!isNotReadableError(error)) {
+      throw error;
+    }
+    let clone = null;
+    try {
+      clone = blob.slice(0, blob.size, blob.type || undefined);
+    } catch {
+      clone = null;
+    }
+    if (clone && clone.size === blob.size) {
+      const cloneAttempt = typeof clone.arrayBuffer === 'function' ? clone.arrayBuffer() : readBlobFallback(clone);
+      return cloneAttempt.catch((cloneError) => {
+        if (!isNotReadableError(cloneError)) {
+          throw cloneError;
+        }
+        return readBlobFallback(blob);
+      });
+    }
+    return readBlobFallback(blob);
+  });
+}
+
 export function createVideoExporter(dependencies = {}) {
   const MediaRecorderClass = typeof dependencies.MediaRecorderClass === 'function' ? dependencies.MediaRecorderClass : getDefaultMediaRecorderClass();
   const createMediaRecorder =
@@ -683,7 +761,7 @@ export function createVideoExporter(dependencies = {}) {
     state.processingProgress = 0;
 
     const sourceType = recordedBlob.type || state.recordingMimeType || 'video/webm';
-    const videoPromise = recordedBlob.arrayBuffer();
+    const videoPromise = readBlobAsArrayBuffer(recordedBlob);
     const audioPromise = wantsExternalAudio ? fetchAudioSourceBuffer() : Promise.resolve(null);
 
     Promise.all([videoPromise, audioPromise])
@@ -718,6 +796,15 @@ export function createVideoExporter(dependencies = {}) {
       })
       .catch((error) => {
         console.error('[video-export] Failed to prepare recording buffers', error);
+        if (isNotReadableError(error)) {
+          state.notify?.('Video export is using the original recording data.', { tone: 'warning', duration: 6000 });
+          downloadBlob(recordedBlob, state.pendingFileName || createDownloadFileName('latent-noise'));
+          cleanupStreams();
+          resetRecordingState();
+          setStatus(STATE_IDLE);
+          return;
+        }
+        cleanupStreams();
         state.notify?.('Video export failed while preparing recording data.', { tone: 'error', duration: 6000 });
         resetRecordingState();
         setStatus(STATE_IDLE);
