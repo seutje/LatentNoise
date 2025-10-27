@@ -287,6 +287,32 @@ function ensureArrayBuffer(data) {
   return null;
 }
 
+function guessAudioMimeFromUrl(url) {
+  if (typeof url !== 'string' || !url) {
+    return '';
+  }
+  const normalized = url.replace(/[?#].*$/, '').toLowerCase();
+  if (normalized.endsWith('.mp3')) {
+    return 'audio/mpeg';
+  }
+  if (normalized.endsWith('.m4a') || normalized.endsWith('.mp4a')) {
+    return 'audio/mp4';
+  }
+  if (normalized.endsWith('.aac')) {
+    return 'audio/aac';
+  }
+  if (normalized.endsWith('.wav')) {
+    return 'audio/wav';
+  }
+  if (normalized.endsWith('.ogg') || normalized.endsWith('.oga')) {
+    return 'audio/ogg';
+  }
+  if (normalized.endsWith('.flac')) {
+    return 'audio/flac';
+  }
+  return '';
+}
+
 export function createVideoExporter(dependencies = {}) {
   const MediaRecorderClass = typeof dependencies.MediaRecorderClass === 'function' ? dependencies.MediaRecorderClass : getDefaultMediaRecorderClass();
   const createMediaRecorder =
@@ -321,6 +347,8 @@ export function createVideoExporter(dependencies = {}) {
     stream: null,
     canvasStream: null,
     audioStream: null,
+    audioSourceUrl: '',
+    cachedAudioData: null,
     recordingMimeType: '',
     recordingStartedAt: null,
     recordingProducesMp4: false,
@@ -347,6 +375,8 @@ export function createVideoExporter(dependencies = {}) {
     state.cancelRecording = false;
     state.recorderQuality = null;
     state.pendingMimeCandidates = [];
+    state.audioSourceUrl = '';
+    state.cachedAudioData = null;
   }
 
   function cleanupStreams() {
@@ -536,54 +566,7 @@ export function createVideoExporter(dependencies = {}) {
     }
 
     const recordedBlob = new Blob(state.chunks, { type: state.recordingMimeType || state.chunks[0]?.type || 'video/webm' });
-    if (state.recordingProducesMp4) {
-      downloadBlob(recordedBlob, state.pendingFileName || createDownloadFileName('latent-noise'));
-      state.notify?.('Video export ready. Downloading MP4.', { tone: 'success', duration: 6000 });
-      resetRecordingState();
-      setStatus(STATE_IDLE);
-      return;
-    }
-
-    const worker = ensureWorker();
-    if (!worker) {
-      state.notify?.('MP4 conversion is not available in this browser.', { tone: 'error', duration: 6000 });
-      resetRecordingState();
-      setStatus(STATE_IDLE);
-      return;
-    }
-
-    setStatus(STATE_PROCESSING);
-    state.processingProgress = 0;
-
-    recordedBlob
-      .arrayBuffer()
-      .then((buffer) => {
-        const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        state.pendingJobId = jobId;
-        try {
-          worker.postMessage(
-            {
-              type: 'convert',
-              jobId,
-              buffer,
-              sourceType: recordedBlob.type || state.recordingMimeType || 'video/webm',
-              hasAudio: state.hasAudioTrack,
-            },
-            [buffer],
-          );
-        } catch (error) {
-          console.error('[video-export] Failed to post convert job', error);
-          state.notify?.('Video export failed during conversion.', { tone: 'error', duration: 6000 });
-          resetRecordingState();
-          setStatus(STATE_IDLE);
-        }
-      })
-      .catch((error) => {
-        console.error('[video-export] Failed to read recording buffer', error);
-        state.notify?.('Video export failed while reading recording data.', { tone: 'error', duration: 6000 });
-        resetRecordingState();
-        setStatus(STATE_IDLE);
-      });
+    processRecordedBlob(recordedBlob);
   }
 
   function handleRecorderError(event) {
@@ -615,11 +598,155 @@ export function createVideoExporter(dependencies = {}) {
     state.notify?.('Video export failed. Check console for details.', { tone: 'error', duration: 6000 });
   }
 
-  function ensurePlayback() {
-    if (!state.audio || !state.audio.paused) {
+  function resolveAudioSourceUrl() {
+    if (!state.audio) {
+      return '';
+    }
+    if (typeof state.audio.currentSrc === 'string' && state.audio.currentSrc) {
+      return state.audio.currentSrc;
+    }
+    if (typeof state.audio.src === 'string' && state.audio.src) {
+      return state.audio.src;
+    }
+    return '';
+  }
+
+  function fetchAudioSourceBuffer() {
+    const src = state.audioSourceUrl;
+    if (!src || typeof fetch !== 'function') {
+      return Promise.resolve(null);
+    }
+    if (state.cachedAudioData && state.cachedAudioData.url === src) {
+      if (Object.prototype.hasOwnProperty.call(state.cachedAudioData, 'result')) {
+        return Promise.resolve(state.cachedAudioData.result);
+      }
+      return state.cachedAudioData.promise;
+    }
+    const fetchPromise = fetch(src)
+      .then((response) => {
+        if (!response || !response.ok) {
+          throw new Error(`Failed to fetch audio source (${response?.status ?? 'unknown'})`);
+        }
+        const headerMime = typeof response.headers?.get === 'function' ? response.headers.get('content-type') : '';
+        const mimeType = typeof headerMime === 'string' && headerMime ? headerMime.split(';')[0].trim() : '';
+        return response.arrayBuffer().then((buffer) => {
+          if (!buffer || buffer.byteLength === 0) {
+            return null;
+          }
+          const result = { buffer, mimeType: mimeType || guessAudioMimeFromUrl(src) || '' };
+          if (state.cachedAudioData && state.cachedAudioData.url === src) {
+            state.cachedAudioData.result = result;
+          }
+          return result;
+        });
+      })
+      .catch((error) => {
+        console.warn('[video-export] Failed to fetch audio source for export', error);
+        if (state.cachedAudioData && state.cachedAudioData.url === src) {
+          state.cachedAudioData.result = null;
+        }
+        return null;
+      });
+    state.cachedAudioData = { url: src, promise: fetchPromise };
+    return fetchPromise;
+  }
+
+  function processRecordedBlob(recordedBlob) {
+    const wantsExternalAudio = Boolean(state.audioSourceUrl);
+    const needsWorker = !state.recordingProducesMp4 || wantsExternalAudio;
+
+    if (!needsWorker) {
+      downloadBlob(recordedBlob, state.pendingFileName || createDownloadFileName('latent-noise'));
+      state.notify?.('Video export ready. Downloading MP4.', { tone: 'success', duration: 6000 });
+      resetRecordingState();
+      setStatus(STATE_IDLE);
+      return;
+    }
+
+    const worker = ensureWorker();
+    if (!worker) {
+      if (!state.recordingProducesMp4) {
+        state.notify?.('MP4 conversion is not available in this browser.', { tone: 'error', duration: 6000 });
+      } else {
+        downloadBlob(recordedBlob, state.pendingFileName || createDownloadFileName('latent-noise'));
+        state.notify?.('Video export ready. Downloading MP4 (audio attachment unavailable).', {
+          tone: 'warning',
+          duration: 6000,
+        });
+      }
+      resetRecordingState();
+      setStatus(STATE_IDLE);
+      return;
+    }
+
+    setStatus(STATE_PROCESSING);
+    state.processingProgress = 0;
+
+    const sourceType = recordedBlob.type || state.recordingMimeType || 'video/webm';
+    const videoPromise = recordedBlob.arrayBuffer();
+    const audioPromise = wantsExternalAudio ? fetchAudioSourceBuffer() : Promise.resolve(null);
+
+    Promise.all([videoPromise, audioPromise])
+      .then(([videoBuffer, audioData]) => {
+        const hasExternalAudio = Boolean(audioData?.buffer) && audioData.buffer.byteLength > 0;
+        const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        state.pendingJobId = jobId;
+        const message = {
+          type: 'convert',
+          jobId,
+          buffer: videoBuffer,
+          sourceType,
+          hasAudio: hasExternalAudio || state.hasAudioTrack,
+          preferCopyVideo: Boolean(state.recordingProducesMp4),
+        };
+        const transfers = [videoBuffer];
+        if (hasExternalAudio) {
+          message.externalAudioBuffer = audioData.buffer;
+          message.externalAudioType = audioData.mimeType || guessAudioMimeFromUrl(state.audioSourceUrl) || '';
+          transfers.push(audioData.buffer);
+        } else if (wantsExternalAudio) {
+          console.warn('[video-export] External audio unavailable; using recorded audio track.');
+        }
+        try {
+          worker.postMessage(message, transfers);
+        } catch (error) {
+          console.error('[video-export] Failed to post convert job', error);
+          state.notify?.('Video export failed during conversion.', { tone: 'error', duration: 6000 });
+          resetRecordingState();
+          setStatus(STATE_IDLE);
+        }
+      })
+      .catch((error) => {
+        console.error('[video-export] Failed to prepare recording buffers', error);
+        state.notify?.('Video export failed while preparing recording data.', { tone: 'error', duration: 6000 });
+        resetRecordingState();
+        setStatus(STATE_IDLE);
+      });
+  }
+
+  function ensurePlayback(options = {}) {
+    if (!state.audio) {
+      return;
+    }
+    const restart = options.restart === true;
+    if (!restart && !state.audio.paused) {
       return;
     }
     try {
+      if (restart) {
+        if (typeof state.audio.pause === 'function') {
+          try {
+            state.audio.pause();
+          } catch {
+            // Ignore pause errors.
+          }
+        }
+        try {
+          state.audio.currentTime = 0;
+        } catch {
+          // Ignore failures when resetting playback head.
+        }
+      }
       const playResult = state.audio.play();
       if (playResult && typeof playResult.catch === 'function') {
         playResult.catch(() => {
@@ -753,6 +880,8 @@ export function createVideoExporter(dependencies = {}) {
     });
 
     state.stream = combinedStream;
+    state.audioSourceUrl = resolveAudioSourceUrl();
+    state.cachedAudioData = null;
 
     const hasAudio = audioTracks.length > 0;
     const candidates = Array.isArray(options.mimeCandidates) && options.mimeCandidates.length > 0
@@ -778,7 +907,7 @@ export function createVideoExporter(dependencies = {}) {
       return false;
     }
 
-    ensurePlayback();
+    ensurePlayback({ restart: true });
     state.notify?.('Recording started. Click again to finish export.', { tone: 'info', duration: 5000 });
     setStatus(STATE_RECORDING);
     return true;

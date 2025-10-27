@@ -291,6 +291,11 @@
 - Persisted manager state through new storage helpers, refreshed the runtime playlist when models are imported, and covered utility logic with Jest tests.
 - Confirmed health via `npm run lint` and `npm test -- --coverage`.
 
+## 2025-10-27 - Video Export Audio Stability
+- Restart the audio element from the beginning when a capture starts and attach the source audio to the encoded video before downloading.
+- Routed the recorded export path through the ffmpeg worker so native MP4 captures also receive the stabilized audio mixdown.
+- Extended the Jest suite to cover the new worker flow, mocked fetch for audio retrieval, and re-ran `npm test` plus `npm run lint`.
+
 ## 2025-10-27 - BYOM Baseline Catalog
 - Synced the BYOM model picker with stored training results so previously trained models appear alongside the built-in album weights.
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
