@@ -310,6 +310,11 @@
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
 - Re-verified repository health using `npm run lint` and `npm test -- --runInBand`.
 
+## 2025-10-27 - HTML HUD Accent Sync
+- Synced the HTML HUD and controls styling with the in-canvas panels so they reuse each preset's accent palette and glow.
+- Added palette-derived CSS variables for accent main/dim/glow and panel outlines to share styling between canvas and DOM.
+- Revalidated coverage with `npm test -- --coverage`.
+
 ## 2025-10-27 - Transparent Intro Overlay
 - Replaced the intro overlay gradient with a fully transparent surface so the scene remains visible behind the blur.
 - Increased the overlay backdrop blur to keep the intro content legible without the gradient wash.

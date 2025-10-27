@@ -74,6 +74,12 @@ test('setPalette normalizes palette data and updates CSS variables without init'
   const root = document.documentElement;
   expect(root.style.getPropertyValue('--bg')).toBe('#112233');
   expect(root.style.getPropertyValue('--accent')).toBe('#abcdef');
+  expect(root.style.getPropertyValue('--accent-main')).toBe('rgba(171, 205, 239, 0.88)');
+  expect(root.style.getPropertyValue('--accent-dim')).toBe('rgba(171, 205, 239, 0.52)');
+  expect(root.style.getPropertyValue('--accent-glow')).toBe('rgba(171, 205, 239, 0.12)');
+  expect(root.style.getPropertyValue('--panel-outline')).toBe('rgba(171, 205, 239, 0.52)');
+  expect(root.style.getPropertyValue('--panel-glow')).toBe('rgba(171, 205, 239, 0.12)');
+  expect(root.style.getPropertyValue('--grid-line')).toBe('rgba(9, 133, 97, 0.12)');
 });
 
 test('setPalette applies gradient background after render init', () => {

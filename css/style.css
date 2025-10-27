@@ -3,6 +3,12 @@
   --bg: #050505;
   --panel: rgba(10, 12, 20, 0.82);
   --accent: #a78bfa;
+  --accent-main: rgba(167, 139, 250, 0.88);
+  --accent-dim: rgba(167, 139, 250, 0.52);
+  --accent-glow: rgba(167, 139, 250, 0.12);
+  --panel-outline: rgba(167, 139, 250, 0.52);
+  --panel-glow: rgba(167, 139, 250, 0.12);
+  --grid-line: rgba(94, 122, 176, 0.16);
   --text: #f5f7ff;
   --muted: rgba(245, 247, 255, 0.6);
 }
@@ -248,16 +254,38 @@ body.fullscreen-active #byom-drawer {
 }
 
 .ui {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.85rem 1.25rem;
   border-radius: 1rem;
   background: var(--panel);
+  background-image: linear-gradient(155deg, var(--accent-glow) 0%, rgba(10, 12, 20, 0.2) 58%, rgba(10, 12, 20, 0.08) 100%);
+  border: 1px solid var(--panel-outline);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35), 0 0 34px var(--panel-glow);
   pointer-events: auto;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.ui::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(120% 120% at 16% 0%, var(--accent-glow) 0%, transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 55%);
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ui > * {
+  position: relative;
+  z-index: 1;
 }
 
 #hud {
@@ -279,14 +307,15 @@ body.fullscreen-active #byom-drawer {
   font-size: 0.82rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--accent-dim);
 }
 
 #hud #track-title {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  color: var(--text);
+  color: var(--accent-main);
+  text-shadow: 0 0 18px var(--accent-glow);
 }
 
 #hud .hud-volume {
@@ -306,7 +335,7 @@ body.fullscreen-active #byom-drawer {
   margin-left: 0.5rem;
   font-size: 0.72rem;
   letter-spacing: 0.08em;
-  color: var(--accent);
+  color: var(--accent-main);
 }
 
 #hud .hud-volume input[type="range"] {
@@ -322,21 +351,25 @@ body.fullscreen-active #byom-drawer {
 #hud .hud-button {
   font: inherit;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(12, 14, 24, 0.52);
+  background-image: linear-gradient(150deg, var(--accent-glow) 0%, rgba(255, 255, 255, 0.06) 68%);
+  border: 1px solid var(--accent-dim);
   padding: 0.45rem 1.1rem;
   border-radius: 999px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.3);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease,
+    transform 0.2s ease;
   cursor: pointer;
 }
 
 #hud .hud-button:hover,
 #hud .hud-button:focus-visible {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.18);
+  border-color: var(--accent-main);
+  background-image: linear-gradient(150deg, rgba(255, 255, 255, 0.08) 0%, var(--accent-glow) 42%, rgba(255, 255, 255, 0.1) 100%);
+  box-shadow: 0 0 18px var(--accent-glow), 0 0 18px rgba(0, 0, 0, 0.28);
   transform: translateY(-1px);
 }
 
@@ -355,12 +388,14 @@ body.fullscreen-active #byom-drawer {
 #controls select {
   font: inherit;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(12, 14, 24, 0.52);
+  background-image: linear-gradient(155deg, var(--accent-glow) 0%, rgba(255, 255, 255, 0.05) 68%);
+  border: 1px solid var(--accent-dim);
   padding: 0.5rem 1.1rem;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.3);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #controls button:hover,
@@ -368,28 +403,31 @@ body.fullscreen-active #byom-drawer {
 #controls select:hover,
 #controls select:focus-visible {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.18);
+  border-color: var(--accent-main);
+  background-image: linear-gradient(155deg, rgba(255, 255, 255, 0.08) 0%, var(--accent-glow) 45%, rgba(255, 255, 255, 0.12) 100%);
+  box-shadow: 0 0 18px var(--accent-glow), 0 0 18px rgba(0, 0, 0, 0.28);
 }
 
 #controls button:disabled,
 #controls button[aria-disabled='true'] {
   opacity: 0.5;
   cursor: not-allowed;
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(12, 14, 24, 0.32);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
 }
 
 #controls button[aria-pressed='true'] {
-  background: var(--accent);
+  background: var(--accent-main);
   border-color: rgba(255, 255, 255, 0.7);
   color: var(--bg);
+  box-shadow: 0 0 22px var(--accent-glow), 0 16px 36px rgba(0, 0, 0, 0.38);
 }
 
 #controls select {
   padding-right: 2.5rem;
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(12, 14, 24, 0.52);
+  border-color: var(--accent-dim);
 }
 
 #controls select option {

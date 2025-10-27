@@ -167,6 +167,7 @@ function buildPalette(paletteInput = {}) {
   }
   const accentRgb = accentHexes.map((hex) => hexToRgb(hex));
   const accentHsl = accentRgb.map((rgb) => rgbToHsl(rgb));
+  const primaryAccentRgb = accentRgb[0] ?? hexToRgb(DEFAULT_PALETTE.accents[0]);
 
   const baseHueInput = Number.isFinite(paletteInput.baseHue) ? paletteInput.baseHue : DEFAULT_PALETTE.baseHue;
   const baseHue = wrapHue360(baseHueInput);
@@ -181,6 +182,11 @@ function buildPalette(paletteInput = {}) {
 
   const panelColor = `rgba(${backgroundRgb.r}, ${backgroundRgb.g}, ${backgroundRgb.b}, 0.82)`;
   const accentPrimary = accentHexes[0];
+  const accentMain = `rgba(${primaryAccentRgb.r}, ${primaryAccentRgb.g}, ${primaryAccentRgb.b}, 0.88)`;
+  const accentDim = `rgba(${primaryAccentRgb.r}, ${primaryAccentRgb.g}, ${primaryAccentRgb.b}, 0.52)`;
+  const accentGlow = `rgba(${primaryAccentRgb.r}, ${primaryAccentRgb.g}, ${primaryAccentRgb.b}, 0.12)`;
+  const panelOutline = accentDim;
+  const panelGlow = accentGlow;
 
   return {
     backgroundHex,
@@ -192,6 +198,11 @@ function buildPalette(paletteInput = {}) {
     gridColor,
     panelColor,
     accentPrimary,
+    accentMain,
+    accentDim,
+    accentGlow,
+    panelOutline,
+    panelGlow,
   };
 }
 
@@ -201,7 +212,20 @@ function applyPaletteToDom() {
     root.style.setProperty('--bg', state.palette.backgroundHex);
     root.style.setProperty('--panel', state.palette.panelColor);
     const accent = state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
+    const accentRgb = hexToRgb(accent);
+    const accentMain = state.palette.accentMain ?? `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.88)`;
+    const accentDim = state.palette.accentDim ?? `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.52)`;
+    const accentGlow = state.palette.accentGlow ?? `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.12)`;
+    const panelOutline = state.palette.panelOutline ?? accentDim;
+    const panelGlow = state.palette.panelGlow ?? accentGlow;
+    const gridLine = state.palette.gridColor ?? `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.16)`;
     root.style.setProperty('--accent', accent);
+    root.style.setProperty('--accent-main', accentMain);
+    root.style.setProperty('--accent-dim', accentDim);
+    root.style.setProperty('--accent-glow', accentGlow);
+    root.style.setProperty('--panel-outline', panelOutline);
+    root.style.setProperty('--panel-glow', panelGlow);
+    root.style.setProperty('--grid-line', gridLine);
   }
   if (state.canvas) {
     state.canvas.style.background = state.palette.canvasBackground;
