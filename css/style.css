@@ -269,8 +269,8 @@ body.fullscreen-active #byom-drawer {
 #hud {
   position: fixed;
   top: clamp(1.2rem, 4vw, 2.8rem);
-  left: clamp(1.2rem, 4vw, 3rem);
-  transform: none;
+  left: 50%;
+  transform: translateX(-50%);
   width: min(92vw, 24rem);
   flex-direction: column;
   align-items: stretch;
