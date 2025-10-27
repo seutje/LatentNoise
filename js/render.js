@@ -337,6 +337,16 @@ function updateHudBuffer(buffer, source, labels, dt) {
   const safeDt = Number.isFinite(dt) && dt > 0 ? dt : 0;
   const peakDecay = Math.exp(-safeDt * HUD_PEAK_DECAY_RATE);
 
+  const min = typeof buffer.min === 'number' ? buffer.min : -1;
+  const max = typeof buffer.max === 'number' ? buffer.max : 1;
+  const mode = buffer.mode === 'unipolar' ? 'unipolar' : 'bipolar';
+  const range = max - min;
+  const hasRange = Number.isFinite(range) && Math.abs(range) > 1e-6;
+  const fallbackRange = mode === 'unipolar' ? 1 : 2;
+  const safeRange = hasRange ? range : fallbackRange;
+  const halfRange = mode === 'bipolar' ? (hasRange ? range * 0.5 : fallbackRange * 0.5) : safeRange;
+  const center = mode === 'bipolar' ? (hasRange ? min + range * 0.5 : (min + max) * 0.5) : min;
+
   for (let i = 0; i < length; i += 1) {
     const rawValue = source[i];
     const value = Number.isFinite(rawValue) ? rawValue : 0;
@@ -345,7 +355,15 @@ function updateHudBuffer(buffer, source, labels, dt) {
     const decayedPeak = previousPeak > 0 ? previousPeak * peakDecay : HUD_MIN_PEAK;
     const nextPeak = Math.max(Math.abs(value), decayedPeak, HUD_MIN_PEAK);
     buffer.peaks[i] = nextPeak;
-    const normalized = clamp(value, -1, 1);
+
+    let normalized;
+    if (mode === 'unipolar') {
+      normalized = clamp((value - center) / safeRange, 0, 1);
+    } else if (halfRange > 0) {
+      normalized = clamp((value - center) / halfRange, -1, 1);
+    } else {
+      normalized = 0;
+    }
     buffer.display[i] = normalized;
   }
 }
@@ -421,6 +439,7 @@ function drawHudGroup(buffer, heading, x, y, width, style) {
   const innerRight = width - HUD_PANEL_PADDING;
   const innerWidth = Math.max(innerRight - innerLeft, 1);
   const centerX = innerLeft + innerWidth * 0.5;
+  const mode = buffer.mode === 'unipolar' ? 'unipolar' : 'bipolar';
   const basePanelColor = style?.panelColor ?? state.palette.panelColor;
   const accentMain = style?.accentMain ?? state.palette.accentPrimary ?? DEFAULT_PALETTE.accents[0];
   const accentDim = style?.accentDim ?? state.palette.gridColor;
@@ -466,7 +485,9 @@ function drawHudGroup(buffer, heading, x, y, width, style) {
   for (let i = 0; i < count; i += 1) {
     const label = formatHudLabel(buffer.labels[i] ?? buildFallbackLabel(buffer.prefix, i));
     const value = buffer.values[i];
-    const normalized = clamp(buffer.display[i], -1, 1);
+    const normalized = mode === 'unipolar'
+      ? clamp(buffer.display[i], 0, 1)
+      : clamp(buffer.display[i], -1, 1);
     const rowTop = startY + i * rowHeight;
     const barCenterY = rowTop + rowHeight * 0.68;
     const textY = rowTop + rowHeight * 0.32;
@@ -481,18 +502,27 @@ function drawHudGroup(buffer, heading, x, y, width, style) {
     ctx.fillStyle = gridColor;
     ctx.fillRect(innerLeft, barCenterY - 0.5, innerWidth, 1);
 
-    const positive = normalized > 0 ? normalized : 0;
-    const negative = normalized < 0 ? -normalized : 0;
+    if (mode === 'unipolar') {
+      const fillWidth = innerWidth * normalized;
+      if (fillWidth > 0.001) {
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = accentMain;
+        ctx.fillRect(innerLeft, barCenterY - barHeight * 0.5, fillWidth, barHeight);
+      }
+    } else {
+      const positive = normalized > 0 ? normalized : 0;
+      const negative = normalized < 0 ? -normalized : 0;
 
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = accentMain;
-    if (positive > 0.001) {
-      const widthPos = halfWidth * clamp(positive, 0, 1);
-      ctx.fillRect(centerX, barCenterY - barHeight * 0.5, widthPos, barHeight);
-    }
-    if (negative > 0.001) {
-      const widthNeg = halfWidth * clamp(negative, 0, 1);
-      ctx.fillRect(centerX - widthNeg, barCenterY - barHeight * 0.5, widthNeg, barHeight);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = accentMain;
+      if (positive > 0.001) {
+        const widthPos = halfWidth * clamp(positive, 0, 1);
+        ctx.fillRect(centerX, barCenterY - barHeight * 0.5, widthPos, barHeight);
+      }
+      if (negative > 0.001) {
+        const widthNeg = halfWidth * clamp(negative, 0, 1);
+        ctx.fillRect(centerX - widthNeg, barCenterY - barHeight * 0.5, widthNeg, barHeight);
+      }
     }
 
     ctx.globalAlpha = 0.9;
@@ -506,7 +536,17 @@ function drawHudGroup(buffer, heading, x, y, width, style) {
 
     ctx.globalAlpha = 0.6;
     ctx.fillStyle = accentDim;
-    ctx.fillRect(centerX - 0.5, barCenterY - barHeight * 0.7, 1, barHeight * 1.4);
+    if (mode === 'unipolar') {
+      const markerHeight = barHeight * 1.4;
+      const zeroX = innerLeft;
+      const midX = innerLeft + innerWidth * 0.5;
+      const maxX = innerRight;
+      ctx.fillRect(zeroX - 0.5, barCenterY - markerHeight * 0.5, 1, markerHeight);
+      ctx.fillRect(midX - 0.5, barCenterY - markerHeight * 0.5, 1, markerHeight);
+      ctx.fillRect(maxX - 0.5, barCenterY - markerHeight * 0.5, 1, markerHeight);
+    } else {
+      ctx.fillRect(centerX - 0.5, barCenterY - barHeight * 0.7, 1, barHeight * 1.4);
+    }
   }
 
   ctx.restore();
@@ -598,7 +638,12 @@ function drawHudOverlay() {
   ctx.restore();
 }
 
-function createHudBuffer(prefix) {
+function createHudBuffer(prefix, options = {}) {
+  const minRaw = Number.isFinite(options.min) ? options.min : -1;
+  const maxRaw = Number.isFinite(options.max) ? options.max : 1;
+  const min = Math.min(minRaw, maxRaw);
+  const max = Math.max(minRaw, maxRaw);
+  const mode = options.mode === 'unipolar' ? 'unipolar' : 'bipolar';
   return {
     values: new Float32Array(0),
     display: new Float32Array(0),
@@ -606,6 +651,9 @@ function createHudBuffer(prefix) {
     labels: [],
     labelSource: null,
     prefix,
+    min,
+    max,
+    mode,
   };
 }
 
@@ -629,10 +677,13 @@ function ensureHiddenHudBuffer(index) {
   const prefix = `H${index + 1}`;
   const buffers = state.hudLevels.hidden;
   if (!buffers[index]) {
-    buffers[index] = createHudBuffer(prefix);
+    buffers[index] = createHudBuffer(prefix, { min: 0, max: 2, mode: 'unipolar' });
   }
   const buffer = buffers[index];
   buffer.prefix = prefix;
+  buffer.min = 0;
+  buffer.max = 2;
+  buffer.mode = 'unipolar';
   return buffer;
 }
 

@@ -79,6 +79,10 @@
 - Rewired the audio graph so analyser measurements occur before gain adjustments, keeping the derived activity metric stable regardless of the HUD volume slider and ensuring diagnostics reflect the underlying track energy.
 - Verified behavior with `npm test` and `npm run lint`.
 
+## 2025-10-24 - HUD Hidden Layer Scale
+- Reworked the hidden-layer HUD meters to use a unipolar 0–2 scale with range markers so neural diagnostics reflect activation magnitudes linearly from left to right.
+- Confirmed no regressions via `npm run lint` and `npm test`.
+
 ## 2025-10-24 - HUD Telemetry Expansion
 - Shifted the output-level meters to a lower HUD slot and added per-layer hidden activation panels styled like the existing meters so neural diagnostics are easier to read during playback.
 - Validated the update with `npm run lint` and `npm test -- --coverage`.
