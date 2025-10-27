@@ -291,6 +291,16 @@
 - Persisted manager state through new storage helpers, refreshed the runtime playlist when models are imported, and covered utility logic with Jest tests.
 - Confirmed health via `npm run lint` and `npm test -- --coverage`.
 
+## 2025-10-27 - Video Export Audio Stability
+- Restart the audio element from the beginning when a capture starts and attach the source audio to the encoded video before downloading.
+- Routed the recorded export path through the ffmpeg worker so native MP4 captures also receive the stabilized audio mixdown.
+- Extended the Jest suite to cover the new worker flow, mocked fetch for audio retrieval, and re-ran `npm test` plus `npm run lint`.
+
+## 2025-10-27 - Video Export Blob Fallbacks
+- Added defensive blob readers so MP4 captures recover from `NotReadableError` by cloning or re-reading data before muxing.
+- Triggered a graceful download fallback when the recording buffer stays unreadable while preserving worker conversions otherwise.
+- Extended the video export Jest suite to cover the new recovery path and reran `npm test` plus `npm run lint` for regression checks.
+
 ## 2025-10-27 - BYOM Baseline Catalog
 - Synced the BYOM model picker with stored training results so previously trained models appear alongside the built-in album weights.
 - Fed inline BYOM definitions into dataset analysis and the training controller, enabling warm-starts without relying on fetchable URLs.
@@ -330,3 +340,8 @@
 - Scaled MediaRecorder capture bitrates with canvas resolution and audio presence, preserving WebM fallbacks and surfacing the active encoder options for diagnostics.
 - Lowered the ffmpeg worker CRF to retain sharpness when transcoding WebM captures into MP4 downloads.
 - Updated the video export Jest suite to assert the high-quality settings and re-ran `npm test -- --coverage --runInBand` to validate the change.
+
+## 2025-10-27 - Video Export TypeError Recovery
+- Treated `TypeError: Failed to fetch` blob reads as transient so the exporter retries with Response/FileReader fallbacks instead of aborting the mux pipeline.
+- Added Jest coverage to confirm MP4 conversions proceed when the primary arrayBuffer path rejects with the browser-specific TypeError.
+- Re-verified the suite with `npm test` and `npm run lint`.
