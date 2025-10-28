@@ -207,6 +207,7 @@ function applyPaletteToDom() {
     const accentDim = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.52)`;
     const accentSoft = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.18)`;
     const accentFaint = `rgba(${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}, 0.08)`;
+    root.style.setProperty('--accent-rgb', `${accentRgb.r}, ${accentRgb.g}, ${accentRgb.b}`);
     root.style.setProperty('--accent-strong', accentStrong);
     root.style.setProperty('--accent-dim', accentDim);
     root.style.setProperty('--accent-soft', accentSoft);

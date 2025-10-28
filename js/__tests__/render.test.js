@@ -45,7 +45,7 @@ afterEach(() => {
 function setupRenderDom() {
   document.body.innerHTML = `
     <canvas id="c"></canvas>
-    <div id="hud" class="ui">
+    <div id="hud" class="ui panel hud-panel" data-panel-title="Input Levels">
       <div id="track-title"></div>
       <div id="track-time"></div>
       <div id="hud-status"></div>
@@ -78,6 +78,7 @@ test('setPalette normalizes palette data and updates CSS variables without init'
   expect(root.style.getPropertyValue('--accent-dim')).toBe('rgba(171, 205, 239, 0.52)');
   expect(root.style.getPropertyValue('--accent-soft')).toBe('rgba(171, 205, 239, 0.18)');
   expect(root.style.getPropertyValue('--accent-faint')).toBe('rgba(171, 205, 239, 0.08)');
+  expect(root.style.getPropertyValue('--accent-rgb')).toBe('171, 205, 239');
   expect(root.style.getPropertyValue('--hud-grid')).toMatch(/^rgba\(/);
 });
 
@@ -105,4 +106,5 @@ test('setPalette applies gradient background after render init', () => {
   const root = document.documentElement;
   expect(root.style.getPropertyValue('--accent')).toBe('#ffaa00');
   expect(root.style.getPropertyValue('--accent-strong')).toBe('rgba(255, 170, 0, 0.88)');
+  expect(root.style.getPropertyValue('--accent-rgb')).toBe('255, 170, 0');
 });

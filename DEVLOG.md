@@ -353,3 +353,8 @@
 - Treated `TypeError: Failed to fetch` blob reads as transient so the exporter retries with Response/FileReader fallbacks instead of aborting the mux pipeline.
 - Added Jest coverage to confirm MP4 conversions proceed when the primary arrayBuffer path rejects with the browser-specific TypeError.
 - Re-verified the suite with `npm test` and `npm run lint`.
+
+## 2025-10-27 - HUD & Controls Facelift
+- Restyled the HUD and controls shells with neon panel treatments, accent headers, and data chips to mirror the reference interface.
+- Rebuilt the volume and seek sliders as accent-driven bars that reuse the active track palette via the updated `--accent-rgb` CSS variable.
+- Synced automated checks with `npm run lint` and `npm test -- --coverage`.
