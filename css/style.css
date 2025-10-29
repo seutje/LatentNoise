@@ -1271,3 +1271,272 @@ body.fullscreen-active #byom-drawer {
     transform: translateY(0);
   }
 }
+#export-settings {
+  border: 1px solid var(--accent-dim, rgba(167, 139, 250, 0.45));
+  border-radius: 0;
+  padding: 0;
+  background:
+    linear-gradient(180deg, rgba(4, 8, 16, 0.92) 0%, rgba(2, 4, 10, 0.85) 100%),
+    repeating-linear-gradient(180deg, transparent 0 16px, var(--hud-grid, rgba(167, 139, 250, 0.12)) 16px 17px);
+  color: var(--text);
+  width: min(340px, 92vw);
+  box-shadow:
+    0 0 0 1px var(--accent-faint, rgba(167, 139, 250, 0.12)) inset,
+    0 24px 48px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+
+#export-settings::backdrop {
+  background: rgba(4, 6, 12, 0.62);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+#export-settings:not([open]) {
+  display: none;
+}
+
+#export-settings[data-open='true'] {
+  display: flex;
+}
+
+#export-settings form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  padding: clamp(1.5rem, 4vw, 2rem);
+}
+
+.export-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.export-dialog__title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.export-dialog__close {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0;
+  border: 1px solid var(--accent-dim, rgba(167, 139, 250, 0.45));
+  background: var(--accent-soft, rgba(167, 139, 250, 0.18));
+  color: var(--text);
+  font-size: 1.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.export-dialog__close:hover,
+.export-dialog__close:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  border-color: var(--accent-strong, var(--accent));
+  background: var(--accent-strong, var(--accent));
+  color: var(--bg);
+}
+
+.export-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.export-field > span {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hud-text-dim);
+}
+
+.export-field input,
+.export-field select {
+  font: inherit;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0;
+  border: 1px solid var(--accent-dim, rgba(167, 139, 250, 0.45));
+  background: var(--accent-soft, rgba(167, 139, 250, 0.18));
+  color: var(--text);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.export-field input:focus-visible,
+.export-field select:focus-visible {
+  outline: 2px solid var(--accent-strong, var(--accent));
+  outline-offset: 2px;
+  border-color: var(--accent-strong, var(--accent));
+  background: var(--accent-strong, var(--accent));
+  color: var(--bg);
+}
+
+.export-field input[disabled],
+.export-field select[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: rgba(12, 16, 28, 0.6);
+  border-color: rgba(120, 140, 180, 0.35);
+  color: var(--hud-text-dim, rgba(245, 247, 255, 0.6));
+}
+
+.export-dialog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.export-format {
+  border: 1px solid var(--accent-dim, rgba(167, 139, 250, 0.45));
+  border-radius: 0;
+  padding: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  background: var(--accent-soft, rgba(167, 139, 250, 0.18));
+  box-shadow: 0 0 0 1px var(--accent-faint, rgba(167, 139, 250, 0.12)) inset;
+}
+
+.export-format legend {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-text-dim);
+}
+
+.export-format-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0;
+  border: 1px solid var(--accent-dim, rgba(167, 139, 250, 0.45));
+  background: var(--accent-soft, rgba(167, 139, 250, 0.18));
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.export-format-option:hover {
+  border-color: var(--accent-strong, var(--accent));
+  background: var(--accent-strong, var(--accent));
+  color: var(--bg);
+  transform: translateY(-1px);
+}
+
+.export-format-option input {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0;
+  border: 2px solid var(--accent-dim, rgba(167, 139, 250, 0.45));
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.export-format-option input::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 0;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.export-format-option input:checked {
+  border-color: var(--accent-strong, var(--accent));
+  background: var(--accent-strong, var(--accent));
+}
+
+.export-format-option input:checked::before {
+  background: var(--bg);
+}
+
+.export-format-option input:focus-visible {
+  outline: 2px solid var(--accent-strong, var(--accent));
+  outline-offset: 2px;
+}
+
+.export-format-option span {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+
+.export-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.85rem;
+}
+
+.export-dialog-button {
+  font: inherit;
+  padding: 0.65rem 1.6rem;
+  border-radius: 0;
+  border: 1px solid var(--accent-dim, rgba(167, 139, 250, 0.45));
+  background: var(--accent-soft, rgba(167, 139, 250, 0.18));
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.export-dialog-button:hover,
+.export-dialog-button:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  border-color: var(--accent-strong, var(--accent));
+  background: var(--accent-strong, var(--accent));
+  color: var(--bg);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
+}
+
+.export-dialog-button--primary {
+  border: 1px solid var(--accent-strong, var(--accent));
+  background: var(--accent-strong, var(--accent));
+  color: var(--bg);
+}
+
+.export-dialog-button--primary:hover,
+.export-dialog-button--primary:focus-visible {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+}
+
+.export-dialog-button--secondary {
+  background: var(--accent-soft, rgba(167, 139, 250, 0.18));
+}
+
+@media (max-width: 640px) {
+  #export-settings form {
+    gap: 1.35rem;
+  }
+
+  .export-dialog-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .export-dialog__header {
+    flex-wrap: wrap;
+  }
+}
