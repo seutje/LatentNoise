@@ -288,6 +288,17 @@
 
 ---
 
+## Phase 23 — Real-Time Adaptive Training QA
+- [ ] Build an automated soak scenario that replays curated tracks, issues scripted positive/negative rewards, and verifies the reinforcement worker never stalls or leaks state across sessions.
+- [ ] Correlate HUD status colors, adaptive metrics, and worker deltas in integration tests so pending/success/error states reflect actual batch outcomes.
+- [ ] Publish an operator playbook that documents enable/disable flows, recovery from offline/error states, and exporting nudged weights after reinforcement wraps.
+
+**Acceptance:**
+- [ ] A 30-minute adaptive soak completes without orphaned workers, unflushed batches, or console errors.
+- [ ] QA sign-off notes indicator states match recorded metrics and the operator playbook is current in the docs.
+
+---
+
 ## Appendix — Quick Agent Bootstrap
 - [x] Generate stubs for every module with exported functions + TODOs.
 - [x] Insert minimal CSS for layout; render FPS counter to confirm loop.

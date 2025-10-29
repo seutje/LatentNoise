@@ -373,3 +373,8 @@
 - Added an Adaptive tab to the BYOM drawer with live reward metrics, enable/disable controls, and a nudged-model export action wired to toast notifications.
 - Extended BYOM app handlers to manage session lifecycle, nudge model weights in response to feedback batches, and refresh active playback with updated biases.
 - Persisted reinforcement history/versioned weights in IndexedDB with backward-compatible sanitization; updated manager imports/exports accordingly and reran `npm test -- --coverage`.
+
+## 2025-10-30 - Adaptive Reinforcement Test Coverage
+- Expanded the adaptive feedback buffer tests to confirm stale frames are pruned before rewards align to the most recent samples.
+- Added Jest suites that verify the training controller’s reinforcement branch and the worker’s `reinforce` handler stream sanitized batches and emit deltas only when expected.
+- Documented the live reinforcement workflow in the README, covering the BYOM toggle, keyboard shortcuts, and interpreting the HUD reward indicator states before rerunning `npm run lint` and `npm test`.

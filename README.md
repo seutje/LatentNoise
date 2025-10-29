@@ -56,8 +56,17 @@ Latent Noise follows the pipeline defined in the design document:
 | Adjust particle count | `[` / `]` |
 | Adjust intensity | `;` / `'` |
 | Cycle palette | `,` / `.` |
+| Open BYOM drawer | `Y` |
+| Send positive adaptive feedback | `U` |
+| Send negative adaptive feedback | `D` |
 
 HUD controls mirror these shortcuts: the volume slider controls the `GainNode` (persisted across sessions), a dedicated fullscreen button sits before playback controls, and buttons in the toolbar handle play, pause, previous/next, seeking, and playlist selection.
+
+### Adaptive reinforcement workflow
+1. Press **Y** (or use the HUD toggle) to open the BYOM drawer and switch to the **Adaptive** tab. Click **Enable adaptive session** to bind the live model to the reinforcement worker.
+2. Watch the HUD status pill: a teal glow means the channel is **Ready**, amber means **Pending** feedback is in flight, bright green confirms **Success**, red indicates an **Error**, and dim gray shows the controller is **Offline** until the backend responds.
+3. While the indicator is ready, deliver rewards with the HUD buttons or the keyboard — **U** nudges the model positively and **D** applies a negative correction. The system compensates for input latency by aligning each reward with the closest buffered frame.
+4. Track progress in the Adaptive metrics list: *Total*, *Positive*, *Negative*, and *Batches applied* increment once the worker accepts a batch, while the timestamps help correlate sessions with exported weights. Disable the session (or export the nudged model) from the same tab when you’re finished collecting feedback.
 
 ## Troubleshooting
 - **No audio or visuals?** Ensure you have clicked inside the page (audio contexts must be unlocked by a gesture) and confirm the browser has access to audio output.

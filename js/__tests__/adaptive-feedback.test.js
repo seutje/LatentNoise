@@ -125,4 +125,56 @@ describe('adaptive-feedback module', () => {
     expect(batches[0].samples).toHaveLength(8);
     unsubscribe();
   });
+
+  test('drops frames that age out of the buffer window', () => {
+    const featuresA = new Float32Array([0.1, 0.2, 0.3]);
+    const outputsA = new Float32Array([0.05, 0.25, -0.1]);
+    const featuresB = new Float32Array([0.4, 0.5, 0.6]);
+    const outputsB = new Float32Array([0.15, 0.35, 0.05]);
+    const featuresC = new Float32Array([0.7, 0.8, 0.9]);
+    const outputsC = new Float32Array([0.2, 0.4, 0.1]);
+
+    adaptiveFeedback.setDefaultLatency(50);
+
+    adaptiveFeedback.recordFrame({
+      timestamp: 1_000,
+      features: featuresA,
+      outputs: outputsA,
+      mappedParams: { spawnRate: 0.4 },
+    });
+
+    adaptiveFeedback.recordFrame({
+      timestamp: 5_000,
+      features: featuresB,
+      outputs: outputsB,
+      mappedParams: { spawnRate: 0.45 },
+    });
+
+    adaptiveFeedback.recordFrame({
+      timestamp: 18_500,
+      features: featuresC,
+      outputs: outputsC,
+      mappedParams: { spawnRate: 0.5 },
+    });
+
+    const staleSample = adaptiveFeedback.recordFeedback(1, {
+      timestamp: 5_050,
+      latencyMs: 40,
+    });
+
+    expect(staleSample).not.toBeNull();
+    expect(staleSample.targetTimestamp).toBe(5_010);
+    expect(staleSample.frameTimestamp).toBe(18_500);
+    expect(staleSample.features[2]).toBeCloseTo(0.9, 5);
+
+    const recentSample = adaptiveFeedback.recordFeedback(1, {
+      timestamp: 18_560,
+      latencyMs: 10,
+    });
+
+    expect(recentSample).not.toBeNull();
+    expect(recentSample.frameTimestamp).toBe(18_500);
+    expect(recentSample.features[0]).toBeCloseTo(0.7, 5);
+    expect(recentSample.outputs[1]).toBeCloseTo(0.4, 5);
+  });
 });
