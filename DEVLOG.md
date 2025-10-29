@@ -363,3 +363,8 @@
 - Wired the BYOM manual tweak sliders to compute safe preset override values for cohesion, vortex amount, and trail fade before launching training.
 - Persisted user overrides alongside BYOM entries so playback and future sessions reuse the customized preset values.
 - Validated the feature with `npm run lint` and `npm test -- --coverage`.
+
+## 2025-10-27 - BYOM Preset Override Expansion
+- Exposed palette background/base hue alongside every simulation and rendering channel in the BYOM manual tweaks drawer with normalized ranges and color pickers.
+- Centralized preset override sanitization and palette merging so BYOM training, playback, and persistence respect palette edits.
+- Added Jest coverage for the new override utilities and revalidated with `npm run lint` and `npm test -- --coverage`.

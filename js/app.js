@@ -14,6 +14,7 @@ import { init as initNotifications, notify } from './notifications.js';
 import { formatCorrelation } from './correlation-math.js';
 import { createRepeatController } from './repeat-controller.js';
 import * as videoExport from './video-export.js';
+import { clonePresetOverrides, mergePaletteOverrides } from './byom-overrides.js';
 
 const MODEL_FILES = Object.freeze([
   'models/meditation.json',
@@ -1179,41 +1180,6 @@ function resolveStoredTrackIndex(reference) {
   return 0;
 }
 
-function clonePresetOverrides(overrides) {
-  if (!overrides || typeof overrides !== 'object') {
-    return null;
-  }
-  const cloned = {};
-  let hasValue = false;
-  if (overrides.sim && typeof overrides.sim === 'object') {
-    const sim = {};
-    for (const [key, value] of Object.entries(overrides.sim)) {
-      const numeric = Number(value);
-      if (Number.isFinite(numeric)) {
-        sim[key] = numeric;
-      }
-    }
-    if (Object.keys(sim).length > 0) {
-      cloned.sim = sim;
-      hasValue = true;
-    }
-  }
-  if (overrides.render && typeof overrides.render === 'object') {
-    const render = {};
-    for (const [key, value] of Object.entries(overrides.render)) {
-      const numeric = Number(value);
-      if (Number.isFinite(numeric)) {
-        render[key] = numeric;
-      }
-    }
-    if (Object.keys(render).length > 0) {
-      cloned.render = render;
-      hasValue = true;
-    }
-  }
-  return hasValue ? cloned : null;
-}
-
 function createFileMetadata(file, summary) {
   if (file instanceof File) {
     const lastModified = Number.isFinite(file.lastModified) ? file.lastModified : 0;
@@ -1676,8 +1642,12 @@ function applyPresetForEntry(entry, options = {}) {
   }
 
   activePreset = preset;
-  if (preset?.palette) {
-    render.setPalette(preset.palette);
+
+  const paletteOverrides = entry?.presetOverrides?.palette ?? null;
+  const paletteBase = preset?.palette ?? render.getPalette();
+  if (paletteBase || paletteOverrides) {
+    const mergedPalette = mergePaletteOverrides(paletteBase, paletteOverrides);
+    render.setPalette(mergedPalette);
   }
 
   const forceSilence = options.forceSilence === true;

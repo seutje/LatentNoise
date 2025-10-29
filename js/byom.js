@@ -12,6 +12,7 @@ import {
   STORAGE_PATH,
 } from './byom-storage.js';
 import { extractImportEntries, createExportFileName } from './byom-manager-utils.js';
+import { clonePresetOverrides, normalizeHexColor } from './byom-overrides.js';
 
 const STATUS = Object.freeze({
   IDLE: 'idle',
@@ -100,37 +101,183 @@ const ORIENTATION_INFO = Object.freeze({
   inverse: { label: 'Inverse', orientation: 'inverse', inverse: true, sign: -1 },
 });
 
-const MANUAL_BASE_VALUES = Object.freeze({
-  sim: Object.freeze({
-    cohesion: 0.54,
-    vortexAmount: 0.28,
-  }),
-  render: Object.freeze({
-    trailFade: 0.68,
+const MANUAL_PARAM_DEFAULTS = /** @type {const} */ ([
+  ['sim', 'spawnRate', 0.35],
+  ['sim', 'fieldStrength', 0.6],
+  ['sim', 'cohesion', 0.5],
+  ['sim', 'repelImpulse', 0],
+  ['sim', 'vortexAmount', 0.4],
+  ['render', 'trailFade', 0.65],
+  ['render', 'glow', 0.5],
+  ['render', 'sizeJitter', 0.25],
+  ['render', 'hueShift', 0],
+  ['render', 'sparkleDensity', 0.05],
+  ['render', 'zoom', 1],
+]);
+
+function createManualBaseValues() {
+  const palette = {
+    background: normalizeHexColor('#050505') ?? '#050505',
+    baseHue: 218,
+  };
+  const sim = {};
+  const render = {};
+  MANUAL_PARAM_DEFAULTS.forEach(([group, param, fallback]) => {
+    const spec = getParamSpec(param);
+    const baseline = Number.isFinite(spec?.baseline) ? spec.baseline : fallback;
+    if (group === 'sim') {
+      sim[param] = baseline;
+    } else if (group === 'render') {
+      render[param] = baseline;
+    }
+  });
+  return Object.freeze({
+    palette: Object.freeze(palette),
+    sim: Object.freeze(sim),
+    render: Object.freeze(render),
+  });
+}
+
+const MANUAL_BASE_VALUES = createManualBaseValues();
+
+const PALETTE_PARAM_SPECS = Object.freeze({
+  baseHue: Object.freeze({
+    min: 0,
+    max: 360,
+    safeMin: 0,
+    safeMax: 360,
+    swing: 360,
+    safeSwing: 180,
+    baseline: MANUAL_BASE_VALUES.palette.baseHue,
   }),
 });
 
+const MANUAL_TWEAK_TYPE = Object.freeze({
+  COLOR: 'color',
+  RANGE: 'range',
+});
+
+function formatDegrees(value) {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+  return `${Math.round(value)}°`;
+}
+
+function formatMultiplier(value) {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+  return `${value.toFixed(2)}×`;
+}
+
 const MANUAL_TWEAKS = Object.freeze([
+  Object.freeze({
+    key: 'background',
+    label: 'Background',
+    group: 'palette',
+    param: 'background',
+    type: MANUAL_TWEAK_TYPE.COLOR,
+    inputSelector: '#byom-tweak-background',
+  }),
+  Object.freeze({
+    key: 'baseHue',
+    label: 'Base Hue',
+    group: 'palette',
+    param: 'baseHue',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-base-hue',
+    format: formatDegrees,
+  }),
+  Object.freeze({
+    key: 'spawnRate',
+    label: 'Spawn Rate',
+    group: 'sim',
+    param: 'spawnRate',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-spawn',
+  }),
+  Object.freeze({
+    key: 'fieldStrength',
+    label: 'Field Strength',
+    group: 'sim',
+    param: 'fieldStrength',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-field',
+  }),
   Object.freeze({
     key: 'cohesion',
     label: 'Cohesion',
     group: 'sim',
     param: 'cohesion',
+    type: MANUAL_TWEAK_TYPE.RANGE,
     inputSelector: '#byom-tweak-cohesion',
   }),
   Object.freeze({
-    key: 'vortex',
+    key: 'repelImpulse',
+    label: 'Repel Impulse',
+    group: 'sim',
+    param: 'repelImpulse',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-repel',
+  }),
+  Object.freeze({
+    key: 'vortexAmount',
     label: 'Vortex',
     group: 'sim',
     param: 'vortexAmount',
+    type: MANUAL_TWEAK_TYPE.RANGE,
     inputSelector: '#byom-tweak-vortex',
   }),
   Object.freeze({
-    key: 'trails',
+    key: 'trailFade',
     label: 'Trail Fade',
     group: 'render',
     param: 'trailFade',
+    type: MANUAL_TWEAK_TYPE.RANGE,
     inputSelector: '#byom-tweak-trails',
+  }),
+  Object.freeze({
+    key: 'glow',
+    label: 'Glow',
+    group: 'render',
+    param: 'glow',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-glow',
+  }),
+  Object.freeze({
+    key: 'sizeJitter',
+    label: 'Size Jitter',
+    group: 'render',
+    param: 'sizeJitter',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-jitter',
+  }),
+  Object.freeze({
+    key: 'hueShift',
+    label: 'Hue Shift',
+    group: 'render',
+    param: 'hueShift',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-hue',
+    format: formatDegrees,
+  }),
+  Object.freeze({
+    key: 'sparkleDensity',
+    label: 'Sparkle Density',
+    group: 'render',
+    param: 'sparkleDensity',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-sparkle',
+  }),
+  Object.freeze({
+    key: 'zoom',
+    label: 'Zoom',
+    group: 'render',
+    param: 'zoom',
+    type: MANUAL_TWEAK_TYPE.RANGE,
+    inputSelector: '#byom-tweak-zoom',
+    format: formatMultiplier,
   }),
 ]);
 
@@ -282,8 +429,21 @@ function denormalizeManualValue(normalized, bounds) {
   return bounds.min + normalized * range;
 }
 
+function getManualParamSpec(config) {
+  if (!config) {
+    return null;
+  }
+  if (config.group === 'palette') {
+    return PALETTE_PARAM_SPECS[config.param] ?? null;
+  }
+  return getParamSpec(config.param);
+}
+
 function computeManualBounds(config) {
-  const spec = getParamSpec(config.param);
+  if (config.type === MANUAL_TWEAK_TYPE.COLOR) {
+    return null;
+  }
+  const spec = getManualParamSpec(config);
   const baseGroup = MANUAL_BASE_VALUES[config.group] ?? {};
   const fallbackBaseline = baseGroup[config.param];
   if (!spec) {
@@ -352,36 +512,75 @@ function computeManualBounds(config) {
 }
 
 function computePresetValues(presetId) {
-  const base = {
-    sim: { ...MANUAL_BASE_VALUES.sim },
-    render: { ...MANUAL_BASE_VALUES.render },
-  };
+  const basePalette = { ...MANUAL_BASE_VALUES.palette };
+  const baseSim = { ...MANUAL_BASE_VALUES.sim };
+  const baseRender = { ...MANUAL_BASE_VALUES.render };
+
   if (!presetId) {
-    return base;
+    return {
+      palette: basePalette,
+      sim: baseSim,
+      render: baseRender,
+    };
   }
+
   const preset = getPreset(presetId);
   if (!preset) {
-    return base;
+    return {
+      palette: basePalette,
+      sim: baseSim,
+      render: baseRender,
+    };
   }
-  const adjusted = applyPreset(preset, base);
+
+  if (preset.palette) {
+    if (typeof preset.palette.background === 'string') {
+      const normalizedBackground = normalizeHexColor(preset.palette.background);
+      if (normalizedBackground) {
+        basePalette.background = normalizedBackground;
+      }
+    }
+    if (Number.isFinite(preset.palette.baseHue)) {
+      basePalette.baseHue = preset.palette.baseHue;
+    }
+  }
+
+  const adjusted = applyPreset(preset, { sim: { ...baseSim }, render: { ...baseRender } });
   return {
-    sim: { ...base.sim, ...(adjusted?.sim ?? {}) },
-    render: { ...base.render, ...(adjusted?.render ?? {}) },
+    palette: basePalette,
+    sim: { ...baseSim, ...(adjusted?.sim ?? {}) },
+    render: { ...baseRender, ...(adjusted?.render ?? {}) },
   };
 }
 
 function resolveManualBaseline(config, presetValues, bounds) {
   const groupValues = presetValues[config.group] ?? {};
   const manualValue = groupValues[config.param];
+  if (config.type === MANUAL_TWEAK_TYPE.COLOR) {
+    const candidate = typeof manualValue === 'string' ? manualValue : MANUAL_BASE_VALUES[config.group]?.[config.param];
+    const normalizedCandidate = normalizeHexColor(candidate);
+    if (normalizedCandidate) {
+      return normalizedCandidate;
+    }
+    const fallback = MANUAL_BASE_VALUES.palette.background;
+    return normalizeHexColor(fallback) ?? '#000000';
+  }
   if (Number.isFinite(manualValue)) {
     return clampValue(manualValue, bounds.min, bounds.max);
   }
-  return bounds.baseline;
+  if (bounds && Number.isFinite(bounds.baseline)) {
+    return bounds.baseline;
+  }
+  const fallbackNumeric = MANUAL_BASE_VALUES[config.group]?.[config.param];
+  return Number.isFinite(fallbackNumeric) ? fallbackNumeric : 0.5;
 }
 
-function formatManualValue(value) {
+function formatManualValue(value, config) {
   if (!Number.isFinite(value)) {
     return '—';
+  }
+  if (config && typeof config.format === 'function') {
+    return config.format(value);
   }
   return value.toFixed(2);
 }
@@ -391,14 +590,62 @@ function updateManualSliderMetadata(slider, config, actual) {
     return;
   }
   const label = config.label ?? config.key;
-  const formatted = formatManualValue(actual);
+  const formatted = formatManualValue(actual, config);
   slider.setAttribute('aria-valuetext', `${label} ${formatted}`);
   slider.title = `${label}: ${formatted}`;
+}
+
+function colorsEqual(colorA, colorB) {
+  const normalizedA = normalizeHexColor(colorA);
+  const normalizedB = normalizeHexColor(colorB);
+  if (normalizedA && normalizedB) {
+    return normalizedA === normalizedB;
+  }
+  if (typeof colorA === 'string' && typeof colorB === 'string') {
+    return colorA.toLowerCase() === colorB.toLowerCase();
+  }
+  return false;
+}
+
+function updateManualColorValue(key, color, { userInitiated = false, preserveModification = false } = {}) {
+  const config = MANUAL_TWEAK_LOOKUP.get(key);
+  if (!config || config.type !== MANUAL_TWEAK_TYPE.COLOR) {
+    return;
+  }
+  const tweak = state.manual.tweaks[key];
+  if (!tweak) {
+    return;
+  }
+  const normalized = normalizeHexColor(color);
+  if (!normalized) {
+    return;
+  }
+  tweak.bounds = null;
+  tweak.value = normalized;
+  tweak.actual = normalized;
+  if (tweak.slider instanceof HTMLInputElement) {
+    if (tweak.slider.value !== normalized) {
+      tweak.slider.value = normalized;
+    }
+    const label = config.label ?? config.key;
+    tweak.slider.setAttribute('aria-valuetext', `${label} ${normalized}`);
+    tweak.slider.title = `${label}: ${normalized}`;
+  }
+  const baseline = typeof tweak.baseline === 'string' ? normalizeHexColor(tweak.baseline) : null;
+  const differs = baseline ? normalized !== baseline : false;
+  if (userInitiated) {
+    tweak.modified = differs;
+  } else if (!preserveModification) {
+    tweak.modified = differs;
+  }
 }
 
 function updateManualTweakNormalized(key, normalized, { userInitiated = false, preserveModification = false } = {}) {
   const config = MANUAL_TWEAK_LOOKUP.get(key);
   if (!config) {
+    return;
+  }
+  if (config.type === MANUAL_TWEAK_TYPE.COLOR) {
     return;
   }
   const tweak = state.manual.tweaks[key];
@@ -437,6 +684,18 @@ function syncManualTweaksToPreset({ force = false } = {}) {
     if (!tweak) {
       return;
     }
+    if (config.type === MANUAL_TWEAK_TYPE.COLOR) {
+      const baseline = resolveManualBaseline(config, presetValues, null);
+      tweak.baseline = baseline;
+      tweak.bounds = null;
+      const shouldReset = force || !tweak.modified;
+      const nextValue = shouldReset
+        ? baseline
+        : (typeof tweak.actual === 'string' ? tweak.actual : baseline);
+      updateManualColorValue(config.key, nextValue, { preserveModification: !shouldReset });
+      tweak.modified = shouldReset ? false : !colorsEqual(tweak.actual, tweak.baseline);
+      return;
+    }
     const bounds = computeManualBounds(config);
     tweak.bounds = bounds;
     const baseline = resolveManualBaseline(config, presetValues, bounds);
@@ -470,8 +729,10 @@ function resetManualTweaks() {
 function getPresetOverrides() {
   const simOverrides = {};
   const renderOverrides = {};
+  const paletteOverrides = {};
   let hasSim = false;
   let hasRender = false;
+  let hasPalette = false;
   MANUAL_TWEAKS.forEach((config) => {
     const tweak = state.manual.tweaks[config.key];
     if (!tweak) {
@@ -479,6 +740,22 @@ function getPresetOverrides() {
     }
     const actual = tweak.actual;
     const baseline = tweak.baseline;
+    if (config.group === 'palette') {
+      if (config.type === MANUAL_TWEAK_TYPE.COLOR) {
+        if (typeof actual === 'string' && typeof baseline === 'string') {
+          if (!colorsEqual(actual, baseline)) {
+            paletteOverrides[config.param] = actual;
+            hasPalette = true;
+          }
+        }
+      } else if (Number.isFinite(actual) && Number.isFinite(baseline)) {
+        if (Math.abs(actual - baseline) > MANUAL_VALUE_EPSILON) {
+          paletteOverrides[config.param] = actual;
+          hasPalette = true;
+        }
+      }
+      return;
+    }
     if (!Number.isFinite(actual) || !Number.isFinite(baseline)) {
       return;
     }
@@ -493,7 +770,7 @@ function getPresetOverrides() {
       hasRender = true;
     }
   });
-  if (!hasSim && !hasRender) {
+  if (!hasSim && !hasRender && !hasPalette) {
     return null;
   }
   const overrides = {};
@@ -503,7 +780,10 @@ function getPresetOverrides() {
   if (hasRender) {
     overrides.render = renderOverrides;
   }
-  return overrides;
+  if (hasPalette) {
+    overrides.palette = paletteOverrides;
+  }
+  return clonePresetOverrides(overrides);
 }
 
 function handleManualTweakInput(event) {
@@ -512,7 +792,15 @@ function handleManualTweakInput(event) {
     return;
   }
   const key = target.dataset.tweakKey;
-  if (!key || !MANUAL_TWEAK_LOOKUP.has(key)) {
+  if (!key) {
+    return;
+  }
+  const config = MANUAL_TWEAK_LOOKUP.get(key);
+  if (!config) {
+    return;
+  }
+  if (config.type === MANUAL_TWEAK_TYPE.COLOR) {
+    updateManualColorValue(key, target.value, { userInitiated: true });
     return;
   }
   const numeric = Number(target.value);
@@ -520,13 +808,6 @@ function handleManualTweakInput(event) {
     return;
   }
   updateManualTweakNormalized(key, numeric, { userInitiated: true, preserveModification: false });
-  const tweak = state.manual.tweaks[key];
-  if (tweak) {
-    const baseline = Number.isFinite(tweak.baseline) ? tweak.baseline : tweak.actual;
-    tweak.modified = Number.isFinite(baseline)
-      ? Math.abs((tweak.actual ?? baseline) - baseline) > MANUAL_VALUE_EPSILON
-      : false;
-  }
 }
 
 function populateCorrelationSelectors() {
