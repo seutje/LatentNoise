@@ -1,6 +1,6 @@
 const DB_NAME = 'ln.byom';
 const STORE_NAME = 'models';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const MEMORY_STORE = new Map();
 const STORAGE_PATH = `${DB_NAME}.${STORE_NAME}`;
 
@@ -51,16 +51,33 @@ function openDatabase() {
   return dbPromise;
 }
 
+function augmentReinforcement(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return entry;
+  }
+  if (!entry.reinforcement) {
+    return { ...entry, reinforcement: normalizeReinforcement(null, entry.id) };
+  }
+  const normalized = normalizeReinforcement(entry.reinforcement, entry.id);
+  if (normalized === entry.reinforcement) {
+    return entry;
+  }
+  return { ...entry, reinforcement: normalized };
+}
+
 function fallbackList() {
-  return Array.from(MEMORY_STORE.values()).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  return Array.from(MEMORY_STORE.values())
+    .map((entry) => augmentReinforcement(entry))
+    .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
 
 function fallbackGet(id) {
-  return MEMORY_STORE.get(id) || null;
+  const entry = MEMORY_STORE.get(id) || null;
+  return augmentReinforcement(entry);
 }
 
 function fallbackPut(entry) {
-  MEMORY_STORE.set(entry.id, entry);
+  MEMORY_STORE.set(entry.id, augmentReinforcement(entry));
   return entry;
 }
 
@@ -88,8 +105,89 @@ function sanitizeEntry(entry) {
     summary: entry.summary ? { ...entry.summary } : null,
     model: entry.model ? { ...entry.model } : null,
     stats: entry.stats ? { ...entry.stats } : null,
+    reinforcement: normalizeReinforcement(entry.reinforcement || entry.adaptive || null, entry.id),
   };
   return normalized;
+}
+
+function normalizeReinforcementSession(session, entryId) {
+  if (!session || typeof session !== 'object') {
+    return null;
+  }
+  const sessionId = typeof session.id === 'string' && session.id ? session.id : `${entryId || 'session'}-${Date.now()}`;
+  const startedAt = Number.isFinite(session.startedAt) ? session.startedAt : 0;
+  const endedAt = Number.isFinite(session.endedAt) ? session.endedAt : 0;
+  const lastRewardAt = Number.isFinite(session.lastRewardAt) ? session.lastRewardAt : 0;
+  const batches = Number.isFinite(session.batches) ? Math.max(0, session.batches) : 0;
+  const positive = Number.isFinite(session.positive) ? Math.max(0, session.positive) : 0;
+  const negative = Number.isFinite(session.negative) ? Math.max(0, session.negative) : 0;
+  const total = Number.isFinite(session.total)
+    ? Math.max(0, session.total)
+    : Math.max(0, positive + negative);
+  const version = Number.isFinite(session.modelVersion) ? Math.max(0, session.modelVersion) : 0;
+  return {
+    id: sessionId,
+    startedAt,
+    endedAt,
+    lastRewardAt,
+    batches,
+    positive,
+    negative,
+    total,
+    modelVersion: version,
+    note: typeof session.note === 'string' ? session.note : '',
+  };
+}
+
+function normalizeReinforcementVersion(version, entryId) {
+  if (!version || typeof version !== 'object') {
+    return null;
+  }
+  const versionNumber = Number.isFinite(version.version) ? Math.max(1, version.version) : 1;
+  const updatedAt = Number.isFinite(version.updatedAt) ? version.updatedAt : Date.now();
+  let model = null;
+  if (version.model) {
+    try {
+      model = normalizeModel(version.model, {
+        ...(typeof version.model?.meta === 'object' ? version.model.meta : {}),
+        sessionId: typeof version.sessionId === 'string' ? version.sessionId : undefined,
+        entryId,
+      });
+    } catch (error) {
+      console.warn('[byom-storage] Failed to normalize reinforcement model version', error);
+      model = null;
+    }
+  }
+  return {
+    version: versionNumber,
+    updatedAt,
+    sessionId: typeof version.sessionId === 'string' ? version.sessionId : '',
+    model,
+  };
+}
+
+function normalizeReinforcement(reinforcement, entryId) {
+  const source = reinforcement && typeof reinforcement === 'object' ? reinforcement : {};
+  const sessions = Array.isArray(source.sessions)
+    ? source.sessions
+        .map((session) => normalizeReinforcementSession(session, entryId))
+        .filter(Boolean)
+    : [];
+  const versions = Array.isArray(source.versions)
+    ? source.versions
+        .map((version) => normalizeReinforcementVersion(version, entryId))
+        .filter(Boolean)
+    : [];
+  const latestSession = sessions.length > 0 ? sessions[sessions.length - 1] : null;
+  const latestVersion = versions.length > 0 ? versions[versions.length - 1] : null;
+  return {
+    sessions,
+    versions,
+    lastUpdatedAt: Number.isFinite(source.lastUpdatedAt)
+      ? source.lastUpdatedAt
+      : latestVersion?.updatedAt || latestSession?.endedAt || 0,
+    latestVersion: latestVersion?.version || source.latestVersion || 0,
+  };
 }
 
 function computeInvStd(stdArray) {
@@ -193,7 +291,9 @@ export async function listEntries() {
     const request = store.getAll();
     request.onsuccess = () => {
       const rows = Array.isArray(request.result) ? request.result : [];
-      const sorted = rows.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const sorted = rows
+        .map((entry) => augmentReinforcement(entry))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       resolve(sorted);
     };
     request.onerror = () => {
@@ -219,7 +319,8 @@ export async function getEntry(id) {
     const store = tx.objectStore(STORE_NAME);
     const request = store.get(id);
     request.onsuccess = () => {
-      resolve(request.result || null);
+      const entry = request.result || null;
+      resolve(augmentReinforcement(entry));
     };
     request.onerror = () => {
       console.warn('[byom-storage] get failed, falling back', request.error);
@@ -334,6 +435,7 @@ export function createEntryPayload({
   summary,
   model,
   stats,
+  reinforcement,
 }) {
   const entryId = id || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
@@ -346,6 +448,7 @@ export function createEntryPayload({
     summary,
     model: model ? normalizeModel(model, { name: entryId }) : null,
     stats,
+    reinforcement,
   });
 }
 

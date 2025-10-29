@@ -86,6 +86,7 @@ const FOCUSABLE_QUERY = FOCUSABLE_SELECTORS.join(',');
 const TABS = Object.freeze({
   TRAINING: 'training',
   MANAGER: 'manager',
+  ADAPTIVE: 'adaptive',
 });
 
 const MANAGER_STATUS_TONES = Object.freeze({
@@ -196,6 +197,30 @@ function renderCorrelationList() {
     list.append(item);
   });
   updateCorrelationControlsDisabledState();
+}
+
+function updateAdaptiveControlsDisabledState() {
+  const enableButton = state.elements.adaptiveEnableButton;
+  const disableButton = state.elements.adaptiveDisableButton;
+  const exportButton = state.elements.adaptiveExportButton;
+  const lockInputs = state.inputsDisabled || !state.support;
+  const active = Boolean(state.adaptive.active);
+
+  if (enableButton) {
+    const disabled = lockInputs || active;
+    enableButton.disabled = disabled;
+    enableButton.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  }
+  if (disableButton) {
+    const disabled = lockInputs || !active;
+    disableButton.disabled = disabled;
+    disableButton.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  }
+  if (exportButton) {
+    const disabled = lockInputs || !state.adaptive.canExport;
+    exportButton.disabled = disabled;
+    exportButton.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+  }
 }
 
 function populateCorrelationSelectors() {
@@ -469,6 +494,7 @@ const state = {
     entries: [],
     statusTone: MANAGER_STATUS_TONES.INFO,
   },
+  adaptive: getDefaultAdaptiveState(),
   training: {
     status: TRAINING_STATUS.IDLE,
     active: false,
@@ -510,13 +536,22 @@ const state = {
     tablist: null,
     trainingTab: null,
     managerTab: null,
+    adaptiveTab: null,
     trainingPanel: null,
     managerPanel: null,
+    adaptivePanel: null,
     managerImportButton: null,
     managerImportInput: null,
     managerStatus: null,
     managerList: null,
     managerEmpty: null,
+    adaptiveStatus: null,
+    adaptiveMetrics: null,
+    adaptiveEnableButton: null,
+    adaptiveDisableButton: null,
+    adaptiveExportButton: null,
+    adaptiveMetricsFields: {},
+    panelsContainer: null,
   },
   options: {
     modelOptions: [],
@@ -527,6 +562,9 @@ const state = {
     onPause: null,
     onResume: null,
     onImportEntries: null,
+    onAdaptiveEnable: null,
+    onAdaptiveDisable: null,
+    onAdaptiveExport: null,
   },
   lastFocusedElement: null,
 };
@@ -551,6 +589,27 @@ function getFocusableElements() {
     }
     return true;
   });
+}
+
+function getDefaultAdaptiveState() {
+  return {
+    sessionId: '',
+    entryId: '',
+    entryTitle: '',
+    active: false,
+    startedAt: 0,
+    lastRewardAt: 0,
+    lastUpdatedAt: 0,
+    canExport: false,
+    statusMessage: 'Adaptive session disabled.',
+    metrics: {
+      total: 0,
+      positive: 0,
+      negative: 0,
+      batches: 0,
+    },
+    summary: null,
+  };
 }
 
 function updateStatusMessage() {
@@ -955,6 +1014,7 @@ function setInputsDisabled(disabled) {
     }
   });
   updateCorrelationControlsDisabledState();
+  updateAdaptiveControlsDisabledState();
 }
 
 function ensureDataset() {
@@ -1214,6 +1274,8 @@ function resetForm() {
   state.analysisToken += 1;
   setInputsDisabled(false);
   setStatus(STATUS.IDLE);
+  state.adaptive = getDefaultAdaptiveState();
+  renderAdaptivePanel();
 }
 
 function handleFileChange(event) {
@@ -1539,6 +1601,210 @@ function populateModelOptions(modelOptions) {
   }
 }
 
+function createAdaptiveMetricsList() {
+  const metrics = [
+    { key: 'total', label: 'Total rewards' },
+    { key: 'positive', label: 'Positive' },
+    { key: 'negative', label: 'Negative' },
+    { key: 'batches', label: 'Batches applied' },
+    { key: 'startedAt', label: 'Started at' },
+    { key: 'lastRewardAt', label: 'Last reward' },
+    { key: 'lastUpdatedAt', label: 'Last update' },
+  ];
+  const list = document.createElement('dl');
+  list.id = 'byom-adaptive-metrics';
+  list.className = 'byom-adaptive-metrics';
+  const fields = {};
+  metrics.forEach((metric) => {
+    const row = document.createElement('div');
+    row.className = 'byom-adaptive-metric';
+    const dt = document.createElement('dt');
+    dt.textContent = metric.label;
+    dt.className = 'byom-adaptive-metric-label';
+    const dd = document.createElement('dd');
+    dd.dataset.field = metric.key;
+    dd.textContent = '—';
+    dd.className = 'byom-adaptive-metric-value';
+    row.append(dt, dd);
+    list.append(row);
+    fields[metric.key] = dd;
+  });
+  state.elements.adaptiveMetricsFields = fields;
+  return list;
+}
+
+function ensureAdaptiveSection() {
+  if (!state.elements.tablist || !state.elements.panelsContainer) {
+    return;
+  }
+  if (state.elements.adaptiveTab && state.elements.adaptivePanel) {
+    return;
+  }
+
+  const tab = document.createElement('button');
+  tab.type = 'button';
+  tab.id = 'byom-tab-adaptive';
+  tab.className = 'byom-tab';
+  tab.setAttribute('role', 'tab');
+  tab.setAttribute('aria-selected', 'false');
+  tab.setAttribute('aria-controls', 'byom-panel-adaptive');
+  tab.tabIndex = -1;
+  tab.textContent = 'Adaptive';
+
+  const panel = document.createElement('div');
+  panel.id = 'byom-panel-adaptive';
+  panel.className = 'byom-tabpanel';
+  panel.setAttribute('role', 'tabpanel');
+  panel.setAttribute('aria-labelledby', 'byom-tab-adaptive');
+  panel.hidden = true;
+
+  const section = document.createElement('section');
+  section.className = 'byom-section byom-adaptive';
+
+  const heading = document.createElement('h3');
+  heading.id = 'byom-adaptive-heading';
+  heading.className = 'byom-heading';
+  heading.textContent = 'Adaptive Session';
+  section.append(heading);
+
+  const status = document.createElement('p');
+  status.id = 'byom-adaptive-status';
+  status.className = 'byom-hint';
+  status.textContent = state.adaptive.statusMessage;
+  section.append(status);
+
+  const controls = document.createElement('div');
+  controls.className = 'byom-adaptive-controls';
+
+  const enableButton = document.createElement('button');
+  enableButton.type = 'button';
+  enableButton.id = 'byom-adaptive-enable';
+  enableButton.className = 'byom-secondary';
+  enableButton.textContent = 'Enable adaptive session';
+  controls.append(enableButton);
+
+  const disableButton = document.createElement('button');
+  disableButton.type = 'button';
+  disableButton.id = 'byom-adaptive-disable';
+  disableButton.className = 'byom-secondary';
+  disableButton.textContent = 'Disable session';
+  controls.append(disableButton);
+
+  const exportButton = document.createElement('button');
+  exportButton.type = 'button';
+  exportButton.id = 'byom-adaptive-export';
+  exportButton.className = 'byom-secondary';
+  exportButton.textContent = 'Export nudged model';
+  controls.append(exportButton);
+
+  section.append(controls);
+
+  const metricsList = createAdaptiveMetricsList();
+  section.append(metricsList);
+
+  panel.append(section);
+  state.elements.tablist.append(tab);
+  state.elements.panelsContainer.append(panel);
+
+  state.elements.adaptiveTab = tab;
+  state.elements.adaptivePanel = panel;
+  state.elements.adaptiveStatus = status;
+  state.elements.adaptiveEnableButton = enableButton;
+  state.elements.adaptiveDisableButton = disableButton;
+  state.elements.adaptiveExportButton = exportButton;
+  state.elements.adaptiveMetrics = metricsList;
+  updateAdaptiveControlsDisabledState();
+  renderAdaptivePanel();
+}
+
+function formatAdaptiveTimestamp(timestamp) {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return '—';
+  }
+  try {
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (error) {
+    console.warn('[byom] Failed to format adaptive timestamp', error);
+    return new Date(timestamp).toISOString();
+  }
+}
+
+function renderAdaptiveMetrics() {
+  const fields = state.elements.adaptiveMetricsFields;
+  if (!fields || typeof fields !== 'object') {
+    return;
+  }
+  const metrics = state.adaptive.metrics || {};
+  const { total = 0, positive = 0, negative = 0, batches = 0 } = metrics;
+  if (fields.total) {
+    fields.total.textContent = String(Math.max(0, Math.floor(total)));
+  }
+  if (fields.positive) {
+    fields.positive.textContent = String(Math.max(0, Math.floor(positive)));
+  }
+  if (fields.negative) {
+    fields.negative.textContent = String(Math.max(0, Math.floor(negative)));
+  }
+  if (fields.batches) {
+    fields.batches.textContent = String(Math.max(0, Math.floor(batches)));
+  }
+  if (fields.startedAt) {
+    fields.startedAt.textContent = formatAdaptiveTimestamp(state.adaptive.startedAt);
+  }
+  if (fields.lastRewardAt) {
+    fields.lastRewardAt.textContent = formatAdaptiveTimestamp(state.adaptive.lastRewardAt);
+  }
+  if (fields.lastUpdatedAt) {
+    fields.lastUpdatedAt.textContent = formatAdaptiveTimestamp(state.adaptive.lastUpdatedAt);
+  }
+}
+
+function renderAdaptiveStatus() {
+  if (!state.elements.adaptiveStatus) {
+    return;
+  }
+  const title = state.adaptive.entryTitle ? ` for ${state.adaptive.entryTitle}` : '';
+  const message = state.adaptive.statusMessage || (state.adaptive.active
+    ? `Adaptive session active${title}.`
+    : 'Adaptive session disabled.');
+  state.elements.adaptiveStatus.textContent = message;
+}
+
+function renderAdaptivePanel() {
+  renderAdaptiveStatus();
+  renderAdaptiveMetrics();
+  updateAdaptiveControlsDisabledState();
+}
+
+function normalizeAdaptiveMetrics(metrics, fallback) {
+  const base = {
+    total: 0,
+    positive: 0,
+    negative: 0,
+    batches: 0,
+    ...(fallback || {}),
+  };
+  if (!metrics || typeof metrics !== 'object') {
+    return base;
+  }
+  const result = { ...base };
+  const numericKeys = ['total', 'positive', 'negative', 'batches'];
+  numericKeys.forEach((key) => {
+    if (Number.isFinite(metrics[key])) {
+      result[key] = Math.max(0, Number(metrics[key]));
+    }
+  });
+  return result;
+}
+
+function setAdaptiveState(nextState) {
+  state.adaptive = {
+    ...state.adaptive,
+    ...nextState,
+  };
+  renderAdaptivePanel();
+}
+
 function getTabButtons() {
   const tabs = [];
   if (state.elements.trainingTab instanceof HTMLElement) {
@@ -1547,15 +1813,20 @@ function getTabButtons() {
   if (state.elements.managerTab instanceof HTMLElement) {
     tabs.push(state.elements.managerTab);
   }
+  if (state.elements.adaptiveTab instanceof HTMLElement) {
+    tabs.push(state.elements.adaptiveTab);
+  }
   return tabs;
 }
 
 function setActiveTab(tabId, { focus = false } = {}) {
-  const nextTab = tabId === TABS.MANAGER ? TABS.MANAGER : TABS.TRAINING;
+  const allowed = new Set(Object.values(TABS));
+  const nextTab = allowed.has(tabId) ? tabId : TABS.TRAINING;
   state.activeTab = nextTab;
 
   const trainingSelected = nextTab === TABS.TRAINING;
   const managerSelected = nextTab === TABS.MANAGER;
+  const adaptiveSelected = nextTab === TABS.ADAPTIVE;
 
   if (state.elements.trainingTab) {
     state.elements.trainingTab.setAttribute('aria-selected', trainingSelected ? 'true' : 'false');
@@ -1565,15 +1836,27 @@ function setActiveTab(tabId, { focus = false } = {}) {
     state.elements.managerTab.setAttribute('aria-selected', managerSelected ? 'true' : 'false');
     state.elements.managerTab.tabIndex = managerSelected ? 0 : -1;
   }
+  if (state.elements.adaptiveTab) {
+    state.elements.adaptiveTab.setAttribute('aria-selected', adaptiveSelected ? 'true' : 'false');
+    state.elements.adaptiveTab.tabIndex = adaptiveSelected ? 0 : -1;
+  }
   if (state.elements.trainingPanel) {
     state.elements.trainingPanel.hidden = !trainingSelected;
   }
   if (state.elements.managerPanel) {
     state.elements.managerPanel.hidden = !managerSelected;
   }
+  if (state.elements.adaptivePanel) {
+    state.elements.adaptivePanel.hidden = !adaptiveSelected;
+  }
 
   if (focus) {
-    const activeTabEl = nextTab === TABS.MANAGER ? state.elements.managerTab : state.elements.trainingTab;
+    let activeTabEl = state.elements.trainingTab;
+    if (managerSelected) {
+      activeTabEl = state.elements.managerTab;
+    } else if (adaptiveSelected) {
+      activeTabEl = state.elements.adaptiveTab;
+    }
     activeTabEl?.focus();
   }
 
@@ -1583,6 +1866,8 @@ function setActiveTab(tabId, { focus = false } = {}) {
     } else {
       renderManagerEntries();
     }
+  } else if (adaptiveSelected) {
+    renderAdaptivePanel();
   }
   updateManagerBusyState();
 }
@@ -1596,6 +1881,8 @@ function handleTabClick(event) {
     setActiveTab(TABS.TRAINING, { focus: true });
   } else if (target === state.elements.managerTab) {
     setActiveTab(TABS.MANAGER, { focus: true });
+  } else if (target === state.elements.adaptiveTab) {
+    setActiveTab(TABS.ADAPTIVE, { focus: true });
   }
 }
 
@@ -1629,6 +1916,8 @@ function handleTabKeydown(event) {
   const nextTab = tabs[nextIndex];
   if (nextTab === state.elements.managerTab) {
     setActiveTab(TABS.MANAGER, { focus: true });
+  } else if (nextTab === state.elements.adaptiveTab) {
+    setActiveTab(TABS.ADAPTIVE, { focus: true });
   } else {
     setActiveTab(TABS.TRAINING, { focus: true });
   }
@@ -1940,6 +2229,36 @@ function handleManagerListClick(event) {
   }
 }
 
+function handleAdaptiveEnable(event) {
+  event.preventDefault();
+  if (!state.support || state.inputsDisabled || state.adaptive.active) {
+    return;
+  }
+  if (typeof state.handlers.onAdaptiveEnable === 'function') {
+    state.handlers.onAdaptiveEnable();
+  }
+}
+
+function handleAdaptiveDisable(event) {
+  event.preventDefault();
+  if (!state.support || state.inputsDisabled || !state.adaptive.active) {
+    return;
+  }
+  if (typeof state.handlers.onAdaptiveDisable === 'function') {
+    state.handlers.onAdaptiveDisable();
+  }
+}
+
+function handleAdaptiveExport(event) {
+  event.preventDefault();
+  if (!state.support || state.inputsDisabled || !state.adaptive.canExport) {
+    return;
+  }
+  if (typeof state.handlers.onAdaptiveExport === 'function') {
+    state.handlers.onAdaptiveExport();
+  }
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   try {
@@ -1993,6 +2312,7 @@ function updateSupportVisibility() {
     state.elements.correlationSection?.removeAttribute('aria-hidden');
     updateCorrelationControlsDisabledState();
     updateManagerBusyState();
+    updateAdaptiveControlsDisabledState();
     return;
   }
   state.elements.toggle.disabled = true;
@@ -2010,6 +2330,7 @@ function updateSupportVisibility() {
   }
   updateCorrelationControlsDisabledState();
   updateManagerBusyState();
+  updateAdaptiveControlsDisabledState();
 }
 
 export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } = {}) {
@@ -2048,6 +2369,7 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.managerTab = drawer.querySelector('#byom-tab-manager');
   state.elements.trainingPanel = drawer.querySelector('#byom-panel-training');
   state.elements.managerPanel = drawer.querySelector('#byom-panel-manager');
+  state.elements.panelsContainer = drawer.querySelector('.byom-panels');
   state.elements.managerImportButton = drawer.querySelector('#byom-manager-import');
   state.elements.managerImportInput = drawer.querySelector('#byom-manager-import-input');
   state.elements.managerStatus = drawer.querySelector('#byom-manager-status');
@@ -2069,6 +2391,7 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.options.modelOptions = Array.isArray(modelOptions) ? modelOptions.slice() : [];
   populatePresetOptions();
   populateModelOptions(state.options.modelOptions);
+  ensureAdaptiveSection();
   populateCorrelationSelectors();
   renderCorrelationList();
   updateSupportVisibility();
@@ -2097,6 +2420,9 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   const correlationCancelButton = state.elements.correlationDialog?.querySelector('button[data-action="cancel-correlation"]');
   correlationCancelButton?.addEventListener('click', handleCorrelationDialogCancel);
   state.elements.correlationDialog?.addEventListener('cancel', handleCorrelationDialogCancel);
+  state.elements.adaptiveEnableButton?.addEventListener('click', handleAdaptiveEnable);
+  state.elements.adaptiveDisableButton?.addEventListener('click', handleAdaptiveDisable);
+  state.elements.adaptiveExportButton?.addEventListener('click', handleAdaptiveExport);
 
   state.elements.trainingTab?.addEventListener('click', handleTabClick);
   state.elements.managerTab?.addEventListener('click', handleTabClick);
@@ -2147,12 +2473,24 @@ export function setModelOptions(modelOptions) {
   updateStatusFromInputs();
 }
 
-export function setHandlers({ onTrain, onCancel, onPause, onResume, onImportEntries } = {}) {
+export function setHandlers({
+  onTrain,
+  onCancel,
+  onPause,
+  onResume,
+  onImportEntries,
+  onAdaptiveEnable,
+  onAdaptiveDisable,
+  onAdaptiveExport,
+} = {}) {
   state.handlers.onTrain = typeof onTrain === 'function' ? onTrain : null;
   state.handlers.onCancel = typeof onCancel === 'function' ? onCancel : null;
   state.handlers.onPause = typeof onPause === 'function' ? onPause : null;
   state.handlers.onResume = typeof onResume === 'function' ? onResume : null;
   state.handlers.onImportEntries = typeof onImportEntries === 'function' ? onImportEntries : null;
+  state.handlers.onAdaptiveEnable = typeof onAdaptiveEnable === 'function' ? onAdaptiveEnable : null;
+  state.handlers.onAdaptiveDisable = typeof onAdaptiveDisable === 'function' ? onAdaptiveDisable : null;
+  state.handlers.onAdaptiveExport = typeof onAdaptiveExport === 'function' ? onAdaptiveExport : null;
 }
 
 export function setTrainingStatus(status, detail) {
@@ -2169,4 +2507,55 @@ export function refreshManagerEntries(options = {}) {
 
 export function reset() {
   resetForm();
+}
+
+export function setAdaptiveSession(session = {}) {
+  ensureAdaptiveSection();
+  const previous = state.adaptive;
+  const nextActive = session.active !== undefined ? Boolean(session.active) : previous.active;
+  const metrics = normalizeAdaptiveMetrics(session.metrics, previous.metrics);
+  const startedAtSource = Number.isFinite(session.startedAt)
+    ? Number(session.startedAt)
+    : nextActive
+      ? previous.startedAt || Date.now()
+      : previous.startedAt;
+  const summary = session.summary === undefined ? previous.summary : session.summary;
+  const statusMessage =
+    typeof session.statusMessage === 'string'
+      ? session.statusMessage
+      : nextActive
+        ? ''
+        : previous.statusMessage;
+  setAdaptiveState({
+    sessionId: typeof session.sessionId === 'string' ? session.sessionId : previous.sessionId,
+    entryId: typeof session.entryId === 'string' ? session.entryId : previous.entryId,
+    entryTitle: typeof session.entryTitle === 'string' ? session.entryTitle : previous.entryTitle,
+    active: nextActive,
+    startedAt: Number.isFinite(startedAtSource) && startedAtSource > 0 ? startedAtSource : 0,
+    lastRewardAt: Number.isFinite(session.lastRewardAt) ? Number(session.lastRewardAt) : previous.lastRewardAt,
+    lastUpdatedAt: Number.isFinite(session.lastUpdatedAt) ? Number(session.lastUpdatedAt) : previous.lastUpdatedAt,
+    canExport: session.canExport !== undefined ? Boolean(session.canExport) : previous.canExport,
+    statusMessage,
+    metrics,
+    summary,
+  });
+}
+
+export function updateAdaptiveMetrics(metrics = {}) {
+  ensureAdaptiveSection();
+  const mergedMetrics = normalizeAdaptiveMetrics(metrics, state.adaptive.metrics);
+  setAdaptiveState({
+    metrics: mergedMetrics,
+    lastRewardAt: Number.isFinite(metrics.lastRewardAt)
+      ? Number(metrics.lastRewardAt)
+      : state.adaptive.lastRewardAt,
+    lastUpdatedAt: Number.isFinite(metrics.lastUpdatedAt)
+      ? Number(metrics.lastUpdatedAt)
+      : state.adaptive.lastUpdatedAt,
+    canExport: metrics.canExport !== undefined ? Boolean(metrics.canExport) : state.adaptive.canExport,
+    statusMessage:
+      typeof metrics.statusMessage === 'string' && metrics.statusMessage
+        ? metrics.statusMessage
+        : state.adaptive.statusMessage,
+  });
 }

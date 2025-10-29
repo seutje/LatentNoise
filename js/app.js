@@ -62,6 +62,519 @@ function resolveCorrelationOrientation(metrics) {
   return 'Direct';
 }
 
+function createAdaptiveSessionId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `adaptive-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+}
+
+function cloneNumericArray(source) {
+  if (Array.isArray(source)) {
+    return source.map((value) => {
+      if (Array.isArray(value)) {
+        return cloneNumericArray(value);
+      }
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    });
+  }
+  if (source instanceof Float32Array ||
+    source instanceof Float64Array ||
+    source instanceof Int32Array ||
+    source instanceof Int16Array ||
+    source instanceof Int8Array ||
+    source instanceof Uint32Array ||
+    source instanceof Uint16Array ||
+    source instanceof Uint8Array) {
+    return Array.from(source, (value) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : 0;
+    });
+  }
+  if (typeof source === 'number') {
+    return [Number.isFinite(source) ? source : 0];
+  }
+  return [];
+}
+
+function cloneLayerDefinition(layer) {
+  if (!layer || typeof layer !== 'object') {
+    return {
+      activation: 'linear',
+      act: 'linear',
+      weights: [],
+      bias: [],
+    };
+  }
+  const activation = typeof layer.activation === 'string' ? layer.activation : 'linear';
+  const weights = cloneNumericArray(layer.weights ?? []);
+  const biasValues = cloneNumericArray(layer.bias ?? layer.biases ?? []);
+  const nextLayer = {
+    activation,
+    act: typeof layer.act === 'string' ? layer.act : activation,
+    weights,
+    bias: biasValues.slice(),
+  };
+  if (Array.isArray(layer.biases)) {
+    nextLayer.biases = biasValues.slice();
+  }
+  if (Array.isArray(layer.shape)) {
+    nextLayer.shape = cloneNumericArray(layer.shape);
+  }
+  if (typeof layer.dropout === 'number') {
+    nextLayer.dropout = layer.dropout;
+  }
+  return nextLayer;
+}
+
+function cloneModelDefinition(definition) {
+  if (!definition || typeof definition !== 'object') {
+    return null;
+  }
+  const normalizationMean = cloneNumericArray(definition.normalization?.mean ?? definition.norm?.mean ?? []);
+  const normalizationStd = cloneNumericArray(definition.normalization?.std ?? definition.norm?.std ?? []);
+  const normMean = cloneNumericArray(definition.norm?.mean ?? normalizationMean);
+  const normInvStd = cloneNumericArray(definition.norm?.invStd ?? []);
+  const clone = {
+    input: Number(definition.input) || Number(definition.input ?? 0) || 0,
+    normalization: {
+      mean: normalizationMean.slice(),
+      std: normalizationStd.length === normalizationMean.length
+        ? normalizationStd.slice()
+        : normalizationMean.map(() => 1),
+    },
+    norm: {
+      mean: normMean.length === normalizationMean.length ? normMean.slice() : normalizationMean.slice(),
+      invStd: normInvStd.length === normalizationMean.length ? normInvStd.slice() : normalizationMean.map(() => 1),
+    },
+    layers: Array.isArray(definition.layers) ? definition.layers.map(cloneLayerDefinition) : [],
+    meta: definition.meta && typeof definition.meta === 'object' ? { ...definition.meta } : {},
+  };
+  if ('output' in definition && Number.isFinite(definition.output)) {
+    clone.output = Number(definition.output);
+  }
+  if (typeof definition.name === 'string') {
+    clone.name = definition.name;
+  }
+  if (Number.isFinite(definition.version)) {
+    clone.version = Number(definition.version);
+  }
+  return clone;
+}
+
+function applyAdaptiveBatchToModel(model, batch) {
+  if (!model || !Array.isArray(model.layers) || model.layers.length === 0) {
+    return false;
+  }
+  const lastLayer = model.layers[model.layers.length - 1];
+  if (!lastLayer) {
+    return false;
+  }
+  const biases = Array.isArray(lastLayer.bias)
+    ? lastLayer.bias
+    : Array.isArray(lastLayer.biases)
+      ? lastLayer.biases
+      : null;
+  if (!biases || biases.length === 0) {
+    return false;
+  }
+  const samples = Array.isArray(batch?.samples) ? batch.samples : [];
+  if (samples.length === 0) {
+    return false;
+  }
+  const sums = new Array(biases.length).fill(0);
+  let count = 0;
+  samples.forEach((sample) => {
+    if (!sample) {
+      return;
+    }
+    const outputs = Array.isArray(sample.outputs) || sample.outputs instanceof Float32Array
+      ? sample.outputs
+      : [];
+    const targets = Array.isArray(sample.targetOutputs) || sample.targetOutputs instanceof Float32Array
+      ? sample.targetOutputs
+      : [];
+    if (outputs.length !== biases.length || targets.length !== biases.length) {
+      return;
+    }
+    for (let i = 0; i < biases.length; i += 1) {
+      const outputValue = Number(outputs[i]);
+      const targetValue = Number(targets[i]);
+      if (Number.isFinite(outputValue) && Number.isFinite(targetValue)) {
+        sums[i] += targetValue - outputValue;
+      }
+    }
+    count += 1;
+  });
+  if (count === 0) {
+    return false;
+  }
+  const rate = ADAPTIVE_LEARNING_RATE / count;
+  let changed = false;
+  for (let i = 0; i < biases.length; i += 1) {
+    const biasValue = Number(biases[i]);
+    const next = Number.isFinite(biasValue) ? biasValue + sums[i] * rate : sums[i] * rate;
+    const clamped = Math.max(-ADAPTIVE_BIAS_CLAMP, Math.min(ADAPTIVE_BIAS_CLAMP, next));
+    if (!Number.isFinite(biases[i]) || Math.abs(clamped - biasValue) > 1e-6) {
+      changed = true;
+    }
+    biases[i] = clamped;
+    if (Array.isArray(lastLayer.biases)) {
+      lastLayer.biases[i] = clamped;
+    }
+  }
+  if (!changed) {
+    return false;
+  }
+  const meta = typeof model.meta === 'object' && model.meta !== null ? model.meta : {};
+  const adaptiveMeta = typeof meta.adaptive === 'object' && meta.adaptive !== null ? { ...meta.adaptive } : {};
+  adaptiveMeta.revision = Number.isFinite(adaptiveMeta.revision) ? adaptiveMeta.revision + 1 : 1;
+  adaptiveMeta.updatedAt = Date.now();
+  adaptiveMeta.sessionId = adaptiveSessionState.sessionId || adaptiveMeta.sessionId || '';
+  model.meta = {
+    ...meta,
+    adaptive: adaptiveMeta,
+  };
+  return true;
+}
+
+function downloadJson(payload, filename) {
+  try {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body?.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('[app] Failed to export adaptive model', error);
+  }
+}
+
+function clearAdaptiveListeners() {
+  adaptiveSessionState.unsubscribers.forEach((unsubscribe) => {
+    try {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    } catch (error) {
+      console.warn('[app] adaptive listener cleanup failed', error);
+    }
+  });
+  adaptiveSessionState.unsubscribers = [];
+}
+
+function updateAdaptiveUi({ statusMessage } = {}) {
+  const canExport = adaptiveSessionState.hasAppliedUpdate && Boolean(adaptiveSessionState.lastModel);
+  const metrics = {
+    total: adaptiveSessionState.total,
+    positive: adaptiveSessionState.positive,
+    negative: adaptiveSessionState.negative,
+    batches: adaptiveSessionState.batches,
+  };
+  const payload = {
+    active: adaptiveSessionState.active,
+    sessionId: adaptiveSessionState.sessionId,
+    entryId: adaptiveSessionState.entryId,
+    entryTitle: adaptiveSessionState.entryTitle,
+    startedAt: adaptiveSessionState.startedAt,
+    lastRewardAt: adaptiveSessionState.lastRewardAt,
+    lastUpdatedAt: adaptiveSessionState.lastUpdatedAt,
+    metrics,
+    canExport,
+    summary: adaptiveSessionState.summary,
+  };
+  if (statusMessage !== undefined) {
+    payload.statusMessage = statusMessage;
+  }
+  byom.setAdaptiveSession(payload);
+}
+
+function bumpAdaptiveMetrics(update) {
+  const metricsUpdate = {
+    total: adaptiveSessionState.total,
+    positive: adaptiveSessionState.positive,
+    negative: adaptiveSessionState.negative,
+    batches: adaptiveSessionState.batches,
+    lastRewardAt: adaptiveSessionState.lastRewardAt,
+    lastUpdatedAt: adaptiveSessionState.lastUpdatedAt,
+    canExport: adaptiveSessionState.hasAppliedUpdate && Boolean(adaptiveSessionState.lastModel),
+    ...(update || {}),
+  };
+  byom.updateAdaptiveMetrics(metricsUpdate);
+}
+
+function getAdaptiveEntry() {
+  if (!adaptiveSessionState.entryId) {
+    return null;
+  }
+  return playlistEntries.find((candidate) => candidate.id === adaptiveSessionState.entryId) ?? null;
+}
+
+async function startAdaptiveSession() {
+  if (adaptiveSessionState.active) {
+    notify('Adaptive session already running.', { tone: 'warning' });
+    return;
+  }
+  if (!adaptiveFeedbackState.available) {
+    notify('Adaptive feedback service is offline.', { tone: 'warning' });
+    return;
+  }
+  const entry = getCurrentEntry();
+  if (!isByomEntry(entry)) {
+    notify('Adaptive sessions require an active BYOM entry.', { tone: 'warning' });
+    return;
+  }
+  if (!entry.modelDefinition) {
+    notify('Active BYOM entry is missing a model definition.', { tone: 'warning' });
+    return;
+  }
+  const originalModel = cloneModelDefinition(entry.modelDefinition);
+  if (!originalModel) {
+    notify('Adaptive tuning is unavailable for this model.', { tone: 'warning' });
+    return;
+  }
+
+  clearAdaptiveListeners();
+  adaptiveSessionState.active = true;
+  adaptiveSessionState.sessionId = createAdaptiveSessionId();
+  adaptiveSessionState.entryId = entry.id;
+  adaptiveSessionState.entryTitle = entry.title ?? entry.id;
+  adaptiveSessionState.startedAt = Date.now();
+  adaptiveSessionState.lastRewardAt = 0;
+  adaptiveSessionState.lastUpdatedAt = 0;
+  adaptiveSessionState.positive = 0;
+  adaptiveSessionState.negative = 0;
+  adaptiveSessionState.total = 0;
+  adaptiveSessionState.batches = 0;
+  adaptiveSessionState.originalModel = originalModel;
+  adaptiveSessionState.workingModel = cloneModelDefinition(originalModel);
+  adaptiveSessionState.lastModel = null;
+  adaptiveSessionState.summary = null;
+  adaptiveSessionState.hasAppliedUpdate = false;
+  adaptiveSessionState.pendingVersion = 0;
+  adaptiveSessionState.version = Number.isFinite(entry.reinforcement?.latestVersion)
+    ? entry.reinforcement.latestVersion
+    : Array.isArray(entry.reinforcement?.versions)
+      ? entry.reinforcement.versions.length
+      : 0;
+
+  adaptiveSessionState.unsubscribers.push(adaptiveFeedback.on('feedback', handleAdaptiveFeedbackSample));
+  adaptiveSessionState.unsubscribers.push(adaptiveFeedback.on('batch', handleAdaptiveFeedbackBatch));
+
+  updateAdaptiveUi({ statusMessage: `Adaptive session active for ${adaptiveSessionState.entryTitle}.` });
+  notify(`Adaptive session started for ${adaptiveSessionState.entryTitle}.`, { tone: 'info' });
+}
+
+function handleAdaptiveFeedbackSample(sample) {
+  if (!adaptiveSessionState.active) {
+    return;
+  }
+  if (!sample) {
+    return;
+  }
+  const score = Number(sample.score);
+  adaptiveSessionState.total += 1;
+  if (Number.isFinite(score) && score < 0) {
+    adaptiveSessionState.negative += 1;
+  } else {
+    adaptiveSessionState.positive += 1;
+  }
+  adaptiveSessionState.lastRewardAt = Date.now();
+  bumpAdaptiveMetrics();
+}
+
+function handleAdaptiveFeedbackBatch(batch) {
+  if (!adaptiveSessionState.active || !adaptiveSessionState.workingModel) {
+    return;
+  }
+  const samples = Array.isArray(batch?.samples) ? batch.samples : [];
+  if (samples.length === 0) {
+    return;
+  }
+  const changed = applyAdaptiveBatchToModel(adaptiveSessionState.workingModel, batch);
+  adaptiveSessionState.batches += 1;
+  adaptiveSessionState.lastUpdatedAt = Date.now();
+
+  if (changed) {
+    const entry = getAdaptiveEntry();
+    if (entry) {
+      entry.modelDefinition = cloneModelDefinition(adaptiveSessionState.workingModel);
+      modelCache.set(entry.id, entry.modelDefinition);
+      if (entry.id === activeModelEntryId) {
+        void prepareModelForEntry(entry);
+      }
+      adaptiveSessionState.lastModel = cloneModelDefinition(entry.modelDefinition);
+    } else {
+      adaptiveSessionState.lastModel = cloneModelDefinition(adaptiveSessionState.workingModel);
+    }
+    if (!adaptiveSessionState.hasAppliedUpdate) {
+      adaptiveSessionState.hasAppliedUpdate = true;
+      adaptiveSessionState.pendingVersion = adaptiveSessionState.version + 1;
+      notify(`Adaptive update applied to ${adaptiveSessionState.entryTitle}.`, { tone: 'success' });
+    }
+  }
+
+  bumpAdaptiveMetrics({ batches: adaptiveSessionState.batches });
+}
+
+async function persistAdaptiveSession(entry, summary, modelDefinition) {
+  if (!entry || !entry.id || !modelDefinition) {
+    return;
+  }
+  const reinforcement = entry.reinforcement && typeof entry.reinforcement === 'object'
+    ? {
+      sessions: Array.isArray(entry.reinforcement.sessions) ? entry.reinforcement.sessions.slice() : [],
+      versions: Array.isArray(entry.reinforcement.versions) ? entry.reinforcement.versions.slice() : [],
+      lastUpdatedAt: Number(entry.reinforcement.lastUpdatedAt) || 0,
+      latestVersion: Number(entry.reinforcement.latestVersion) || 0,
+    }
+    : { sessions: [], versions: [], lastUpdatedAt: 0, latestVersion: 0 };
+
+  const versionNumber = adaptiveSessionState.pendingVersion || reinforcement.latestVersion + 1;
+  const sessionRecord = {
+    id: summary.id,
+    startedAt: summary.startedAt,
+    endedAt: summary.endedAt,
+    lastRewardAt: summary.lastRewardAt,
+    batches: summary.batches,
+    positive: summary.positive,
+    negative: summary.negative,
+    total: summary.total,
+    modelVersion: versionNumber,
+    note: summary.reason ?? '',
+  };
+  const versionRecord = {
+    version: versionNumber,
+    updatedAt: summary.endedAt,
+    sessionId: summary.id,
+    model: modelDefinition,
+  };
+
+  reinforcement.sessions.push(sessionRecord);
+  reinforcement.versions.push(versionRecord);
+  reinforcement.lastUpdatedAt = summary.endedAt;
+  reinforcement.latestVersion = versionNumber;
+
+  try {
+    const persisted = await byomStorage.updateEntry(entry.id, {
+      reinforcement,
+      model: entry.modelDefinition,
+    });
+    entry.reinforcement = persisted.reinforcement ?? reinforcement;
+    adaptiveSessionState.version = reinforcement.latestVersion;
+    adaptiveSessionState.pendingVersion = 0;
+  } catch (error) {
+    console.error('[byom] Failed to persist adaptive session', error);
+  }
+}
+
+async function stopAdaptiveSession({ reason = 'user', persist = true, revertModel = true } = {}) {
+  const wasActive = adaptiveSessionState.active;
+  if (wasActive) {
+    adaptiveSessionState.active = false;
+    clearAdaptiveListeners();
+  }
+  if (!wasActive && !adaptiveSessionState.hasAppliedUpdate) {
+    updateAdaptiveUi({ statusMessage: 'Adaptive session disabled.' });
+    return;
+  }
+
+  const entry = getAdaptiveEntry();
+  const endedAt = Date.now();
+  const summary = {
+    id: adaptiveSessionState.sessionId || createAdaptiveSessionId(),
+    startedAt: adaptiveSessionState.startedAt,
+    endedAt,
+    lastRewardAt: adaptiveSessionState.lastRewardAt,
+    positive: adaptiveSessionState.positive,
+    negative: adaptiveSessionState.negative,
+    total: adaptiveSessionState.total,
+    batches: adaptiveSessionState.batches,
+    reason,
+    modelVersion: adaptiveSessionState.pendingVersion || adaptiveSessionState.version,
+  };
+  adaptiveSessionState.summary = summary;
+  adaptiveSessionState.lastUpdatedAt = endedAt;
+
+  if (revertModel && entry && adaptiveSessionState.originalModel) {
+    entry.modelDefinition = cloneModelDefinition(adaptiveSessionState.originalModel);
+    modelCache.set(entry.id, entry.modelDefinition);
+    if (entry.id === activeModelEntryId) {
+      void prepareModelForEntry(entry);
+    }
+  }
+
+  if (persist && adaptiveSessionState.hasAppliedUpdate && adaptiveSessionState.lastModel && entry) {
+    await persistAdaptiveSession(entry, summary, cloneModelDefinition(adaptiveSessionState.lastModel));
+  } else {
+    adaptiveSessionState.pendingVersion = 0;
+  }
+
+  const statusMessage = adaptiveSessionState.hasAppliedUpdate
+    ? revertModel
+      ? 'Adaptive session complete. Nudged weights reverted; export is available.'
+      : 'Adaptive session complete. Nudged weights active.'
+    : 'Adaptive session ended without updates.';
+
+  updateAdaptiveUi({ statusMessage });
+
+  if (adaptiveSessionState.hasAppliedUpdate) {
+    const tone = revertModel ? 'info' : 'success';
+    notify(`Adaptive updates ${revertModel ? 'reverted for' : 'applied to'} ${adaptiveSessionState.entryTitle}.`, {
+      tone,
+    });
+  } else if (wasActive) {
+    notify('Adaptive session cancelled.', { tone: 'info' });
+  }
+
+  adaptiveSessionState.originalModel = null;
+  adaptiveSessionState.workingModel = null;
+  adaptiveSessionState.startedAt = adaptiveSessionState.summary.startedAt;
+  adaptiveSessionState.sessionId = createAdaptiveSessionId();
+  adaptiveSessionState.active = false;
+}
+
+function exportAdaptiveModel() {
+  const model = adaptiveSessionState.lastModel;
+  if (!model) {
+    notify('No adaptive model is available to export yet.', { tone: 'warning' });
+    return;
+  }
+  const summary = adaptiveSessionState.summary || {
+    id: adaptiveSessionState.sessionId,
+    startedAt: adaptiveSessionState.startedAt,
+    endedAt: Date.now(),
+    lastRewardAt: adaptiveSessionState.lastRewardAt,
+    positive: adaptiveSessionState.positive,
+    negative: adaptiveSessionState.negative,
+    total: adaptiveSessionState.total,
+    batches: adaptiveSessionState.batches,
+    modelVersion: adaptiveSessionState.version + (adaptiveSessionState.pendingVersion || 0),
+  };
+  const payload = {
+    storage: byomStorage.STORAGE_PATH,
+    exportedAt: new Date().toISOString(),
+    type: 'adaptive-model',
+    entryId: adaptiveSessionState.entryId,
+    entryTitle: adaptiveSessionState.entryTitle,
+    session: summary,
+    model,
+  };
+  const safeTitle = adaptiveSessionState.entryTitle
+    ? adaptiveSessionState.entryTitle.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()
+    : 'byom';
+  const filename = `${safeTitle || 'byom'}-adaptive-${summary.modelVersion || '1'}-${Date.now()}.json`;
+  downloadJson(payload, filename);
+  notify('Adaptive model exported.', { tone: 'success' });
+}
+
 function buildCorrelationNotification(stats) {
   const perCorrelation = Array.isArray(stats?.correlations)
     ? stats.correlations
@@ -167,6 +680,31 @@ const adaptiveFeedbackState = {
   lastSentAt: 0,
   resetTimer: 0,
 };
+
+const adaptiveSessionState = {
+  active: false,
+  sessionId: '',
+  entryId: '',
+  entryTitle: '',
+  startedAt: 0,
+  lastRewardAt: 0,
+  lastUpdatedAt: 0,
+  positive: 0,
+  negative: 0,
+  total: 0,
+  batches: 0,
+  originalModel: null,
+  workingModel: null,
+  lastModel: null,
+  summary: null,
+  unsubscribers: [],
+  hasAppliedUpdate: false,
+  version: 0,
+  pendingVersion: 0,
+};
+
+const ADAPTIVE_LEARNING_RATE = 0.08;
+const ADAPTIVE_BIAS_CLAMP = 1.5;
 
 const ZOOM_SPEC = map.getParamSpec('zoom') ?? {};
 const DEFAULT_ZOOM_SOURCE_MIN = 0.05;
@@ -1220,6 +1758,27 @@ function createFileMetadata(file, summary) {
   return null;
 }
 
+function cloneReinforcement(source) {
+  if (!source || typeof source !== 'object') {
+    return {
+      sessions: [],
+      versions: [],
+      lastUpdatedAt: 0,
+      latestVersion: 0,
+    };
+  }
+  return {
+    sessions: Array.isArray(source.sessions)
+      ? source.sessions.map((session) => ({ ...session }))
+      : [],
+    versions: Array.isArray(source.versions)
+      ? source.versions.map((version) => ({ ...version }))
+      : [],
+    lastUpdatedAt: Number(source.lastUpdatedAt) || 0,
+    latestVersion: Number(source.latestVersion) || 0,
+  };
+}
+
 function buildRuntimeByomEntry(record, objectUrl = '') {
   if (!record || typeof record !== 'object') {
     throw new Error('Invalid BYOM record.');
@@ -1235,6 +1794,7 @@ function buildRuntimeByomEntry(record, objectUrl = '') {
     summary: record.summary ?? null,
     stats: record.stats ?? null,
     file: record.file ?? null,
+    reinforcement: cloneReinforcement(record.reinforcement),
     objectUrl: objectUrl || '',
     requiresFile: !objectUrl,
     listIndex: 0,
@@ -1311,6 +1871,8 @@ byom.mount({
   toggle: byomToggleButton,
   modelOptions: initialModelOptions,
 });
+
+updateAdaptiveUi({ statusMessage: 'Adaptive session disabled.' });
 
 let latestTrainingResult = null;
 let activeTrainingContext = null;
@@ -1454,6 +2016,15 @@ byom.setHandlers({
   },
   onImportEntries: (records) => {
     handleImportedByomRecords(records);
+  },
+  onAdaptiveEnable: () => {
+    void startAdaptiveSession();
+  },
+  onAdaptiveDisable: () => {
+    void stopAdaptiveSession({ reason: 'user', persist: true, revertModel: true });
+  },
+  onAdaptiveExport: () => {
+    exportAdaptiveModel();
   },
 });
 
@@ -2317,6 +2888,13 @@ function setTrack(index, options = {}) {
   if (!entry) {
     return;
   }
+  if (adaptiveSessionState.active && adaptiveSessionState.entryId && adaptiveSessionState.entryId !== entry.id) {
+    void stopAdaptiveSession({
+      reason: 'track-change',
+      persist: adaptiveSessionState.hasAppliedUpdate,
+      revertModel: true,
+    });
+  }
   const autoplay = options.autoplay ?? !audioElement.paused;
   const autoplayDelayMs = Number.isFinite(options.autoplayDelayMs)
     ? Math.max(0, options.autoplayDelayMs)
@@ -2626,6 +3204,10 @@ playlistDeleteButton.addEventListener('click', async () => {
     return;
   }
 
+  if (adaptiveSessionState.active && adaptiveSessionState.entryId === entry.id) {
+    await stopAdaptiveSession({ reason: 'entry-deleted', persist: adaptiveSessionState.hasAppliedUpdate, revertModel: false });
+  }
+
   if (entry.objectUrl) {
     try {
       URL.revokeObjectURL(entry.objectUrl);
@@ -2637,6 +3219,10 @@ playlistDeleteButton.addEventListener('click', async () => {
   modelCache.delete(entry.id);
   if (activeModelEntryId === entry.id) {
     activeModelEntryId = '';
+  }
+
+  if (adaptiveSessionState.entryId === entry.id) {
+    adaptiveSessionState.entryId = '';
   }
 
   const activeEntryBeforeDelete = getCurrentEntry();
