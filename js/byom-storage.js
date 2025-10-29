@@ -69,6 +69,41 @@ function fallbackDelete(id) {
   return true;
 }
 
+function normalizePresetOverrides(overrides) {
+  if (!overrides || typeof overrides !== 'object') {
+    return null;
+  }
+  const normalized = {};
+  let hasValue = false;
+  if (overrides.sim && typeof overrides.sim === 'object') {
+    const sim = {};
+    for (const [key, value] of Object.entries(overrides.sim)) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        sim[key] = numeric;
+      }
+    }
+    if (Object.keys(sim).length > 0) {
+      normalized.sim = sim;
+      hasValue = true;
+    }
+  }
+  if (overrides.render && typeof overrides.render === 'object') {
+    const render = {};
+    for (const [key, value] of Object.entries(overrides.render)) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        render[key] = numeric;
+      }
+    }
+    if (Object.keys(render).length > 0) {
+      normalized.render = render;
+      hasValue = true;
+    }
+  }
+  return hasValue ? normalized : null;
+}
+
 function sanitizeEntry(entry) {
   if (!entry || typeof entry !== 'object') {
     throw new TypeError('Persisted entry must be an object.');
@@ -88,6 +123,7 @@ function sanitizeEntry(entry) {
     summary: entry.summary ? { ...entry.summary } : null,
     model: entry.model ? { ...entry.model } : null,
     stats: entry.stats ? { ...entry.stats } : null,
+    presetOverrides: normalizePresetOverrides(entry.presetOverrides),
   };
   return normalized;
 }
@@ -334,6 +370,7 @@ export function createEntryPayload({
   summary,
   model,
   stats,
+  presetOverrides,
 }) {
   const entryId = id || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
@@ -346,6 +383,7 @@ export function createEntryPayload({
     summary,
     model: model ? normalizeModel(model, { name: entryId }) : null,
     stats,
+    presetOverrides,
   });
 }
 
