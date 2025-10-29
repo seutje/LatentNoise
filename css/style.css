@@ -1279,7 +1279,7 @@ body.fullscreen-active #byom-drawer {
     linear-gradient(180deg, rgba(4, 8, 16, 0.92) 0%, rgba(2, 4, 10, 0.85) 100%),
     repeating-linear-gradient(180deg, transparent 0 16px, var(--hud-grid, rgba(167, 139, 250, 0.12)) 16px 17px);
   color: var(--text);
-  width: min(500px, 92vw);
+  width: min(340px, 92vw);
   box-shadow:
     0 0 0 1px var(--accent-faint, rgba(167, 139, 250, 0.12)) inset,
     0 24px 48px rgba(0, 0, 0, 0.6);
