@@ -29,6 +29,11 @@ const BASE_EXPORT_VIDEO_BITRATE = 12_000_000;
 const MIN_EXPORT_VIDEO_BITRATE = 6_000_000;
 const MAX_EXPORT_VIDEO_BITRATE = 30_000_000;
 const EXPORT_AUDIO_BITRATE = 192_000;
+const MIN_EXPORT_DIMENSION = 320;
+const MAX_EXPORT_DIMENSION = 4320;
+const DEFAULT_FRAME_RATE = 60;
+const MIN_FRAME_RATE = 12;
+const MAX_FRAME_RATE = 120;
 
 function defaultNotify() {}
 
@@ -105,6 +110,85 @@ function clampNumber(value, min, max) {
   return numeric;
 }
 
+function clampDimension(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return fallback;
+  }
+  const rounded = Math.round(numeric);
+  return clampNumber(rounded, MIN_EXPORT_DIMENSION, MAX_EXPORT_DIMENSION);
+}
+
+function clampFrameRate(value, fallback = DEFAULT_FRAME_RATE) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return clampNumber(fallback, MIN_FRAME_RATE, MAX_FRAME_RATE);
+  }
+  return clampNumber(Math.round(numeric), MIN_FRAME_RATE, MAX_FRAME_RATE);
+}
+
+function resolveFormatPreference(value) {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'webm' || normalized === 'video/webm') {
+    return 'webm';
+  }
+  return 'mp4';
+}
+
+function resolveBitrateOverride(options = {}) {
+  const candidates = [
+    options.videoBitsPerSecond,
+    options.videoBitrate,
+    options.bitrate,
+    options.videoBitratePerSecond,
+  ];
+  for (let index = 0; index < candidates.length; index += 1) {
+    const candidate = Number(candidates[index]);
+    if (Number.isFinite(candidate) && candidate > 0) {
+      return clampNumber(Math.round(candidate), MIN_EXPORT_VIDEO_BITRATE, MAX_EXPORT_VIDEO_BITRATE);
+    }
+  }
+  return null;
+}
+
+function normalizeExportOptions(rawOptions = {}, canvas) {
+  const format = resolveFormatPreference(
+    rawOptions.format ?? rawOptions.targetFormat ?? rawOptions.mimeFormat ?? rawOptions.container,
+  );
+  const canvasWidth = Number.isFinite(canvas?.width) && canvas.width > 0 ? canvas.width : 0;
+  const canvasHeight = Number.isFinite(canvas?.height) && canvas.height > 0 ? canvas.height : 0;
+
+  let presetWidth = Number(rawOptions.presetWidth);
+  let presetHeight = Number(rawOptions.presetHeight);
+  if (Number.isFinite(rawOptions?.resolution?.width) && Number.isFinite(rawOptions?.resolution?.height)) {
+    presetWidth = Number(rawOptions.resolution.width);
+    presetHeight = Number(rawOptions.resolution.height);
+  }
+
+  const widthValue = rawOptions.width ?? rawOptions.videoWidth ?? presetWidth;
+  const heightValue = rawOptions.height ?? rawOptions.videoHeight ?? presetHeight;
+
+  const width = clampDimension(widthValue, canvasWidth || MIN_EXPORT_DIMENSION);
+  const height = clampDimension(heightValue, canvasHeight || MIN_EXPORT_DIMENSION);
+
+  const frameRate = clampFrameRate(rawOptions.frameRate ?? rawOptions.fps ?? rawOptions.frame_rate);
+  const bitrateOverride = resolveBitrateOverride(rawOptions);
+  const audioBits = Number(rawOptions.audioBitsPerSecond ?? rawOptions.audioBitrate);
+  const audioBitsPerSecond = Number.isFinite(audioBits) && audioBits > 0
+    ? clampNumber(Math.round(audioBits), 32_000, 512_000)
+    : null;
+
+  return {
+    width,
+    height,
+    frameRate,
+    videoBitsPerSecond: bitrateOverride,
+    audioBitsPerSecond,
+    targetFormat: format,
+    resolutionPreset: typeof rawOptions.resolutionPreset === 'string' ? rawOptions.resolutionPreset : '',
+  };
+}
+
 function sanitizeTitleForFile(title) {
   if (typeof title !== 'string') {
     return 'latent-noise';
@@ -131,13 +215,19 @@ function formatTimestamp(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, '-');
 }
 
-export function createDownloadFileName(title, date = new Date()) {
+export function createDownloadFileName(title, date = new Date(), extension = 'mp4') {
   const safeTitle = sanitizeTitleForFile(title);
   const timestamp = formatTimestamp(date);
-  return `${safeTitle}-${timestamp}.mp4`;
+  const normalizedExtension = typeof extension === 'string' ? extension.trim().toLowerCase() : 'mp4';
+  const safeExtension = normalizedExtension.replace(/[^a-z0-9]+/g, '') || 'mp4';
+  return `${safeTitle}-${timestamp}.${safeExtension}`;
 }
 
-function calculateVideoBitrate(width, height, frameRate = 60) {
+function calculateVideoBitrate(width, height, frameRate = 60, options = {}) {
+  const override = resolveBitrateOverride(options);
+  if (override) {
+    return override;
+  }
   const w = Number(width);
   const h = Number(height);
   if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
@@ -151,12 +241,25 @@ function calculateVideoBitrate(width, height, frameRate = 60) {
   return Math.round(clampNumber(target, MIN_EXPORT_VIDEO_BITRATE, MAX_EXPORT_VIDEO_BITRATE));
 }
 
-function createRecorderQualityOptions(canvas, hasAudio, frameRate) {
+function createRecorderQualityOptions(canvas, hasAudio, frameRate, overrides = {}) {
   if (!canvas) {
     return null;
   }
-  const videoBitsPerSecond = calculateVideoBitrate(canvas.width, canvas.height, frameRate);
-  const audioBitsPerSecond = hasAudio ? EXPORT_AUDIO_BITRATE : 0;
+  const targetWidth = Number.isFinite(overrides.width) && overrides.width > 0 ? overrides.width : canvas.width;
+  const targetHeight = Number.isFinite(overrides.height) && overrides.height > 0 ? overrides.height : canvas.height;
+  const targetFrameRate = Number.isFinite(overrides.frameRate) && overrides.frameRate > 0 ? overrides.frameRate : frameRate;
+  const bitrateOverride = Number.isFinite(overrides.videoBitsPerSecond) && overrides.videoBitsPerSecond > 0
+    ? overrides.videoBitsPerSecond
+    : overrides.bitrateOverride;
+  const videoBitsPerSecond = calculateVideoBitrate(targetWidth, targetHeight, targetFrameRate, {
+    videoBitsPerSecond: bitrateOverride,
+  });
+  const desiredAudioBits = Number.isFinite(overrides.audioBitsPerSecond) && overrides.audioBitsPerSecond > 0
+    ? overrides.audioBitsPerSecond
+    : null;
+  const audioBitsPerSecond = hasAudio
+    ? desiredAudioBits ?? EXPORT_AUDIO_BITRATE
+    : 0;
   if (videoBitsPerSecond <= 0 && audioBitsPerSecond <= 0) {
     return null;
   }
@@ -233,7 +336,7 @@ function resolveAudioCaptureStream(audioElement) {
   return null;
 }
 
-function buildMimeCandidateList(MediaRecorderClass, hasAudioTrack) {
+function buildMimeCandidateList(MediaRecorderClass, hasAudioTrack, preferredFormat = 'mp4') {
   const results = [];
   const seen = new Set();
 
@@ -258,20 +361,56 @@ function buildMimeCandidateList(MediaRecorderClass, hasAudioTrack) {
   };
 
   const preferredMp4 = hasAudioTrack ? PREFERRED_MP4_MIME_TYPES : PREFERRED_MP4_VIDEO_ONLY;
-  appendCandidates(preferredMp4, true);
-
   const fallbackWebm = hasAudioTrack ? FALLBACK_WEBM_MIME_TYPES : FALLBACK_WEBM_MIME_TYPES.filter((mime) => !/opus/.test(mime));
-  appendCandidates(fallbackWebm, false);
+  const normalizedPreference = preferredFormat === 'webm' ? 'webm' : 'mp4';
 
-  if (results.length === 0) {
-    const defaultFallback = hasAudioTrack ? 'video/webm;codecs=vp8,opus' : 'video/webm;codecs=vp8';
-    results.push({ mimeType: defaultFallback, isMp4: false });
-    if (!seen.has('video/webm')) {
-      results.push({ mimeType: 'video/webm', isMp4: false });
+  if (normalizedPreference === 'webm') {
+    appendCandidates(fallbackWebm, false);
+    if (results.length === 0 && (!MediaRecorderClass || typeof MediaRecorderClass.isTypeSupported !== 'function')) {
+      const defaultFallback = hasAudioTrack ? 'video/webm;codecs=vp8,opus' : 'video/webm;codecs=vp8';
+      results.push({ mimeType: defaultFallback, isMp4: false });
+      if (!seen.has('video/webm')) {
+        results.push({ mimeType: 'video/webm', isMp4: false });
+      }
+    }
+  } else {
+    appendCandidates(preferredMp4, true);
+    appendCandidates(fallbackWebm, false);
+    if (results.length === 0) {
+      const defaultFallback = hasAudioTrack ? 'video/webm;codecs=vp8,opus' : 'video/webm;codecs=vp8';
+      results.push({ mimeType: defaultFallback, isMp4: false });
+      if (!seen.has('video/webm')) {
+        results.push({ mimeType: 'video/webm', isMp4: false });
+      }
     }
   }
 
   return results;
+}
+
+function normalizeMimeCandidateList(input, hasAudioTrack, preferredFormat, MediaRecorderClass) {
+  if (!Array.isArray(input) || input.length === 0) {
+    return buildMimeCandidateList(MediaRecorderClass, hasAudioTrack, preferredFormat);
+  }
+  const normalized = [];
+  input.forEach((candidate) => {
+    if (!candidate) {
+      return;
+    }
+    if (typeof candidate === 'string') {
+      const mimeType = candidate;
+      normalized.push({ mimeType, isMp4: mimeType.toLowerCase().includes('mp4') });
+      return;
+    }
+    if (candidate.mimeType) {
+      const mimeType = candidate.mimeType;
+      const isMp4 = typeof candidate.isMp4 === 'boolean'
+        ? candidate.isMp4
+        : mimeType.toLowerCase().includes('mp4');
+      normalized.push({ mimeType, isMp4 });
+    }
+  });
+  return normalized;
 }
 
 function ensureArrayBuffer(data) {
@@ -423,6 +562,7 @@ export function createVideoExporter(dependencies = {}) {
     button: null,
     notify: notifyFallback,
     getFileName: null,
+    requestStartOptions: null,
     recorder: null,
     chunks: [],
     stream: null,
@@ -435,6 +575,7 @@ export function createVideoExporter(dependencies = {}) {
     recordingProducesMp4: false,
     hasAudioTrack: false,
     pendingFileName: '',
+    pendingBaseTitle: '',
     cancelRecording: false,
     recorderQuality: null,
     worker: null,
@@ -442,6 +583,7 @@ export function createVideoExporter(dependencies = {}) {
     pendingJobId: '',
     processingProgress: 0,
     pendingMimeCandidates: [],
+    activeOptions: null,
   };
 
   function resetRecordingState() {
@@ -451,6 +593,7 @@ export function createVideoExporter(dependencies = {}) {
     state.recordingProducesMp4 = false;
     state.hasAudioTrack = false;
     state.pendingFileName = '';
+    state.pendingBaseTitle = '';
     state.pendingJobId = '';
     state.processingProgress = 0;
     state.cancelRecording = false;
@@ -495,7 +638,7 @@ export function createVideoExporter(dependencies = {}) {
       state.button.disabled = false;
       state.button.removeAttribute('aria-disabled');
       state.button.textContent = 'Export Video';
-      state.button.title = 'Export the current animation as an MP4 download.';
+      state.button.title = 'Export the current animation as a video file.';
       return;
     }
     if (state.status === STATE_RECORDING) {
@@ -511,7 +654,7 @@ export function createVideoExporter(dependencies = {}) {
       ? `Processing ${Math.round(state.processingProgress * 100)}%`
       : 'Processing…';
     state.button.textContent = progressLabel;
-    state.button.title = 'Encoding MP4 in the background…';
+    state.button.title = 'Encoding video in the background…';
   }
 
   function setStatus(nextStatus) {
@@ -652,7 +795,8 @@ export function createVideoExporter(dependencies = {}) {
 
   function handleRecorderError(event) {
     console.error('[video-export] Recorder error', event);
-    const fallbackCandidates = Array.isArray(state.pendingMimeCandidates)
+    const allowFallback = state.activeOptions?.targetFormat !== 'webm';
+    const fallbackCandidates = allowFallback && Array.isArray(state.pendingMimeCandidates)
       ? state.pendingMimeCandidates.filter((candidate) => candidate && !candidate.isMp4)
       : [];
 
@@ -671,7 +815,7 @@ export function createVideoExporter(dependencies = {}) {
       state.notify?.('Primary encoder failed; retrying with WebM fallback...', { tone: 'warning', duration: 5000 });
       state.pendingMimeCandidates = [];
       setTimeout(() => {
-        startRecording({ mimeCandidates: fallbackCandidates });
+        startRecording({ mimeCandidates: fallbackCandidates, reuseLastOptions: true });
       }, 0);
       return;
     }
@@ -734,6 +878,32 @@ export function createVideoExporter(dependencies = {}) {
 
   function processRecordedBlob(recordedBlob) {
     const wantsExternalAudio = Boolean(state.audioSourceUrl);
+    const targetFormat = state.activeOptions?.targetFormat === 'webm' ? 'webm' : 'mp4';
+    const recordedType = typeof recordedBlob?.type === 'string' && recordedBlob.type
+      ? recordedBlob.type.toLowerCase()
+      : (state.recordingMimeType || '').toLowerCase();
+    const isWebmRecording = recordedType.includes('webm');
+
+    if (targetFormat === 'webm') {
+      const baseTitle = state.pendingBaseTitle || (typeof state.getFileName === 'function' ? state.getFileName() : 'latent-noise');
+      if (!isWebmRecording) {
+        downloadBlob(recordedBlob, createDownloadFileName(baseTitle, new Date(), 'mp4'));
+        state.notify?.(
+          'Browser encoder produced MP4 while WebM was requested; using MP4 export instead.',
+          { tone: 'warning', duration: 6000 },
+        );
+      } else {
+        downloadBlob(
+          recordedBlob,
+          state.pendingFileName || createDownloadFileName(baseTitle, state.recordingStartedAt ?? new Date(), 'webm'),
+        );
+        state.notify?.('Video export ready. Downloading WebM.', { tone: 'success', duration: 6000 });
+      }
+      resetRecordingState();
+      setStatus(STATE_IDLE);
+      return;
+    }
+
     const needsWorker = !state.recordingProducesMp4 || wantsExternalAudio;
 
     if (!needsWorker) {
@@ -848,7 +1018,7 @@ export function createVideoExporter(dependencies = {}) {
     }
   }
 
-  function tryStartRecorder(combinedStream, candidates, baseTitle) {
+  function tryStartRecorder(combinedStream, candidates, baseTitle, exportOptions) {
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
       if (!candidate || !candidate.mimeType) {
@@ -908,7 +1078,9 @@ export function createVideoExporter(dependencies = {}) {
       }
 
       state.recordingStartedAt = new Date();
-      state.pendingFileName = createDownloadFileName(baseTitle, state.recordingStartedAt);
+      state.pendingBaseTitle = baseTitle;
+      const extension = exportOptions?.targetFormat === 'webm' ? 'webm' : 'mp4';
+      state.pendingFileName = createDownloadFileName(baseTitle, state.recordingStartedAt, extension);
       return true;
     }
 
@@ -929,7 +1101,24 @@ export function createVideoExporter(dependencies = {}) {
       return false;
     }
 
-    const canvasStream = typeof state.canvas.captureStream === 'function' ? state.canvas.captureStream(60) : null;
+    const reuseExisting = options.reuseLastOptions === true && state.activeOptions;
+    const normalizedOptions = reuseExisting
+      ? { ...state.activeOptions }
+      : normalizeExportOptions(options, state.canvas);
+
+    if (!normalizedOptions || !Number.isFinite(normalizedOptions.width) || !Number.isFinite(normalizedOptions.height)) {
+      state.notify?.('Invalid export dimensions.', { tone: 'error', duration: 6000 });
+      return false;
+    }
+
+    state.activeOptions = { ...normalizedOptions };
+    const captureFrameRate = Number.isFinite(normalizedOptions.frameRate)
+      ? normalizedOptions.frameRate
+      : DEFAULT_FRAME_RATE;
+
+    const canvasStream = typeof state.canvas.captureStream === 'function'
+      ? state.canvas.captureStream(captureFrameRate)
+      : null;
     if (!canvasStream) {
       state.notify?.('Canvas capture is not supported.', { tone: 'error', duration: 6000 });
       return false;
@@ -974,9 +1163,12 @@ export function createVideoExporter(dependencies = {}) {
     state.cachedAudioData = null;
 
     const hasAudio = audioTracks.length > 0;
-    const candidates = Array.isArray(options.mimeCandidates) && options.mimeCandidates.length > 0
-      ? options.mimeCandidates
-      : buildMimeCandidateList(MediaRecorderClass, hasAudio);
+    const candidates = normalizeMimeCandidateList(
+      options.mimeCandidates,
+      hasAudio,
+      normalizedOptions.targetFormat,
+      MediaRecorderClass,
+    );
 
     if (!candidates || candidates.length === 0) {
       state.notify?.('Video export could not find a supported recording format.', { tone: 'error', duration: 6000 });
@@ -986,9 +1178,9 @@ export function createVideoExporter(dependencies = {}) {
     }
 
     const baseTitle = typeof state.getFileName === 'function' ? state.getFileName() : 'latent-noise';
-    const frameRate = resolveVideoFrameRate(videoTracks, 60);
-    state.recorderQuality = createRecorderQualityOptions(state.canvas, hasAudio, frameRate);
-    const started = tryStartRecorder(combinedStream, candidates, baseTitle);
+    const frameRate = resolveVideoFrameRate(videoTracks, captureFrameRate);
+    state.recorderQuality = createRecorderQualityOptions(state.canvas, hasAudio, frameRate, normalizedOptions);
+    const started = tryStartRecorder(combinedStream, candidates, baseTitle, normalizedOptions);
 
     if (!started) {
       cleanupStreams();
@@ -1043,6 +1235,16 @@ export function createVideoExporter(dependencies = {}) {
 
   function handleButtonClick() {
     if (state.status === STATE_IDLE) {
+      if (typeof state.requestStartOptions === 'function') {
+        const requestedOptions = state.requestStartOptions();
+        if (requestedOptions === false) {
+          return;
+        }
+        if (requestedOptions && typeof requestedOptions === 'object') {
+          startRecording(requestedOptions);
+          return;
+        }
+      }
       startRecording();
       return;
     }
@@ -1081,6 +1283,7 @@ export function createVideoExporter(dependencies = {}) {
     state.button = options.button ?? state.button;
     state.notify = typeof options.notify === 'function' ? options.notify : notifyFallback;
     state.getFileName = typeof options.getFileName === 'function' ? options.getFileName : state.getFileName;
+    state.requestStartOptions = typeof options.getStartOptions === 'function' ? options.getStartOptions : null;
 
     evaluateSupport();
 

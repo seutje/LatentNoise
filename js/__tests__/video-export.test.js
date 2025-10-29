@@ -136,6 +136,8 @@ describe('video-export utilities', () => {
   test('createDownloadFileName sanitizes titles and formats timestamp', () => {
     const name = createDownloadFileName('My Test Track!', new Date('2025-01-02T03:04:05Z'));
     expect(name).toBe('my-test-track-2025-01-02T03-04-05-000Z.mp4');
+    const webmName = createDownloadFileName('My Test Track!', new Date('2025-01-02T03:04:05Z'), 'webm');
+    expect(webmName).toBe('my-test-track-2025-01-02T03-04-05-000Z.webm');
   });
 
   test('init disables button when support is unavailable', () => {
@@ -149,6 +151,58 @@ describe('video-export utilities', () => {
     expect(result.isSupported).toBe(false);
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  test('start applies custom export options for bitrate and frame rate', () => {
+    const canvas = createCanvasElement();
+    const audio = createAudioElement(true, true);
+    const button = document.createElement('button');
+    const recorderFactory = createMockRecorderFactory({ blobType: 'video/mp4' });
+    const worker = {
+      listeners: {},
+      addEventListener: jest.fn(function add(type, handler) {
+        this.listeners[type] = handler;
+      }),
+      postMessage: jest.fn(),
+    };
+
+    const exporter = createVideoExporter({
+      MediaRecorderClass: class {
+        static isTypeSupported(type) {
+          return type.includes('mp4');
+        }
+      },
+      createMediaRecorder: recorderFactory,
+      createStream: () => new MockStream(),
+      createWorker: () => worker,
+      downloadBlob: jest.fn(),
+    });
+
+    exporter.init({
+      canvas,
+      audio,
+      button,
+      notify: jest.fn(),
+      getFileName: () => 'Custom Clip',
+    });
+
+    expect(
+      exporter.start({
+        width: 2560,
+        height: 1440,
+        frameRate: 48,
+        videoBitsPerSecond: 25_000_000,
+      }),
+    ).toBe(true);
+
+    expect(canvas.captureStream).toHaveBeenCalledWith(48);
+    expect(recorderFactory).toHaveBeenCalledTimes(1);
+    const [, recorderOptions] = recorderFactory.mock.calls[0];
+    expect(recorderOptions.mimeType).toContain('mp4');
+    expect(recorderOptions.videoBitsPerSecond).toBe(25_000_000);
+    expect(recorderOptions.bitsPerSecond).toBeGreaterThan(recorderOptions.videoBitsPerSecond);
+
+    exporter.stop();
   });
 
   test('records and downloads MP4 directly when supported', async () => {
@@ -217,6 +271,71 @@ describe('video-export utilities', () => {
     expect(blob).toBeInstanceOf(Blob);
     expect(blob.type).toContain('video/mp4');
     expect(filename).toMatch(/^test-clip-/);
+    expect(exporter.getState().status).toBe('idle');
+  });
+
+  test('exports WebM directly when format is requested', async () => {
+    const canvas = createCanvasElement();
+    const audio = createAudioElement(true, true);
+    const button = document.createElement('button');
+    const downloadBlob = jest.fn();
+    const notify = jest.fn();
+    const recorderFactory = createMockRecorderFactory({ blobType: 'video/webm' });
+    const worker = {
+      listeners: {},
+      addEventListener: jest.fn(function add(type, handler) {
+        this.listeners[type] = handler;
+      }),
+      postMessage: jest.fn(),
+    };
+
+    const exporter = createVideoExporter({
+      MediaRecorderClass: class {
+        static isTypeSupported(type) {
+          return type.includes('webm');
+        }
+      },
+      createMediaRecorder: recorderFactory,
+      createStream: () => new MockStream(),
+      createWorker: () => worker,
+      downloadBlob,
+    });
+
+    exporter.init({
+      canvas,
+      audio,
+      button,
+      notify,
+      getFileName: () => 'WebM Clip',
+    });
+
+    expect(
+      exporter.start({
+        format: 'webm',
+        width: 1920,
+        height: 1080,
+        frameRate: 50,
+        videoBitsPerSecond: 8_000_000,
+      }),
+    ).toBe(true);
+
+    const [, recorderOptions] = recorderFactory.mock.calls[0];
+    expect(recorderOptions.mimeType).toContain('webm');
+    expect(recorderOptions.videoBitsPerSecond).toBe(8_000_000);
+
+    exporter.stop();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+
+    const convertCall = worker.postMessage.mock.calls.find(([message]) => message?.type === 'convert');
+    expect(convertCall).toBeUndefined();
+    expect(downloadBlob).toHaveBeenCalledTimes(1);
+    const [blob, filename] = downloadBlob.mock.calls[0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toContain('webm');
+    expect(filename).toMatch(/\.webm$/);
+    expect(notify).toHaveBeenCalledWith('Video export ready. Downloading WebM.', expect.any(Object));
     expect(exporter.getState().status).toBe('idle');
   });
 

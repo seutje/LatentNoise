@@ -353,3 +353,8 @@
 - Treated `TypeError: Failed to fetch` blob reads as transient so the exporter retries with Response/FileReader fallbacks instead of aborting the mux pipeline.
 - Added Jest coverage to confirm MP4 conversions proceed when the primary arrayBuffer path rejects with the browser-specific TypeError.
 - Re-verified the suite with `npm test` and `npm run lint`.
+
+## 2025-10-27 - Export Settings Dialog
+- Added a modal export settings form with resolution presets, custom dimensions, frame rate, bitrate, and MP4/WebM toggle, persisting choices in localStorage.
+- Taught the video exporter to normalize user-provided options, honor bitrate overrides, validate combinations, and skip worker conversion when WebM is selected.
+- Extended the exporter test suite to cover option handling, custom bitrates, and WebM exports, and reran `npm test` plus `npm run lint` for validation.

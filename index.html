@@ -62,6 +62,72 @@
         BYOM
       </button>
     </div>
+    <dialog id="export-settings" class="export-dialog" aria-labelledby="export-settings-title">
+      <form id="export-settings-form" method="dialog" novalidate>
+        <header class="export-dialog__header">
+          <h2 id="export-settings-title" class="export-dialog__title">Export Settings</h2>
+          <button type="button" id="export-close" class="export-dialog__close" aria-label="Close export settings">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </header>
+        <div class="export-dialog__body">
+          <label class="export-field" for="export-resolution">
+            <span>Resolution Preset</span>
+            <select id="export-resolution" name="exportResolution">
+              <option value="source">Canvas (Source)</option>
+              <option value="2160p">4K UHD (3840 × 2160)</option>
+              <option value="1440p">1440p (2560 × 1440)</option>
+              <option value="1080p">1080p (1920 × 1080)</option>
+              <option value="720p">720p (1280 × 720)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div class="export-dialog-grid">
+            <label class="export-field" for="export-width">
+              <span>Width (px)</span>
+              <input id="export-width" name="exportWidth" type="number" inputmode="numeric" min="320" max="4320" step="1" autocomplete="off" />
+            </label>
+            <label class="export-field" for="export-height">
+              <span>Height (px)</span>
+              <input id="export-height" name="exportHeight" type="number" inputmode="numeric" min="320" max="4320" step="1" autocomplete="off" />
+            </label>
+            <label class="export-field" for="export-fps">
+              <span>Frame Rate (FPS)</span>
+              <input id="export-fps" name="exportFps" type="number" inputmode="numeric" min="12" max="120" step="1" autocomplete="off" />
+            </label>
+            <label class="export-field" for="export-bitrate">
+              <span>Video Bitrate (Mbps)</span>
+              <input
+                id="export-bitrate"
+                name="exportBitrate"
+                type="number"
+                inputmode="numeric"
+                min="6"
+                max="30"
+                step="1"
+                placeholder="Auto"
+                autocomplete="off"
+              />
+            </label>
+          </div>
+          <fieldset class="export-format" aria-labelledby="export-format-legend">
+            <legend id="export-format-legend">Format</legend>
+            <label class="export-format-option" for="export-format-mp4">
+              <input id="export-format-mp4" type="radio" name="export-format" value="mp4" checked />
+              <span>MP4</span>
+            </label>
+            <label class="export-format-option" for="export-format-webm">
+              <input id="export-format-webm" type="radio" name="export-format" value="webm" />
+              <span>WebM</span>
+            </label>
+          </fieldset>
+        </div>
+        <footer class="export-dialog-actions">
+          <button type="button" id="export-cancel" class="export-dialog-button export-dialog-button--secondary">Cancel</button>
+          <button type="submit" id="export-apply" class="export-dialog-button export-dialog-button--primary">Start Export</button>
+        </footer>
+      </form>
+    </dialog>
     <input id="byom-attach-input" type="file" accept="audio/mpeg" hidden>
     <div
       id="byom-drawer"

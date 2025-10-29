@@ -36,6 +36,16 @@ const STORAGE_KEYS = Object.freeze({
   REPEAT: 'ln.repeat',
 });
 
+const EXPORT_STORAGE_KEY = 'ln.exportOptions';
+const EXPORT_MIN_DIMENSION = 320;
+const EXPORT_MAX_DIMENSION = 4320;
+const EXPORT_MIN_FRAME_RATE = 12;
+const EXPORT_MAX_FRAME_RATE = 120;
+const EXPORT_DEFAULT_FRAME_RATE = 60;
+const EXPORT_MIN_BITRATE = 6_000_000;
+const EXPORT_MAX_BITRATE = 30_000_000;
+const MEGABIT = 1_000_000;
+
 const MAP_PARAM_COUNT = map.PARAM_NAMES.length;
 const FALLBACK_NN_OUTPUTS = new Float32Array(MAP_PARAM_COUNT);
 const FEATURE_LABELS = audio.getFeatureLabels();
@@ -311,6 +321,131 @@ function writeStorage(key, value) {
   }
 }
 
+function resolveSourceDimensions(canvas) {
+  const width = Math.round(Number(canvas?.width));
+  const height = Math.round(Number(canvas?.height));
+  if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+    return { width, height };
+  }
+  return { width: 1920, height: 1080 };
+}
+
+function resolvePresetDimensions(preset, canvas, customDimensions) {
+  switch (preset) {
+    case '720p':
+      return { width: 1280, height: 720 };
+    case '1080p':
+      return { width: 1920, height: 1080 };
+    case '1440p':
+      return { width: 2560, height: 1440 };
+    case '2160p':
+      return { width: 3840, height: 2160 };
+    case 'custom': {
+      if (customDimensions && Number.isFinite(customDimensions.width) && Number.isFinite(customDimensions.height)) {
+        return { width: customDimensions.width, height: customDimensions.height };
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return resolveSourceDimensions(canvas);
+}
+
+function clampExportDimension(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return clamp(fallback, EXPORT_MIN_DIMENSION, EXPORT_MAX_DIMENSION);
+  }
+  return clamp(Math.round(numeric), EXPORT_MIN_DIMENSION, EXPORT_MAX_DIMENSION);
+}
+
+function clampExportFrameRate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return EXPORT_DEFAULT_FRAME_RATE;
+  }
+  return clamp(Math.round(numeric), EXPORT_MIN_FRAME_RATE, EXPORT_MAX_FRAME_RATE);
+}
+
+function clampExportBitrate(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null;
+  }
+  return clamp(Math.round(numeric), EXPORT_MIN_BITRATE, EXPORT_MAX_BITRATE);
+}
+
+function normalizeStoredExportSettings(raw = {}, canvas) {
+  const sourceDimensions = resolveSourceDimensions(canvas);
+  const preset = typeof raw.resolutionPreset === 'string' ? raw.resolutionPreset : 'source';
+  const storedCustomWidth = clampExportDimension(raw.customWidth, sourceDimensions.width);
+  const storedCustomHeight = clampExportDimension(raw.customHeight, sourceDimensions.height);
+  const customDimensions = {
+    width: storedCustomWidth,
+    height: storedCustomHeight,
+  };
+
+  let width = raw.width;
+  let height = raw.height;
+
+  if (preset === 'custom') {
+    width = clampExportDimension(width ?? storedCustomWidth, sourceDimensions.width);
+    height = clampExportDimension(height ?? storedCustomHeight, sourceDimensions.height);
+    customDimensions.width = width;
+    customDimensions.height = height;
+  } else {
+    const presetDimensions = resolvePresetDimensions(preset, canvas, customDimensions);
+    width = clampExportDimension(presetDimensions.width, sourceDimensions.width);
+    height = clampExportDimension(presetDimensions.height, sourceDimensions.height);
+  }
+
+  const frameRate = clampExportFrameRate(raw.frameRate);
+  const format = raw.format === 'webm' ? 'webm' : 'mp4';
+  const videoBitsPerSecond = clampExportBitrate(raw.videoBitsPerSecond ?? raw.videoBitrate ?? raw.bitrate);
+
+  return {
+    resolutionPreset: preset,
+    width,
+    height,
+    frameRate,
+    format,
+    videoBitsPerSecond,
+    customWidth: customDimensions.width,
+    customHeight: customDimensions.height,
+  };
+}
+
+function loadExportSettings(canvas) {
+  const stored = readStorage(EXPORT_STORAGE_KEY);
+  if (!stored) {
+    return normalizeStoredExportSettings({}, canvas);
+  }
+  try {
+    const parsed = JSON.parse(stored);
+    return normalizeStoredExportSettings(parsed, canvas);
+  } catch {
+    return normalizeStoredExportSettings({}, canvas);
+  }
+}
+
+function persistExportSettings(settings) {
+  if (!settings) {
+    return;
+  }
+  const payload = {
+    resolutionPreset: settings.resolutionPreset,
+    width: settings.width,
+    height: settings.height,
+    frameRate: settings.frameRate,
+    format: settings.format,
+    videoBitsPerSecond: settings.videoBitsPerSecond ?? null,
+    customWidth: settings.customWidth,
+    customHeight: settings.customHeight,
+  };
+  writeStorage(EXPORT_STORAGE_KEY, JSON.stringify(payload));
+}
+
 function readStoredBoolean(key, defaultValue) {
   const stored = readStorage(key);
   if (stored === null) {
@@ -339,6 +474,16 @@ const playlistAttachButton = document.getElementById('playlist-attach');
 const playlistRenameButton = document.getElementById('playlist-rename');
 const playlistDeleteButton = document.getElementById('playlist-delete');
 const exportButton = document.getElementById('export-video');
+const exportDialog = document.getElementById('export-settings');
+const exportForm = document.getElementById('export-settings-form');
+const exportPresetSelect = document.getElementById('export-resolution');
+const exportWidthInput = document.getElementById('export-width');
+const exportHeightInput = document.getElementById('export-height');
+const exportFpsInput = document.getElementById('export-fps');
+const exportBitrateInput = document.getElementById('export-bitrate');
+const exportFormatRadios = Array.from(document.querySelectorAll("input[name='export-format']"));
+const exportCancelButton = document.getElementById('export-cancel');
+const exportCloseButton = document.getElementById('export-close');
 const audioElement = document.getElementById('player');
 const volumeSlider = document.getElementById('volume');
 const playButton = document.getElementById('play');
@@ -353,12 +498,283 @@ const introPlayButton = document.getElementById('intro-play');
 const byomToggleButton = document.getElementById('byom-toggle');
 const byomDrawer = document.getElementById('byom-drawer');
 
+const exportSettings = loadExportSettings(canvasElement);
+
 function dismissIntroOverlay() {
   if (!introOverlay || introOverlay.dataset.hidden === 'true') {
     return;
   }
   introOverlay.dataset.hidden = 'true';
   introOverlay.setAttribute('aria-hidden', 'true');
+}
+
+function setExportDimensionsDisabled(disabled) {
+  if (!exportWidthInput || !exportHeightInput) {
+    return;
+  }
+  exportWidthInput.disabled = disabled;
+  exportHeightInput.disabled = disabled;
+  exportWidthInput.readOnly = disabled;
+  exportHeightInput.readOnly = disabled;
+  if (disabled) {
+    exportWidthInput.setAttribute('aria-disabled', 'true');
+    exportHeightInput.setAttribute('aria-disabled', 'true');
+  } else {
+    exportWidthInput.removeAttribute('aria-disabled');
+    exportHeightInput.removeAttribute('aria-disabled');
+  }
+}
+
+function refreshExportSettingsFromSource() {
+  if (!exportSettings) {
+    return;
+  }
+  const source = resolveSourceDimensions(canvasElement);
+  if (exportSettings.resolutionPreset === 'source') {
+    exportSettings.width = source.width;
+    exportSettings.height = source.height;
+  }
+  if (!Number.isFinite(exportSettings.customWidth) || exportSettings.customWidth <= 0) {
+    exportSettings.customWidth = source.width;
+  }
+  if (!Number.isFinite(exportSettings.customHeight) || exportSettings.customHeight <= 0) {
+    exportSettings.customHeight = source.height;
+  }
+}
+
+function syncExportResolutionInputs(preset) {
+  if (!exportSettings) {
+    return;
+  }
+  const targetPreset = preset || exportSettings.resolutionPreset || 'source';
+  exportSettings.resolutionPreset = targetPreset;
+  const disableCustom = targetPreset !== 'custom';
+  setExportDimensionsDisabled(disableCustom);
+  let width;
+  let height;
+  if (targetPreset === 'custom') {
+    width = clampExportDimension(exportSettings.customWidth, exportSettings.width);
+    height = clampExportDimension(exportSettings.customHeight, exportSettings.height);
+    exportSettings.customWidth = width;
+    exportSettings.customHeight = height;
+  } else {
+    const dims = resolvePresetDimensions(targetPreset, canvasElement, {
+      width: exportSettings.customWidth,
+      height: exportSettings.customHeight,
+    });
+    width = clampExportDimension(dims.width, exportSettings.width);
+    height = clampExportDimension(dims.height, exportSettings.height);
+  }
+  exportSettings.width = width;
+  exportSettings.height = height;
+  if (exportWidthInput) {
+    exportWidthInput.value = width;
+  }
+  if (exportHeightInput) {
+    exportHeightInput.value = height;
+  }
+}
+
+function updateExportFormatRadios(format) {
+  const normalized = format === 'webm' ? 'webm' : 'mp4';
+  exportFormatRadios.forEach((radio) => {
+    if (!radio) {
+      return;
+    }
+    radio.checked = radio.value === normalized;
+  });
+}
+
+function populateExportDialog() {
+  if (!exportSettings) {
+    return;
+  }
+  refreshExportSettingsFromSource();
+  const preset = exportSettings.resolutionPreset;
+  if (exportPresetSelect) {
+    const hasOption = Array.from(exportPresetSelect.options ?? []).some((option) => option.value === preset);
+    exportPresetSelect.value = hasOption ? preset : 'source';
+    if (!hasOption) {
+      exportSettings.resolutionPreset = 'source';
+    }
+  }
+  syncExportResolutionInputs(exportSettings.resolutionPreset);
+  if (exportFpsInput) {
+    exportSettings.frameRate = clampExportFrameRate(exportSettings.frameRate);
+    exportFpsInput.value = exportSettings.frameRate;
+  }
+  if (exportBitrateInput) {
+    exportBitrateInput.value = exportSettings.videoBitsPerSecond
+      ? Math.round(exportSettings.videoBitsPerSecond / MEGABIT)
+      : '';
+    exportBitrateInput.setCustomValidity('');
+  }
+  updateExportFormatRadios(exportSettings.format);
+}
+
+function openExportDialog() {
+  if (!exportDialog) {
+    return {};
+  }
+  populateExportDialog();
+  exportDialog.dataset.open = 'true';
+  if (typeof exportDialog.showModal === 'function') {
+    try {
+      exportDialog.showModal();
+    } catch {
+      exportDialog.setAttribute('open', 'true');
+    }
+  } else {
+    exportDialog.setAttribute('open', 'true');
+  }
+  if (exportPresetSelect) {
+    exportPresetSelect.focus({ preventScroll: true });
+  }
+  return false;
+}
+
+function closeExportDialog() {
+  if (!exportDialog) {
+    return;
+  }
+  exportDialog.dataset.open = 'false';
+  if (typeof exportDialog.close === 'function') {
+    try {
+      exportDialog.close();
+    } catch {
+      exportDialog.removeAttribute('open');
+    }
+  } else {
+    exportDialog.removeAttribute('open');
+  }
+  if (exportButton && typeof exportButton.focus === 'function') {
+    exportButton.focus({ preventScroll: true });
+  }
+}
+
+function handleExportPresetChange() {
+  if (!exportSettings) {
+    return;
+  }
+  const preset = exportPresetSelect ? exportPresetSelect.value : exportSettings.resolutionPreset;
+  exportSettings.resolutionPreset = preset || 'source';
+  syncExportResolutionInputs(exportSettings.resolutionPreset);
+}
+
+function handleExportWidthInput() {
+  if (!exportSettings || exportSettings.resolutionPreset !== 'custom' || !exportWidthInput) {
+    return;
+  }
+  const width = clampExportDimension(exportWidthInput.value, exportSettings.customWidth);
+  exportSettings.customWidth = width;
+  exportSettings.width = width;
+  exportWidthInput.value = width;
+}
+
+function handleExportHeightInput() {
+  if (!exportSettings || exportSettings.resolutionPreset !== 'custom' || !exportHeightInput) {
+    return;
+  }
+  const height = clampExportDimension(exportHeightInput.value, exportSettings.customHeight);
+  exportSettings.customHeight = height;
+  exportSettings.height = height;
+  exportHeightInput.value = height;
+}
+
+function handleExportFpsChange() {
+  if (!exportSettings || !exportFpsInput) {
+    return;
+  }
+  const fps = clampExportFrameRate(exportFpsInput.value);
+  exportSettings.frameRate = fps;
+  exportFpsInput.value = fps;
+}
+
+function handleExportBitrateChange() {
+  if (!exportSettings || !exportBitrateInput) {
+    return;
+  }
+  if (exportBitrateInput.value === '') {
+    exportSettings.videoBitsPerSecond = null;
+    exportBitrateInput.setCustomValidity('');
+    return;
+  }
+  const numeric = Number(exportBitrateInput.value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    exportSettings.videoBitsPerSecond = null;
+    exportBitrateInput.setCustomValidity('Bitrate must be greater than zero.');
+    return;
+  }
+  const bits = clampExportBitrate(Math.round(numeric * MEGABIT));
+  if (!bits) {
+    exportSettings.videoBitsPerSecond = null;
+    exportBitrateInput.value = '';
+    exportBitrateInput.setCustomValidity('');
+    return;
+  }
+  exportSettings.videoBitsPerSecond = bits;
+  exportBitrateInput.value = Math.round(bits / MEGABIT);
+  exportBitrateInput.setCustomValidity('');
+}
+
+function handleExportFormatChange(event) {
+  if (!exportSettings || !event?.target) {
+    return;
+  }
+  const value = event.target.value === 'webm' ? 'webm' : 'mp4';
+  exportSettings.format = value;
+}
+
+function handleExportFormSubmit(event) {
+  if (event) {
+    event.preventDefault();
+  }
+  if (!exportSettings) {
+    return;
+  }
+  const preset = exportPresetSelect ? exportPresetSelect.value : exportSettings.resolutionPreset;
+  exportSettings.resolutionPreset = preset || 'source';
+
+  if (exportSettings.resolutionPreset === 'custom') {
+    handleExportWidthInput();
+    handleExportHeightInput();
+  } else {
+    const dims = resolvePresetDimensions(exportSettings.resolutionPreset, canvasElement, {
+      width: exportSettings.customWidth,
+      height: exportSettings.customHeight,
+    });
+    exportSettings.width = clampExportDimension(dims.width, exportSettings.width);
+    exportSettings.height = clampExportDimension(dims.height, exportSettings.height);
+  }
+
+  handleExportFpsChange();
+  handleExportBitrateChange();
+
+  if (exportBitrateInput && exportBitrateInput.validationMessage) {
+    exportBitrateInput.reportValidity();
+    return;
+  }
+
+  const selectedFormat = exportFormatRadios.find((radio) => radio && radio.checked);
+  exportSettings.format = selectedFormat && selectedFormat.value === 'webm' ? 'webm' : 'mp4';
+
+  persistExportSettings(exportSettings);
+
+  const startOptions = {
+    resolutionPreset: exportSettings.resolutionPreset,
+    width: exportSettings.width,
+    height: exportSettings.height,
+    frameRate: exportSettings.frameRate,
+    format: exportSettings.format,
+  };
+  if (exportSettings.videoBitsPerSecond) {
+    startOptions.videoBitsPerSecond = exportSettings.videoBitsPerSecond;
+  }
+
+  const started = videoExport.start(startOptions);
+  if (started) {
+    closeExportDialog();
+  }
 }
 
 if (
@@ -384,6 +800,67 @@ if (
     'Required controls missing from DOM (canvas, playlist, audio, volume, play, prev, next, seek, repeat, export, playlist actions, fullscreen, or BYOM).',
   );
 }
+
+if (exportDialog) {
+  exportDialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeExportDialog();
+  });
+  exportDialog.addEventListener('close', () => {
+    exportDialog.dataset.open = 'false';
+  });
+}
+
+if (exportForm) {
+  exportForm.addEventListener('submit', handleExportFormSubmit);
+}
+
+if (exportCancelButton) {
+  exportCancelButton.addEventListener('click', () => {
+    closeExportDialog();
+  });
+}
+
+if (exportCloseButton) {
+  exportCloseButton.addEventListener('click', () => {
+    closeExportDialog();
+  });
+}
+
+if (exportPresetSelect) {
+  exportPresetSelect.addEventListener('change', handleExportPresetChange);
+}
+
+if (exportWidthInput) {
+  exportWidthInput.addEventListener('change', handleExportWidthInput);
+  exportWidthInput.addEventListener('blur', handleExportWidthInput);
+}
+
+if (exportHeightInput) {
+  exportHeightInput.addEventListener('change', handleExportHeightInput);
+  exportHeightInput.addEventListener('blur', handleExportHeightInput);
+}
+
+if (exportFpsInput) {
+  exportFpsInput.addEventListener('change', handleExportFpsChange);
+  exportFpsInput.addEventListener('blur', handleExportFpsChange);
+}
+
+if (exportBitrateInput) {
+  exportBitrateInput.addEventListener('change', handleExportBitrateChange);
+  exportBitrateInput.addEventListener('blur', handleExportBitrateChange);
+}
+
+if (exportFormatRadios.length > 0) {
+  exportFormatRadios.forEach((radio) => {
+    if (!radio) {
+      return;
+    }
+    radio.addEventListener('change', handleExportFormatChange);
+  });
+}
+
+populateExportDialog();
 
 initNotifications(document);
 
@@ -422,6 +899,7 @@ videoExport.init({
   button: exportButton,
   notify,
   getFileName: resolveExportTitle,
+  getStartOptions: openExportDialog,
 });
 const manualAdjustments = {
   spawnOffset: 0,
