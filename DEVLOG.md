@@ -359,6 +359,11 @@
 - Taught the video exporter to normalize user-provided options, honor bitrate overrides, validate combinations, and skip worker conversion when WebM is selected.
 - Extended the exporter test suite to cover option handling, custom bitrates, and WebM exports, and reran `npm test` plus `npm run lint` for validation.
 
+## 2025-10-29 - Adaptive Feedback Telemetry Pipeline
+- Added an adaptive feedback module that buffers normalized frames, computes reinforcement targets, batches payloads, and emits events for analytics consumers.
+- Wired the app loop to stream frame data into the buffer, map UI feedback to compensated timestamps, and propagate metadata for BYOM logging hooks.
+- Extended the Jest suite with coverage for ring-buffer alignment, latency overrides, and batch emission; verified with `npm run lint` and `npm test -- --coverage`.
+
 ## 2025-10-29 - Adaptive Feedback HUD Controls
 - Added accessible positive/negative feedback buttons and a live status indicator to the HUD with responsive styling for desktop and mobile layouts.
 - Updated the renderer to manage feedback availability, ARIA pressed states, and keyboard shortcuts while emitting structured interaction events.

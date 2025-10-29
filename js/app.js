@@ -2,6 +2,7 @@ import * as audio from './audio.js';
 import * as nn from './nn.js';
 import * as physics from './physics.js';
 import * as map from './map.js';
+import * as adaptiveFeedback from './adaptive-feedback.js';
 import * as render from './render.js';
 import { applyPreset as applyPresetScaling, getDefaultPreset, getPreset } from './presets.js';
 import { getList, resolveUrl } from './playlist.js';
@@ -144,6 +145,7 @@ const FEEDBACK_STATUS_MESSAGES = Object.freeze({
   success: 'Feedback received',
   error: 'Feedback failed',
 });
+const FEEDBACK_INPUT_LATENCY_MS = 180;
 
 const qualityState = {
   visibilityScale: 1,
@@ -1463,6 +1465,7 @@ const safeModeEnabled = storedSafeMode;
 const nnBypass = storedBypass;
 let lastModelOutputs = FALLBACK_NN_OUTPUTS;
 let lastHiddenLayers = [];
+let normalizeErrorLogged = false;
 let currentTrackIndex = -1;
 
 map.configure({ safeMode: safeModeEnabled });
@@ -1721,6 +1724,23 @@ function handleFeedbackEvent(detail = {}) {
     timestamp: Number.isFinite(detail?.timestamp) ? detail.timestamp : now,
   };
 
+  const entry = getCurrentEntry();
+  const latencyMs = Number.isFinite(detail?.latencyMs)
+    ? detail.latencyMs
+    : Number.isFinite(detail?.latency)
+      ? detail.latency
+      : undefined;
+  adaptiveFeedback.recordFeedback(direction === 'positive' ? 1 : -1, {
+    timestamp: payload.timestamp,
+    latencyMs,
+    metadata: {
+      source: payload.source,
+      trackId: entry?.id ?? '',
+      trackTitle: entry?.title ?? '',
+      trackIndex: currentTrackIndex,
+    },
+  });
+
   let result;
   try {
     result = submitAdaptiveFeedback(direction, payload);
@@ -1762,6 +1782,7 @@ function handleFeedbackEvent(detail = {}) {
 }
 
 function initAdaptiveFeedback() {
+  adaptiveFeedback.setDefaultLatency(FEEDBACK_INPUT_LATENCY_MS);
   const controller = resolveAdaptiveFeedbackController();
   adaptiveFeedbackState.controller = controller;
   updateAdaptiveFeedbackAvailability(resolveAdaptiveFeedbackAvailability(controller));
@@ -2179,6 +2200,7 @@ async function prepareModelForEntry(entry) {
     lastModelOutputs = warmupOutputs || FALLBACK_NN_OUTPUTS;
     lastHiddenLayers = warmupOutputs ? nn.getHiddenLayerActivations() : [];
     activeModelEntryId = entry.id;
+    normalizeErrorLogged = false;
     if (info) {
       console.info(`[app] Model ready for "${entry.title ?? entry.id}" (${info.layers} layers)`);
     }
@@ -2838,12 +2860,25 @@ function frame(now) {
     : audio.getActivityLevel(audioState?.rms ?? 0);
 
   const currentEntry = getCurrentEntry();
+  const modelReady = currentEntry && activeModelEntryId === currentEntry.id;
+  let normalizedFeatures = null;
   let nnOutputs = lastModelOutputs;
   let hiddenActivations = lastHiddenLayers;
-  if (!nnBypass && currentEntry && activeModelEntryId === currentEntry.id) {
+  if (modelReady) {
     try {
-      const normalized = nn.normalize(features);
-      nnOutputs = nn.forward(normalized);
+      normalizedFeatures = nn.normalize(features);
+      normalizeErrorLogged = false;
+    } catch (error) {
+      if (!normalizeErrorLogged) {
+        console.warn('[app] Feature normalization failed; falling back to raw features.', error);
+        normalizeErrorLogged = true;
+      }
+      normalizedFeatures = null;
+    }
+  }
+  if (!nnBypass && modelReady && normalizedFeatures) {
+    try {
+      nnOutputs = nn.forward(normalizedFeatures);
       hiddenActivations = nn.getHiddenLayerActivations();
       lastModelOutputs = nnOutputs;
       lastHiddenLayers = hiddenActivations;
@@ -2873,6 +2908,12 @@ function frame(now) {
     activity,
     features,
     forceSilence: playbackSilent,
+  });
+  adaptiveFeedback.recordFrame({
+    timestamp: lookAheadTimestamp,
+    features: normalizedFeatures ?? features,
+    outputs: nnOutputs,
+    mappedParams,
   });
   applyMappedParams(mappedParams);
 
