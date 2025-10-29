@@ -1,6 +1,7 @@
 import { projectFeatureValue, PRIMARY_WEIGHT, SECONDARY_WEIGHT } from '../correlation-math.js';
 import { FEATURE_LABELS, FEATURE_TYPES } from '../audio-features.js';
 import { PARAM_NAMES as OUTPUT_LABELS } from '../map.js';
+import { ensureFloat32Array, translateRewardToTargets, normalizeInto, sanitizeFiniteNumber as sharedSanitizeFinite } from '../training-utils.js';
 
 const ACTIVATIONS = {
   relu: {
@@ -35,10 +36,20 @@ const DEFAULT_OPTIONS = {
 
 const state = {
   control: TRAINING_CONTROL.idle,
+  mode: 'batch',
   paused: false,
   cancelRequested: false,
   pauseResolvers: [],
   trainingPromise: null,
+};
+
+const adaptiveState = {
+  runtime: null,
+  model: null,
+  hyper: null,
+  options: null,
+  step: 0,
+  snapshot: null,
 };
 
 function postStatus(stateName, detail) {
@@ -97,6 +108,17 @@ function sanitizeHyper(raw) {
     learningRate: sanitizeNumber(raw?.learningRate, 0.01, 1e-6, 0.5),
     batchSize: Math.max(1, Math.floor(Number(raw?.batchSize ?? 1))),
     l2: Math.max(0, Number(raw?.l2 ?? 0)),
+  };
+}
+
+function sanitizeAdaptiveHyper(raw) {
+  const base = sanitizeHyper(raw || {});
+  const steps = Math.max(1, Math.floor(Number(raw?.steps ?? raw?.gradientSteps ?? 1)));
+  return {
+    learningRate: base.learningRate,
+    l2: base.l2,
+    batchSize: base.batchSize,
+    steps,
   };
 }
 
@@ -373,7 +395,7 @@ function maybeYield(iteration) {
 }
 
 function sanitizeFinite(value, fallback = 0) {
-  return Number.isFinite(value) ? value : fallback;
+  return sharedSanitizeFinite(value, fallback);
 }
 
 function forwardPass(runtime, inputVector) {
@@ -522,6 +544,104 @@ function resetGradients(runtime) {
     layer.weightGrads.fill(0);
     layer.biasGrads.fill(0);
   }
+}
+
+function captureRuntimeSnapshot(runtime) {
+  return runtime.layers.map((layer) => ({
+    weights: new Float32Array(layer.weights),
+    biases: new Float32Array(layer.biases),
+  }));
+}
+
+function computeAdaptiveDelta(runtime, snapshot) {
+  if (!snapshot) {
+    return { delta: null, transfers: [], changed: false };
+  }
+  const layers = [];
+  const transfers = [];
+  let changed = false;
+  for (let layerIndex = 0; layerIndex < runtime.layers.length; layerIndex += 1) {
+    const layer = runtime.layers[layerIndex];
+    const prev = snapshot[layerIndex];
+    if (!prev) {
+      snapshot[layerIndex] = {
+        weights: new Float32Array(layer.weights),
+        biases: new Float32Array(layer.biases),
+      };
+      continue;
+    }
+    const weightDelta = new Float32Array(layer.weights.length);
+    const biasDelta = new Float32Array(layer.biases.length);
+    let layerChanged = false;
+    for (let i = 0; i < layer.weights.length; i += 1) {
+      const diff = layer.weights[i] - prev.weights[i];
+      weightDelta[i] = diff;
+      if (diff !== 0) {
+        layerChanged = true;
+      }
+      prev.weights[i] = layer.weights[i];
+    }
+    for (let i = 0; i < layer.biases.length; i += 1) {
+      const diff = layer.biases[i] - prev.biases[i];
+      biasDelta[i] = diff;
+      if (diff !== 0) {
+        layerChanged = true;
+      }
+      prev.biases[i] = layer.biases[i];
+    }
+    if (layerChanged) {
+      layers.push({ weights: weightDelta, biases: biasDelta });
+      transfers.push(weightDelta.buffer, biasDelta.buffer);
+      changed = true;
+    }
+  }
+  if (!changed) {
+    return { delta: null, transfers: [], changed: false };
+  }
+  return { delta: { layers }, transfers, changed: true };
+}
+
+function accumulateAdaptiveGradients(runtime, targets, weight) {
+  const appliedWeight = Math.max(weight, 1e-3);
+  const layers = runtime.layers;
+  const lastLayer = layers[layers.length - 1];
+  const outputs = runtime.outputBuffer;
+  lastLayer.deltas.fill(0);
+  let loss = 0;
+  for (let i = 0; i < lastLayer.outputSize; i += 1) {
+    const prediction = outputs[i];
+    const target = targets[i];
+    const diff = prediction - target;
+    loss += 0.5 * appliedWeight * diff * diff;
+    const derivative = lastLayer.activation.derivative(lastLayer.preActivations[i], prediction);
+    lastLayer.deltas[i] = appliedWeight * diff * derivative;
+  }
+  for (let layerIndex = layers.length - 2; layerIndex >= 0; layerIndex -= 1) {
+    const layer = layers[layerIndex];
+    const nextLayer = layers[layerIndex + 1];
+    for (let outIndex = 0; outIndex < layer.outputSize; outIndex += 1) {
+      let sum = 0;
+      for (let nextOut = 0; nextOut < nextLayer.outputSize; nextOut += 1) {
+        const weight = nextLayer.weights[nextOut * layer.outputSize + outIndex];
+        sum += weight * nextLayer.deltas[nextOut];
+      }
+      const derivative = layer.activation.derivative(layer.preActivations[outIndex], layer.outputs[outIndex]);
+      layer.deltas[outIndex] = sum * derivative;
+    }
+  }
+  for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+    const layer = layers[layerIndex];
+    const prevOutputs = layerIndex === 0 ? runtime.inputBuffer : layers[layerIndex - 1].outputs;
+    for (let outIndex = 0; outIndex < layer.outputSize; outIndex += 1) {
+      const delta = layer.deltas[outIndex];
+      layer.biasGrads[outIndex] += delta;
+      const weightOffset = outIndex * layer.inputSize;
+      for (let inIndex = 0; inIndex < layer.inputSize; inIndex += 1) {
+        layer.weightGrads[weightOffset + inIndex] += delta * prevOutputs[inIndex];
+      }
+    }
+  }
+  return loss;
 }
 
 function computeValidationLoss(runtime, dataset, correlationContext) {
@@ -765,6 +885,131 @@ async function trainModel(payload) {
   postResult({ model }, stats);
 }
 
+function resetAdaptiveState() {
+  adaptiveState.runtime = null;
+  adaptiveState.model = null;
+  adaptiveState.hyper = null;
+  adaptiveState.options = null;
+  adaptiveState.step = 0;
+  adaptiveState.snapshot = null;
+}
+
+function primeAdaptiveState(modelDefinition, hyperparameters, options) {
+  adaptiveState.runtime = buildRuntimeModel(modelDefinition);
+  adaptiveState.model = modelDefinition;
+  adaptiveState.hyper = sanitizeAdaptiveHyper(hyperparameters);
+  adaptiveState.options = sanitizeOptions(options);
+  adaptiveState.step = 0;
+  adaptiveState.snapshot = captureRuntimeSnapshot(adaptiveState.runtime);
+}
+
+function ensureAdaptiveConfig(payload) {
+  if (payload?.model) {
+    primeAdaptiveState(payload.model, payload.hyperparameters, payload.options);
+  } else if (!adaptiveState.runtime) {
+    throw new Error('Adaptive reinforcement requires a model definition.');
+  } else {
+    if (payload?.hyperparameters) {
+      adaptiveState.hyper = sanitizeAdaptiveHyper({
+        ...adaptiveState.hyper,
+        ...payload.hyperparameters,
+      });
+    }
+    if (payload?.options) {
+      adaptiveState.options = sanitizeOptions({
+        ...adaptiveState.options,
+        ...payload.options,
+      });
+    }
+  }
+  if (!adaptiveState.hyper) {
+    adaptiveState.hyper = sanitizeAdaptiveHyper({});
+  }
+  if (!adaptiveState.options) {
+    adaptiveState.options = sanitizeOptions({});
+  }
+  return adaptiveState.runtime;
+}
+
+function reinforceAdaptive(payload) {
+  if (!payload || state.cancelRequested) {
+    return null;
+  }
+  if (payload.reset) {
+    resetAdaptiveState();
+  }
+  const runtime = ensureAdaptiveConfig(payload);
+  const hyper = adaptiveState.hyper;
+  const options = adaptiveState.options;
+  const lastLayer = runtime.layers[runtime.layers.length - 1];
+  const samples = Array.isArray(payload.samples) ? payload.samples : [];
+  if (samples.length === 0) {
+    return null;
+  }
+  const prepared = [];
+  for (const sample of samples) {
+    if (!sample) {
+      continue;
+    }
+    const features = ensureFloat32Array(sample.features, runtime.inputSize, 0);
+    const targetsSource = sample.targets ? sample.targets : null;
+    const { targets } = targetsSource
+      ? { targets: ensureFloat32Array(targetsSource, lastLayer.outputSize, 0) }
+      : translateRewardToTargets(sample, lastLayer.outputSize);
+    if (features.length !== runtime.inputSize || targets.length !== lastLayer.outputSize) {
+      continue;
+    }
+    const weight = Math.max(sharedSanitizeFinite(sample.weight ?? sample.score ?? 1, 1), 1e-3);
+    prepared.push({ features, targets, weight });
+  }
+  if (prepared.length === 0) {
+    return null;
+  }
+  const wasAdaptive = state.mode === 'adaptive' && state.control === TRAINING_CONTROL.running;
+  state.control = TRAINING_CONTROL.running;
+  state.mode = 'adaptive';
+  if (!wasAdaptive) {
+    postStatus('running', { stage: 'adaptive' });
+  }
+  let totalLoss = 0;
+  let totalWeight = 0;
+  let latestLearningRate = hyper.learningRate;
+  const steps = Math.max(1, Math.floor(Number(payload.steps ?? hyper.steps ?? 1)));
+  for (let step = 0; step < steps; step += 1) {
+    if (state.paused || state.cancelRequested) {
+      break;
+    }
+    resetGradients(runtime);
+    let stepWeight = 0;
+    let stepLoss = 0;
+    for (const sample of prepared) {
+      const normalized = normalizeInto(sample.features, runtime.normMean, runtime.normInvStd, runtime.inputBuffer);
+      forwardPass(runtime, normalized);
+      stepLoss += accumulateAdaptiveGradients(runtime, sample.targets, sample.weight);
+      stepWeight += sample.weight;
+    }
+    const denom = stepWeight > 0 ? stepWeight : prepared.length;
+    const stepIndex = adaptiveState.step + step;
+    latestLearningRate = Math.max(options.minLearningRate, hyper.learningRate * Math.pow(options.learningRateDecay, stepIndex));
+    applyGradients(runtime, hyper, options, Math.max(denom, 1), latestLearningRate);
+    totalLoss += stepLoss;
+    totalWeight += stepWeight;
+  }
+  adaptiveState.step += Math.max(1, Math.floor(Number(payload.steps ?? hyper.steps ?? 1)));
+  if (!adaptiveState.snapshot) {
+    adaptiveState.snapshot = captureRuntimeSnapshot(runtime);
+  }
+  const { delta, transfers, changed } = computeAdaptiveDelta(runtime, adaptiveState.snapshot);
+  const stats = {
+    loss: totalWeight > 0 ? totalLoss / totalWeight : null,
+    learningRate: latestLearningRate,
+    samples: prepared.length,
+    weight: totalWeight,
+    stepsApplied: Math.max(1, Math.floor(Number(payload.steps ?? hyper.steps ?? 1))),
+  };
+  return { delta, transfers, stats, changed };
+}
+
 self.addEventListener('message', (event) => {
   const message = event.data;
   if (!message || typeof message !== 'object') {
@@ -779,6 +1024,7 @@ self.addEventListener('message', (event) => {
         return;
       }
       state.control = TRAINING_CONTROL.running;
+      state.mode = 'batch';
       state.paused = false;
       state.cancelRequested = false;
       postStatus('running', { stage: 'starting' });
@@ -807,6 +1053,26 @@ self.addEventListener('message', (event) => {
       }
       break;
     }
+    case 'reinforce': {
+      try {
+        const result = reinforceAdaptive(payload || {});
+        if (result) {
+          const transfers = result.delta && Array.isArray(result.transfers) ? result.transfers : [];
+          self.postMessage(
+            {
+              type: 'weights-delta',
+              delta: result.delta,
+              stats: result.stats,
+              changed: Boolean(result.changed),
+            },
+            transfers,
+          );
+        }
+      } catch (error) {
+        postError(error);
+      }
+      break;
+    }
     case 'pause': {
       if (state.control !== TRAINING_CONTROL.running || state.paused) {
         return;
@@ -824,6 +1090,15 @@ self.addEventListener('message', (event) => {
       break;
     }
     case 'cancel': {
+      if (state.mode === 'adaptive' && state.control !== TRAINING_CONTROL.idle) {
+        resetAdaptiveState();
+        state.control = TRAINING_CONTROL.idle;
+        state.mode = 'batch';
+        state.paused = false;
+        state.cancelRequested = false;
+        postStatus('cancelled', { reason: 'cancelled-adaptive' });
+        break;
+      }
       if (state.control === TRAINING_CONTROL.idle) {
         postStatus('cancelled', { reason: 'cancelled-before-start' });
         return;

@@ -217,6 +217,44 @@ export function forward(normalizedFeatures, outBuffer) {
   return forwardWithModel(currentModel, normalizedFeatures, outBuffer || currentModel.outputBuffer);
 }
 
+export function applyWeightDelta(delta) {
+  if (!currentModel || !delta || !Array.isArray(delta.layers)) {
+    return false;
+  }
+  const { layers } = currentModel;
+  let applied = false;
+  for (let i = 0; i < delta.layers.length && i < layers.length; i += 1) {
+    const layerDelta = delta.layers[i];
+    const layer = layers[i];
+    if (!layerDelta || !layer) {
+      continue;
+    }
+    if (layerDelta.weights) {
+      const update = layerDelta.weights instanceof Float32Array ? layerDelta.weights : Float32Array.from(layerDelta.weights);
+      const length = Math.min(update.length, layer.weights.length);
+      for (let index = 0; index < length; index += 1) {
+        const diff = update[index];
+        if (Number.isFinite(diff) && diff !== 0) {
+          layer.weights[index] += diff;
+          applied = true;
+        }
+      }
+    }
+    if (layerDelta.biases) {
+      const update = layerDelta.biases instanceof Float32Array ? layerDelta.biases : Float32Array.from(layerDelta.biases);
+      const length = Math.min(update.length, layer.biases.length);
+      for (let index = 0; index < length; index += 1) {
+        const diff = update[index];
+        if (Number.isFinite(diff) && diff !== 0) {
+          layer.biases[index] += diff;
+          applied = true;
+        }
+      }
+    }
+  }
+  return applied;
+}
+
 export function getHiddenLayerActivations() {
   return lastHiddenActivations.slice();
 }

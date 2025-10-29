@@ -1,4 +1,4 @@
-import { loadModel, normalize, forward } from '../nn.js';
+import { loadModel, normalize, forward, applyWeightDelta } from '../nn.js';
 
 function createDummyModel() {
   return {
@@ -48,4 +48,33 @@ describe('nn runtime', () => {
     expect(result).toBe(outBuffer);
     expect(Number.isFinite(result[0])).toBe(true);
   });
+  test('applyWeightDelta mutates loaded model weights', async () => {
+    await loadModel(createDummyModel());
+    const features = new Float32Array([0.2, -0.1, 0.4]);
+    const normalized = normalize(features);
+    const before = forward(normalized, new Float32Array(1))[0];
+    const delta = {
+      layers: [
+        {
+          weights: new Float32Array([0.01, 0.02, -0.01, 0, 0, 0.03]),
+          biases: new Float32Array([0.005, -0.002]),
+        },
+        {
+          weights: new Float32Array([0.015, -0.01]),
+          biases: new Float32Array([0.004]),
+        },
+      ],
+    };
+    const applied = applyWeightDelta(delta);
+    expect(applied).toBe(true);
+    const after = forward(normalized, new Float32Array(1))[0];
+    expect(after).not.toBeCloseTo(before);
+  });
+
+  test('applyWeightDelta returns false for invalid deltas', async () => {
+    await loadModel(createDummyModel());
+    const applied = applyWeightDelta({ layers: [{ weights: [Infinity], biases: [Number.NaN] }] });
+    expect(applied).toBe(false);
+  });
+
 });

@@ -1,5 +1,7 @@
-import { loadModelDefinition, createModel, infer } from './nn.js';
+import { loadModelDefinition, createModel, infer, applyWeightDelta } from './nn.js';
 import { isFreshModelId } from './byom-constants.js';
+import * as adaptiveFeedback from './adaptive-feedback.js';
+import { prepareReinforcementBatch } from './training-utils.js';
 
 const DEFAULT_OPTIONS = Object.freeze({
   learningRateDecay: 1,
@@ -177,6 +179,7 @@ export function createController(callbacks) {
   const cb = ensureCallbacks(callbacks);
   const state = {
     status: TRAINING_STATUS.IDLE,
+    mode: 'batch',
     worker: null,
     lastProgressAt: 0,
     pending: null,
@@ -186,6 +189,10 @@ export function createController(callbacks) {
     activeCorrelations: [],
     warmupSample: null,
     cancelRequested: false,
+    adaptiveSubscription: null,
+    adaptiveShape: null,
+    adaptiveSettings: { stepsPerBatch: 1 },
+    adaptivePaused: false,
     options: {
       ...DEFAULT_OPTIONS,
     },
@@ -231,6 +238,164 @@ export function createController(callbacks) {
     }
   }
 
+  function detachAdaptiveSubscription() {
+    if (typeof state.adaptiveSubscription === 'function') {
+      try {
+        state.adaptiveSubscription();
+      } catch (error) {
+        console.warn('[training] adaptive subscription teardown failed', error);
+      }
+    }
+    state.adaptiveSubscription = null;
+  }
+
+  function computeModelShape(definition) {
+    if (!definition || typeof definition !== 'object') {
+      return null;
+    }
+    const layers = Array.isArray(definition.layers) ? definition.layers : [];
+    if (layers.length === 0) {
+      return null;
+    }
+    let inputSize = Number(definition.input);
+    if (!Number.isFinite(inputSize) || inputSize <= 0) {
+      const first = layers[0];
+      const biasArray = Array.isArray(first?.bias) ? first.bias : Array.isArray(first?.biases) ? first.biases : [];
+      const weightArray = Array.isArray(first?.weights) ? first.weights : [];
+      const outputs = biasArray.length;
+      if (outputs > 0 && weightArray.length % outputs === 0) {
+        inputSize = weightArray.length / outputs;
+      }
+    }
+    const last = layers[layers.length - 1];
+    const lastBias = Array.isArray(last?.bias) ? last.bias : Array.isArray(last?.biases) ? last.biases : [];
+    const outputSize = lastBias.length;
+    if (!Number.isFinite(inputSize) || inputSize <= 0 || outputSize <= 0) {
+      return null;
+    }
+    return { inputSize, outputSize };
+  }
+
+  function handleAdaptiveBatchEvent(event) {
+    if (state.mode !== 'adaptive' || state.status !== TRAINING_STATUS.RUNNING || state.adaptivePaused) {
+      return;
+    }
+    if (!event || !Array.isArray(event.samples) || event.samples.length === 0) {
+      return;
+    }
+    if (!state.adaptiveShape) {
+      return;
+    }
+    const worker = state.worker;
+    if (!worker) {
+      return;
+    }
+    const { samples, transfers } = prepareReinforcementBatch(event.samples, state.adaptiveShape);
+    if (samples.length === 0) {
+      return;
+    }
+    const payload = {
+      samples,
+      hyperparameters: {
+        ...state.activeHyper,
+        steps: state.adaptiveSettings.stepsPerBatch,
+      },
+      options: {
+        learningRateDecay: state.options.learningRateDecay,
+        minLearningRate: state.options.minLearningRate,
+        gradientClipNorm: state.options.gradientClipNorm,
+      },
+    };
+    try {
+      worker.postMessage({ type: 'reinforce', payload }, transfers);
+    } catch (error) {
+      console.warn('[training] failed to forward adaptive batch', error);
+    }
+  }
+
+  async function startAdaptive(options) {
+    detachAdaptiveSubscription();
+    state.mode = 'adaptive';
+    state.adaptivePaused = false;
+    state.cancelRequested = false;
+    state.lastProgressAt = 0;
+
+    const { modelUrl, modelDefinition: providedModelDefinition, hyperparameters, stepsPerBatch, summary } = options;
+    state.activeSummary = summary ?? state.activeSummary ?? null;
+    state.activeDataset = null;
+    state.activeCorrelations = [];
+    const inlineDefinition = providedModelDefinition && typeof providedModelDefinition === 'object' ? providedModelDefinition : null;
+
+    let modelDefinition;
+    try {
+      if (inlineDefinition) {
+        modelDefinition = inlineDefinition;
+      } else if (typeof modelUrl === 'string' && modelUrl.length > 0) {
+        modelDefinition = await loadModelDefinition(modelUrl);
+      } else {
+        throw new Error('Adaptive training requires an existing model definition or URL.');
+      }
+    } catch (error) {
+      state.status = TRAINING_STATUS.ERROR;
+      rejectPending(error);
+      cb.onError(error);
+      cb.onStatus({ status: TRAINING_STATUS.ERROR, detail: error });
+      return Promise.reject(error);
+    }
+
+    const shape = computeModelShape(modelDefinition);
+    if (!shape) {
+      const error = new Error('Unable to determine model dimensions for adaptive training.');
+      state.status = TRAINING_STATUS.ERROR;
+      rejectPending(error);
+      cb.onError(error);
+      cb.onStatus({ status: TRAINING_STATUS.ERROR, detail: error });
+      return Promise.reject(error);
+    }
+
+    state.activeHyper = sanitizeHyperparameters(hyperparameters);
+    updateStatus(TRAINING_STATUS.PREPARING, { summary: state.activeSummary, hyperparameters: state.activeHyper });
+    state.adaptiveSettings.stepsPerBatch = Math.max(1, Math.floor(Number(stepsPerBatch ?? state.adaptiveSettings.stepsPerBatch ?? 1)));
+    state.adaptiveShape = shape;
+
+    const worker = getWorker();
+    const promise = new Promise((resolve, reject) => {
+      state.pending = { resolve, reject };
+    });
+
+    try {
+      worker.postMessage({
+        type: 'reinforce',
+        payload: {
+          model: modelDefinition,
+          hyperparameters: {
+            ...state.activeHyper,
+            steps: state.adaptiveSettings.stepsPerBatch,
+          },
+          options: {
+            learningRateDecay: state.options.learningRateDecay,
+            minLearningRate: state.options.minLearningRate,
+            gradientClipNorm: state.options.gradientClipNorm,
+          },
+          reset: true,
+          samples: [],
+        },
+      });
+    } catch (error) {
+      state.status = TRAINING_STATUS.ERROR;
+      rejectPending(error);
+      cb.onError(error);
+      cb.onStatus({ status: TRAINING_STATUS.ERROR, detail: error });
+      return Promise.reject(error);
+    }
+
+    state.status = TRAINING_STATUS.RUNNING;
+    updateStatus(TRAINING_STATUS.RUNNING, { mode: 'adaptive' });
+
+    state.adaptiveSubscription = adaptiveFeedback.on('batch', handleAdaptiveBatchEvent);
+    return promise;
+  }
+
   async function start(options) {
     if (state.status !== TRAINING_STATUS.IDLE && state.status !== TRAINING_STATUS.COMPLETED) {
       throw new Error('Training already in progress.');
@@ -252,6 +417,14 @@ export function createController(callbacks) {
         ? providedModelDefinition
         : null;
     const requestedMode = typeof mode === 'string' ? mode : null;
+    if (requestedMode === 'adaptive') {
+      state.activeDataset = null;
+      state.activeSummary = summary ?? null;
+      state.activeCorrelations = Array.isArray(correlations) ? correlations.map((correlation) => ({ ...correlation })) : [];
+      return startAdaptive(options);
+    }
+    state.mode = 'batch';
+    detachAdaptiveSubscription();
     const freshRequested = requestedMode === 'fresh' || isFreshModelId(modelUrl);
     if (!freshRequested && !inlineDefinition) {
       if (typeof modelUrl !== 'string' || modelUrl.length === 0) {
@@ -364,6 +537,9 @@ export function createController(callbacks) {
     if (!worker) {
       return false;
     }
+    if (state.mode === 'adaptive') {
+      state.adaptivePaused = true;
+    }
     worker.postMessage({ type: 'pause' });
     updateStatus(TRAINING_STATUS.PAUSED);
     return true;
@@ -377,6 +553,9 @@ export function createController(callbacks) {
     if (!worker) {
       return false;
     }
+    if (state.mode === 'adaptive') {
+      state.adaptivePaused = false;
+    }
     worker.postMessage({ type: 'resume' });
     updateStatus(TRAINING_STATUS.RUNNING);
     return true;
@@ -385,11 +564,18 @@ export function createController(callbacks) {
   function cancel() {
     if (state.status === TRAINING_STATUS.PREPARING) {
       state.cancelRequested = true;
+      if (state.mode === 'adaptive') {
+        detachAdaptiveSubscription();
+      }
       updateStatus(TRAINING_STATUS.CANCELLING);
       return true;
     }
     if (state.status !== TRAINING_STATUS.RUNNING && state.status !== TRAINING_STATUS.PAUSED) {
       return false;
+    }
+    if (state.mode === 'adaptive') {
+      state.adaptivePaused = true;
+      detachAdaptiveSubscription();
     }
     state.cancelRequested = true;
     const worker = state.worker;
@@ -401,6 +587,7 @@ export function createController(callbacks) {
   }
 
   function destroy() {
+    detachAdaptiveSubscription();
     resetWorker();
     state.status = TRAINING_STATUS.IDLE;
     state.pending = null;
@@ -409,6 +596,10 @@ export function createController(callbacks) {
     state.activeHyper = null;
     state.activeCorrelations = [];
     state.warmupSample = null;
+    state.adaptiveShape = null;
+    state.adaptiveSettings.stepsPerBatch = 1;
+    state.adaptivePaused = false;
+    state.mode = 'batch';
   }
 
   async function runWarmup(modelDefinition, stats) {
@@ -458,6 +649,13 @@ export function createController(callbacks) {
         } else if (workerState === 'cancelled') {
           state.status = TRAINING_STATUS.CANCELLED;
           state.cancelRequested = false;
+          if (state.mode === 'adaptive') {
+            state.adaptivePaused = false;
+            state.adaptiveShape = null;
+            state.adaptiveSettings.stepsPerBatch = 1;
+            state.mode = 'batch';
+            detachAdaptiveSubscription();
+          }
           resolvePending({ cancelled: true, detail });
           cb.onCancelled(detail);
         } else if (workerState === 'error') {
@@ -479,6 +677,7 @@ export function createController(callbacks) {
         break;
       }
       case 'result': {
+
         state.status = TRAINING_STATUS.COMPLETED;
         state.cancelRequested = false;
         resolvePending({ cancelled: false, result: message.result, stats: message.stats });
@@ -490,6 +689,26 @@ export function createController(callbacks) {
             warmup,
           });
         });
+        break;
+      }
+      case 'weights-delta': {
+        if (message.delta) {
+          try {
+            const applied = applyWeightDelta(message.delta);
+            if (applied) {
+              state.lastProgressAt = defaultNow();
+            }
+          } catch (error) {
+            console.warn('[training] failed to apply weight delta', error);
+          }
+        }
+        if (message.stats) {
+          cb.onProgress({
+            mode: 'adaptive',
+            stats: message.stats,
+            changed: Boolean(message.changed),
+          });
+        }
         break;
       }
       case 'error': {
@@ -515,6 +734,7 @@ export function createController(callbacks) {
   function getState() {
     return {
       status: state.status,
+      mode: state.mode,
       hyperparameters: state.activeHyper,
       summary: state.activeSummary,
       correlations: state.activeCorrelations.slice(),
