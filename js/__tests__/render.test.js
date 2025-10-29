@@ -50,6 +50,16 @@ function setupRenderDom() {
       <div id="track-time"></div>
       <div id="hud-status"></div>
       <div id="hud-fps"></div>
+      <div class="hud-feedback">
+        <div id="feedback-status" data-state="offline">
+          <span id="feedback-status-indicator"></span>
+          <span id="feedback-status-text"></span>
+        </div>
+        <div>
+          <button id="feedback-positive" aria-pressed="false"></button>
+          <button id="feedback-negative" aria-pressed="false"></button>
+        </div>
+      </div>
       <div class="hud-volume">
         <label>Volume <span id="volume-display"></span></label>
         <input id="volume" type="range" value="0.7" />

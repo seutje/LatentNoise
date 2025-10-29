@@ -358,3 +358,8 @@
 - Added a modal export settings form with resolution presets, custom dimensions, frame rate, bitrate, and MP4/WebM toggle, persisting choices in localStorage.
 - Taught the video exporter to normalize user-provided options, honor bitrate overrides, validate combinations, and skip worker conversion when WebM is selected.
 - Extended the exporter test suite to cover option handling, custom bitrates, and WebM exports, and reran `npm test` plus `npm run lint` for validation.
+
+## 2025-10-29 - Adaptive Feedback HUD Controls
+- Added accessible positive/negative feedback buttons and a live status indicator to the HUD with responsive styling for desktop and mobile layouts.
+- Updated the renderer to manage feedback availability, ARIA pressed states, and keyboard shortcuts while emitting structured interaction events.
+- Connected the app layer to the adaptive feedback controller with availability listeners, debounced submissions, and status recovery messaging; verified with `npm run lint` and `npm test`.

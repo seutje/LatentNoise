@@ -342,6 +342,138 @@ body.fullscreen-active #byom-drawer {
   color: var(--hud-text-dim, rgba(245, 247, 255, 0.68));
 }
 
+#hud .hud-feedback {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  font-size: 0.74rem;
+  color: var(--hud-text-dim, rgba(245, 247, 255, 0.68));
+}
+
+#hud .feedback-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  color: var(--hud-text-dim, rgba(245, 247, 255, 0.68));
+  white-space: nowrap;
+}
+
+#hud .feedback-status-indicator {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.25);
+  transition: background 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+#hud .feedback-status[data-state='ready'] .feedback-status-indicator {
+  border-color: rgba(138, 255, 186, 0.6);
+  background: rgba(138, 255, 186, 0.36);
+  box-shadow: 0 0 0 2px rgba(138, 255, 186, 0.12);
+}
+
+#hud .feedback-status[data-state='pending'] .feedback-status-indicator {
+  border-color: rgba(255, 214, 137, 0.75);
+  background: rgba(255, 214, 137, 0.3);
+  box-shadow: 0 0 0 2px rgba(255, 214, 137, 0.14);
+}
+
+#hud .feedback-status[data-state='success'] .feedback-status-indicator {
+  border-color: rgba(138, 255, 186, 0.75);
+  background: rgba(138, 255, 186, 0.4);
+  box-shadow: 0 0 0 3px rgba(138, 255, 186, 0.18);
+}
+
+#hud .feedback-status[data-state='error'] .feedback-status-indicator {
+  border-color: rgba(255, 138, 138, 0.75);
+  background: rgba(255, 138, 138, 0.32);
+  box-shadow: 0 0 0 3px rgba(255, 138, 138, 0.22);
+}
+
+#hud .feedback-status[data-state='offline'] .feedback-status-indicator {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+}
+
+#hud .feedback-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+#hud .feedback-button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+  position: relative;
+  min-height: 2.1rem;
+  text-decoration: none;
+}
+
+#hud .feedback-button span[aria-hidden='true'] {
+  font-size: 1rem;
+}
+
+#hud .feedback-button[disabled],
+#hud .feedback-button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+}
+
+#hud .feedback-button:not([disabled]):not([aria-disabled='true']):hover,
+#hud .feedback-button:not([disabled]):not([aria-disabled='true']):focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  background: rgba(167, 139, 250, 0.18);
+  border-color: rgba(167, 139, 250, 0.45);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.38);
+}
+
+#hud .feedback-button:not([disabled]):not([aria-disabled='true']):focus-visible {
+  box-shadow:
+    0 0 0 2px rgba(8, 12, 24, 0.85),
+    0 0 0 4px rgba(167, 139, 250, 0.45);
+}
+
+#hud .feedback-button[aria-pressed='true'] {
+  background: rgba(167, 139, 250, 0.26);
+  border-color: rgba(167, 139, 250, 0.6);
+  box-shadow: 0 12px 28px rgba(167, 139, 250, 0.16);
+}
+
+#hud .feedback-button--positive[aria-pressed='true'] {
+  background: rgba(118, 255, 199, 0.22);
+  border-color: rgba(118, 255, 199, 0.6);
+  box-shadow: 0 12px 28px rgba(118, 255, 199, 0.16);
+}
+
+#hud .feedback-button--negative[aria-pressed='true'] {
+  background: rgba(255, 138, 138, 0.2);
+  border-color: rgba(255, 138, 138, 0.58);
+  box-shadow: 0 12px 28px rgba(255, 138, 138, 0.16);
+}
+
 #hud .hud-volume {
   flex-direction: column;
   align-items: stretch;
@@ -1241,6 +1373,11 @@ body.fullscreen-active #byom-drawer {
 
   #hud {
     width: min(94vw, 18rem);
+  }
+
+  #hud .feedback-actions {
+    flex-direction: column;
+    gap: 0.5rem;
   }
 
   #controls {

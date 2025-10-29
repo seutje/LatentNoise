@@ -27,6 +27,45 @@
         <span id="hud-status">Idle</span>
         <span id="hud-fps">FPS: --</span>
       </div>
+      <div class="hud-row hud-feedback" role="group" aria-label="Adaptive feedback controls">
+        <div
+          id="feedback-status"
+          class="feedback-status"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-state="offline"
+        >
+          <span id="feedback-status-indicator" class="feedback-status-indicator" aria-hidden="true"></span>
+          <span id="feedback-status-text">Feedback offline</span>
+        </div>
+        <div class="feedback-actions" role="group" aria-label="Provide feedback">
+          <button
+            id="feedback-positive"
+            class="feedback-button feedback-button--positive"
+            type="button"
+            aria-label="Send positive feedback"
+            aria-pressed="false"
+            disabled
+            aria-disabled="true"
+          >
+            <span aria-hidden="true">👍</span>
+            <span class="feedback-button-label">Good</span>
+          </button>
+          <button
+            id="feedback-negative"
+            class="feedback-button feedback-button--negative"
+            type="button"
+            aria-label="Send negative feedback"
+            aria-pressed="false"
+            disabled
+            aria-disabled="true"
+          >
+            <span aria-hidden="true">👎</span>
+            <span class="feedback-button-label">Needs work</span>
+          </button>
+        </div>
+      </div>
       <div class="hud-row hud-volume">
         <label for="volume">Volume <span id="volume-display">70%</span></label>
         <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7">

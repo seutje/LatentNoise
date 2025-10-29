@@ -135,6 +135,16 @@ const MIN_PARTICLE_CAP = 800;
 const HIDDEN_VISIBILITY_SCALE = 0.5;
 const VISIBILITY_DEBOUNCE_MS = 220;
 
+const FEEDBACK_DEBOUNCE_MS = 450;
+const FEEDBACK_STATUS_RESET_MS = 3200;
+const FEEDBACK_STATUS_MESSAGES = Object.freeze({
+  offline: 'Feedback offline',
+  ready: 'Ready for feedback',
+  pending: 'Sending feedback…',
+  success: 'Feedback received',
+  error: 'Feedback failed',
+});
+
 const qualityState = {
   visibilityScale: 1,
   performanceIndex: 0,
@@ -148,6 +158,13 @@ const performanceState = {
 
 let lastAppliedCap = BASE_PARTICLE_CAP;
 let particleIntermissionUntil = 0;
+
+const adaptiveFeedbackState = {
+  controller: null,
+  available: false,
+  lastSentAt: 0,
+  resetTimer: 0,
+};
 
 const ZOOM_SPEC = map.getParamSpec('zoom') ?? {};
 const DEFAULT_ZOOM_SOURCE_MIN = 0.05;
@@ -867,6 +884,7 @@ initNotifications(document);
 render.init();
 render.setWorldSize(2, 2);
 render.setStatus('Idle · Particles 0');
+initAdaptiveFeedback();
 updateFullscreenButtonUi(render.getToggles().fullscreen);
 
 physics.configure({
@@ -1501,6 +1519,269 @@ function copyParams(target, source) {
     target[key] = source[key];
   }
   return target;
+}
+
+function resolveAdaptiveFeedbackController() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  return window.lnAdaptiveFeedback ?? window.__LN_ADAPTIVE_FEEDBACK__ ?? null;
+}
+
+function parseAvailabilityPayload(payload) {
+  if (payload == null) {
+    return false;
+  }
+  if (typeof payload === 'boolean') {
+    return payload;
+  }
+  if (typeof payload === 'number') {
+    return payload !== 0;
+  }
+  if (typeof payload === 'string') {
+    const normalized = payload.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    if (['false', '0', 'off', 'disabled', 'no'].includes(normalized)) {
+      return false;
+    }
+    if (['true', '1', 'on', 'enabled', 'yes', 'ready', 'available'].includes(normalized)) {
+      return true;
+    }
+    return Boolean(normalized);
+  }
+  if (typeof payload === 'object') {
+    if (typeof payload.available !== 'undefined') {
+      return Boolean(payload.available);
+    }
+    if (typeof payload.value !== 'undefined') {
+      return parseAvailabilityPayload(payload.value);
+    }
+    if (typeof payload.detail !== 'undefined') {
+      return parseAvailabilityPayload(payload.detail);
+    }
+    if (typeof payload.type === 'string') {
+      return adaptiveFeedbackState.available;
+    }
+  }
+  return Boolean(payload);
+}
+
+function resolveAdaptiveFeedbackAvailability(controller) {
+  if (!controller) {
+    return false;
+  }
+  try {
+    if (typeof controller.isAvailable === 'function') {
+      return Boolean(controller.isAvailable());
+    }
+    if (typeof controller.getAvailability === 'function') {
+      return Boolean(controller.getAvailability());
+    }
+    if (typeof controller.available === 'boolean') {
+      return controller.available;
+    }
+    if (controller.state && typeof controller.state.available === 'boolean') {
+      return controller.state.available;
+    }
+  } catch (error) {
+    console.warn('[app] adaptive feedback availability check failed', error);
+    return false;
+  }
+  return true;
+}
+
+function cancelFeedbackResetTimer() {
+  if (adaptiveFeedbackState.resetTimer && typeof window !== 'undefined') {
+    window.clearTimeout(adaptiveFeedbackState.resetTimer);
+    adaptiveFeedbackState.resetTimer = 0;
+  }
+}
+
+function scheduleFeedbackReset() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  cancelFeedbackResetTimer();
+  adaptiveFeedbackState.resetTimer = window.setTimeout(() => {
+    adaptiveFeedbackState.resetTimer = 0;
+    if (adaptiveFeedbackState.available) {
+      render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.ready, 'ready');
+    } else {
+      render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.offline, 'offline');
+    }
+    render.setFeedbackSelection('none');
+  }, FEEDBACK_STATUS_RESET_MS);
+}
+
+function updateAdaptiveFeedbackAvailability(available, options = {}) {
+  const normalized = Boolean(available);
+  adaptiveFeedbackState.available = normalized;
+  render.setFeedbackAvailability(normalized, {
+    text: options.text ?? FEEDBACK_STATUS_MESSAGES[normalized ? 'ready' : 'offline'],
+    status: options.status ?? (normalized ? 'ready' : 'offline'),
+  });
+  if (!normalized) {
+    cancelFeedbackResetTimer();
+  }
+  render.setFeedbackSelection('none');
+}
+
+function bindAdaptiveFeedbackController(controller) {
+  if (!controller) {
+    return;
+  }
+  const handler = (value) => {
+    updateAdaptiveFeedbackAvailability(parseAvailabilityPayload(value));
+  };
+
+  let bound = false;
+  if (typeof controller.on === 'function') {
+    try {
+      controller.on('availabilitychange', handler);
+      bound = true;
+    } catch (error) {
+      console.warn('[app] adaptive feedback controller.on binding failed', error);
+    }
+  }
+  if (!bound && typeof controller.addEventListener === 'function') {
+    try {
+      controller.addEventListener('availabilitychange', handler);
+      bound = true;
+    } catch (error) {
+      console.warn('[app] adaptive feedback controller.addEventListener binding failed', error);
+    }
+  }
+  if (!bound && typeof controller.addListener === 'function') {
+    try {
+      controller.addListener('availabilitychange', handler);
+      bound = true;
+    } catch (error) {
+      console.warn('[app] adaptive feedback controller.addListener binding failed', error);
+    }
+  }
+  if (!bound && typeof controller.onAvailabilityChange === 'function') {
+    try {
+      controller.onAvailabilityChange(handler);
+    } catch (error) {
+      console.warn('[app] adaptive feedback controller.onAvailabilityChange binding failed', error);
+    }
+  }
+}
+
+function submitAdaptiveFeedback(direction, payload) {
+  const controller = adaptiveFeedbackState.controller;
+  if (!controller) {
+    return false;
+  }
+  if (typeof controller.submitFeedback === 'function') {
+    return controller.submitFeedback(payload);
+  }
+  if (typeof controller.sendFeedback === 'function') {
+    return controller.sendFeedback(payload);
+  }
+  if (typeof controller.handleFeedback === 'function') {
+    return controller.handleFeedback(payload);
+  }
+  if (typeof controller.send === 'function') {
+    return controller.send(payload);
+  }
+  if (typeof controller.submit === 'function') {
+    return controller.submit(payload);
+  }
+  if (typeof controller.dispatch === 'function') {
+    return controller.dispatch('feedback', payload);
+  }
+  if (typeof controller === 'function') {
+    return controller(payload);
+  }
+  return true;
+}
+
+function handleFeedbackEvent(detail = {}) {
+  const direction = detail?.direction;
+  if (direction !== 'positive' && direction !== 'negative') {
+    return;
+  }
+  if (!adaptiveFeedbackState.available) {
+    return;
+  }
+  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  if (now - adaptiveFeedbackState.lastSentAt < FEEDBACK_DEBOUNCE_MS) {
+    return;
+  }
+  adaptiveFeedbackState.lastSentAt = now;
+  cancelFeedbackResetTimer();
+  render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.pending, 'pending');
+
+  const payload = {
+    direction,
+    source: detail?.source ?? 'hud',
+    timestamp: Number.isFinite(detail?.timestamp) ? detail.timestamp : now,
+  };
+
+  let result;
+  try {
+    result = submitAdaptiveFeedback(direction, payload);
+  } catch (error) {
+    console.error('[app] adaptive feedback dispatch failed', error);
+    render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.error, 'error');
+    render.setFeedbackSelection('none');
+    scheduleFeedbackReset();
+    return;
+  }
+
+  if (result && typeof result.then === 'function') {
+    result
+      .then((response) => {
+        if (response === false) {
+          render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.error, 'error');
+        } else {
+          render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.success, 'success');
+        }
+        render.setFeedbackSelection('none');
+        scheduleFeedbackReset();
+      })
+      .catch((error) => {
+        console.error('[app] adaptive feedback rejected', error);
+        render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.error, 'error');
+        render.setFeedbackSelection('none');
+        scheduleFeedbackReset();
+      });
+    return;
+  }
+
+  if (result === false) {
+    render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.error, 'error');
+  } else {
+    render.setFeedbackStatus(FEEDBACK_STATUS_MESSAGES.success, 'success');
+  }
+  render.setFeedbackSelection('none');
+  scheduleFeedbackReset();
+}
+
+function initAdaptiveFeedback() {
+  const controller = resolveAdaptiveFeedbackController();
+  adaptiveFeedbackState.controller = controller;
+  updateAdaptiveFeedbackAvailability(resolveAdaptiveFeedbackAvailability(controller));
+  bindAdaptiveFeedbackController(controller);
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('ln:feedback-availability', (event) => {
+      updateAdaptiveFeedbackAvailability(parseAvailabilityPayload(event));
+    });
+    window.addEventListener('ln:feedback-controller', (event) => {
+      const detail = event?.detail ?? {};
+      const candidate = detail.controller ?? detail.instance ?? detail;
+      if (!candidate) {
+        return;
+      }
+      adaptiveFeedbackState.controller = candidate;
+      updateAdaptiveFeedbackAvailability(resolveAdaptiveFeedbackAvailability(candidate));
+      bindAdaptiveFeedbackController(candidate);
+    });
+  }
 }
 
 function getPerformanceScale() {
@@ -2459,6 +2740,7 @@ render.on('toggle', ({ name, value }) => {
     updateFullscreenButtonUi(Boolean(value));
   }
 });
+render.on('feedback', handleFeedbackEvent);
 
 audioElement.addEventListener('play', () => {
   dismissIntroOverlay();

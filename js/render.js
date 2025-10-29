@@ -42,6 +42,13 @@ const HUD_OUTPUT_PREFIX = 'OUT';
 const HUD_MAX_ITEMS = 64;
 const HUD_PANEL_STACK_GAP = 14;
 
+const FEEDBACK_SELECTION_NONE = 'none';
+const FEEDBACK_SELECTION_POSITIVE = 'positive';
+const FEEDBACK_SELECTION_NEGATIVE = 'negative';
+const FEEDBACK_STATUS_DEFAULT = 'Feedback offline';
+const FEEDBACK_STATUS_READY = 'Ready for feedback';
+const FEEDBACK_STATUS_VALUES = new Set(['offline', 'ready', 'pending', 'success', 'error']);
+
 const TOGGLE_DEFAULTS = /** @type {const} */ ({
   fullscreen: false,
 });
@@ -710,6 +717,23 @@ const state = {
     volumeSlider: /** @type {HTMLInputElement|null} */ (null),
     volumeDisplay: /** @type {HTMLElement|null} */ (null),
   },
+  feedback: {
+    available: false,
+    selection: FEEDBACK_SELECTION_NONE,
+    statusText: FEEDBACK_STATUS_DEFAULT,
+    statusState: 'offline',
+    elements: {
+      positive: /** @type {HTMLButtonElement|null} */ (null),
+      negative: /** @type {HTMLButtonElement|null} */ (null),
+      status: /** @type {HTMLElement|null} */ (null),
+      statusText: /** @type {HTMLElement|null} */ (null),
+      indicator: /** @type {HTMLElement|null} */ (null),
+    },
+    handlers: {
+      positive: /** @type {((event: Event) => void)|null} */ (null),
+      negative: /** @type {((event: Event) => void)|null} */ (null),
+    },
+  },
   toggles: { ...TOGGLE_DEFAULTS },
   pixelRatio: 1,
   dynamicScale: 1,
@@ -769,6 +793,76 @@ function clamp(value, min, max) {
     return max;
   }
   return value;
+}
+
+function normalizeFeedbackSelection(value) {
+  if (value === FEEDBACK_SELECTION_POSITIVE || value === FEEDBACK_SELECTION_NEGATIVE) {
+    return value;
+  }
+  return FEEDBACK_SELECTION_NONE;
+}
+
+function normalizeFeedbackState(value, fallback = 'ready') {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const normalized = value.toLowerCase();
+  return FEEDBACK_STATUS_VALUES.has(normalized) ? normalized : fallback;
+}
+
+function updateFeedbackButtons() {
+  const { positive, negative } = state.feedback.elements;
+  const available = state.feedback.available;
+  const selection = state.feedback.selection;
+
+  if (positive) {
+    positive.toggleAttribute('disabled', !available);
+    positive.setAttribute('aria-disabled', available ? 'false' : 'true');
+    positive.setAttribute('aria-pressed', selection === FEEDBACK_SELECTION_POSITIVE ? 'true' : 'false');
+  }
+  if (negative) {
+    negative.toggleAttribute('disabled', !available);
+    negative.setAttribute('aria-disabled', available ? 'false' : 'true');
+    negative.setAttribute('aria-pressed', selection === FEEDBACK_SELECTION_NEGATIVE ? 'true' : 'false');
+  }
+}
+
+function updateFeedbackStatusElement() {
+  const { status, statusText } = state.feedback.elements;
+  if (statusText) {
+    statusText.textContent = state.feedback.statusText;
+  }
+  if (status) {
+    status.dataset.state = state.feedback.statusState;
+  }
+}
+
+function updateFeedbackUi() {
+  updateFeedbackButtons();
+  updateFeedbackStatusElement();
+}
+
+function applyFeedbackSelection(selection) {
+  const normalized = normalizeFeedbackSelection(selection);
+  if (!state.feedback.available && normalized !== FEEDBACK_SELECTION_NONE) {
+    state.feedback.selection = FEEDBACK_SELECTION_NONE;
+  } else {
+    state.feedback.selection = normalized;
+  }
+  updateFeedbackButtons();
+  return state.feedback.selection;
+}
+
+function dispatchFeedback(direction, source) {
+  if (!state.feedback.available) {
+    return;
+  }
+  applyFeedbackSelection(direction);
+  emit('feedback', {
+    direction,
+    source,
+    timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+  });
 }
 
 function fract(value) {
@@ -1184,6 +1278,18 @@ function handleKeyDown(event) {
     case 'KeyF':
       handleToggleChange('fullscreen', !state.toggles.fullscreen, 'keyboard');
       break;
+    case 'KeyU':
+      if (state.feedback.available) {
+        event.preventDefault();
+        dispatchFeedback(FEEDBACK_SELECTION_POSITIVE, 'keyboard');
+      }
+      break;
+    case 'KeyD':
+      if (state.feedback.available) {
+        event.preventDefault();
+        dispatchFeedback(FEEDBACK_SELECTION_NEGATIVE, 'keyboard');
+      }
+      break;
     case 'BracketLeft':
       emit('adjustParticles', { delta: event.shiftKey ? -0.2 : -0.08 });
       break;
@@ -1296,6 +1402,26 @@ export function init(options = {}) {
   const fps = assertElement(options.fps || document.getElementById('hud-fps'), 'HUD FPS element missing.');
   const volumeSlider = assertElement(options.volumeSlider || document.getElementById('volume'), 'Volume slider #volume missing.');
   const volumeDisplay = assertElement(options.volumeDisplay || document.getElementById('volume-display'), 'HUD volume display missing.');
+  const feedbackStatus = assertElement(
+    options.feedbackStatus || document.getElementById('feedback-status'),
+    'Feedback status element #feedback-status missing.',
+  );
+  const feedbackStatusText = assertElement(
+    options.feedbackStatusText || document.getElementById('feedback-status-text'),
+    'Feedback status text element #feedback-status-text missing.',
+  );
+  const feedbackIndicator = assertElement(
+    options.feedbackIndicator || document.getElementById('feedback-status-indicator'),
+    'Feedback status indicator element #feedback-status-indicator missing.',
+  );
+  const feedbackPositive = assertElement(
+    options.feedbackPositive || document.getElementById('feedback-positive'),
+    'Feedback positive button #feedback-positive missing.',
+  );
+  const feedbackNegative = assertElement(
+    options.feedbackNegative || document.getElementById('feedback-negative'),
+    'Feedback negative button #feedback-negative missing.',
+  );
   state.hud.root = hudRoot;
   state.hud.title = title;
   state.hud.time = time;
@@ -1303,6 +1429,23 @@ export function init(options = {}) {
   state.hud.fps = fps;
   state.hud.volumeSlider = volumeSlider;
   state.hud.volumeDisplay = volumeDisplay;
+  state.feedback.elements.status = feedbackStatus;
+  state.feedback.elements.statusText = feedbackStatusText;
+  state.feedback.elements.indicator = feedbackIndicator;
+  state.feedback.elements.positive = feedbackPositive;
+  state.feedback.elements.negative = feedbackNegative;
+
+  state.feedback.handlers.positive = () => {
+    dispatchFeedback(FEEDBACK_SELECTION_POSITIVE, 'hud');
+  };
+  state.feedback.handlers.negative = () => {
+    dispatchFeedback(FEEDBACK_SELECTION_NEGATIVE, 'hud');
+  };
+
+  feedbackPositive.addEventListener('click', state.feedback.handlers.positive);
+  feedbackNegative.addEventListener('click', state.feedback.handlers.negative);
+
+  updateFeedbackUi();
 
   volumeSlider.addEventListener('input', () => {
     updateVolumeDisplay(Number(volumeSlider.value));
@@ -1344,6 +1487,24 @@ export function destroy() {
   state.hud.fps = null;
   state.hud.volumeSlider = null;
   state.hud.volumeDisplay = null;
+  const { positive, negative } = state.feedback.elements;
+  if (positive && state.feedback.handlers.positive) {
+    positive.removeEventListener('click', state.feedback.handlers.positive);
+  }
+  if (negative && state.feedback.handlers.negative) {
+    negative.removeEventListener('click', state.feedback.handlers.negative);
+  }
+  state.feedback.handlers.positive = null;
+  state.feedback.handlers.negative = null;
+  state.feedback.elements.positive = null;
+  state.feedback.elements.negative = null;
+  state.feedback.elements.status = null;
+  state.feedback.elements.statusText = null;
+  state.feedback.elements.indicator = null;
+  state.feedback.available = false;
+  state.feedback.selection = FEEDBACK_SELECTION_NONE;
+  state.feedback.statusText = FEEDBACK_STATUS_DEFAULT;
+  state.feedback.statusState = 'offline';
   resetHudBuffer(state.hudLevels.features, HUD_FEATURE_PREFIX);
   resetHudBuffer(state.hudLevels.outputs, HUD_OUTPUT_PREFIX);
   state.hudLevels.hidden.length = 0;
@@ -1393,6 +1554,49 @@ export function updateVolume(value) {
   const clamped = clamp(value, VOLUME_MIN, VOLUME_MAX);
   state.hud.volumeSlider.value = clamped.toFixed(2);
   updateVolumeDisplay(clamped);
+}
+
+export function setFeedbackAvailability(available, options = {}) {
+  const normalized = Boolean(available);
+  state.feedback.available = normalized;
+  if (!normalized) {
+    state.feedback.statusState = 'offline';
+    state.feedback.statusText = typeof options.text === 'string' && options.text.trim().length > 0
+      ? options.text
+      : FEEDBACK_STATUS_DEFAULT;
+    applyFeedbackSelection(FEEDBACK_SELECTION_NONE);
+  } else {
+    if (typeof options.status === 'string') {
+      state.feedback.statusState = normalizeFeedbackState(options.status, 'ready');
+    } else if (state.feedback.statusState === 'offline') {
+      state.feedback.statusState = 'ready';
+    }
+    if (typeof options.text === 'string' && options.text.trim().length > 0) {
+      state.feedback.statusText = options.text;
+    } else if (state.feedback.statusState === 'ready' && state.feedback.statusText === FEEDBACK_STATUS_DEFAULT) {
+      state.feedback.statusText = FEEDBACK_STATUS_READY;
+    }
+  }
+  updateFeedbackUi();
+  return state.feedback.available;
+}
+
+export function setFeedbackStatus(text, status) {
+  if (typeof text === 'string' && text.trim().length > 0) {
+    state.feedback.statusText = text;
+  }
+  if (typeof status === 'string') {
+    state.feedback.statusState = normalizeFeedbackState(status, state.feedback.available ? 'ready' : 'offline');
+  }
+  updateFeedbackStatusElement();
+  return {
+    text: state.feedback.statusText,
+    state: state.feedback.statusState,
+  };
+}
+
+export function setFeedbackSelection(selection) {
+  return applyFeedbackSelection(selection);
 }
 
 export function getToggles() {
