@@ -1,8 +1,8 @@
-import { listPresets } from './presets.js';
+import { listPresets, getPreset, applyPreset } from './presets.js';
 import { analyzeFile } from './byom-intake.js';
 import { logByomDataset } from './diagnostics.js';
 import { FEATURE_LABELS, FEATURE_TYPES } from './audio-features.js';
-import { PARAM_NAMES as OUTPUT_LABELS } from './map.js';
+import { PARAM_NAMES as OUTPUT_LABELS, getParamSpec } from './map.js';
 import { PRIMARY_WEIGHT, SECONDARY_WEIGHT, formatCorrelation } from './correlation-math.js';
 import { FRESH_MODEL_ID, FRESH_MODEL_LABEL } from './byom-constants.js';
 import {
@@ -100,6 +100,45 @@ const ORIENTATION_INFO = Object.freeze({
   inverse: { label: 'Inverse', orientation: 'inverse', inverse: true, sign: -1 },
 });
 
+const MANUAL_BASE_VALUES = Object.freeze({
+  sim: Object.freeze({
+    cohesion: 0.54,
+    vortexAmount: 0.28,
+  }),
+  render: Object.freeze({
+    trailFade: 0.68,
+  }),
+});
+
+const MANUAL_TWEAKS = Object.freeze([
+  Object.freeze({
+    key: 'cohesion',
+    label: 'Cohesion',
+    group: 'sim',
+    param: 'cohesion',
+    inputSelector: '#byom-tweak-cohesion',
+  }),
+  Object.freeze({
+    key: 'vortex',
+    label: 'Vortex',
+    group: 'sim',
+    param: 'vortexAmount',
+    inputSelector: '#byom-tweak-vortex',
+  }),
+  Object.freeze({
+    key: 'trails',
+    label: 'Trail Fade',
+    group: 'render',
+    param: 'trailFade',
+    inputSelector: '#byom-tweak-trails',
+  }),
+]);
+
+const MANUAL_TWEAK_LOOKUP = new Map(MANUAL_TWEAKS.map((config) => [config.key, config]));
+const MANUAL_TWEAK_KEYS = MANUAL_TWEAKS.map((config) => config.key);
+const MANUAL_VALUE_EPSILON = 1e-3;
+const MANUAL_SLIDER_PRECISION = 100;
+
 function makeCorrelationId(featureIndex, outputIndex, orientationSign) {
   const sign = orientationSign === -1 ? 'inv' : 'dir';
   return `${featureIndex}:${outputIndex}:${sign}`;
@@ -196,6 +235,298 @@ function renderCorrelationList() {
     list.append(item);
   });
   updateCorrelationControlsDisabledState();
+}
+
+function clampValue(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+}
+
+function clamp01(value) {
+  return clampValue(value, 0, 1);
+}
+
+function quantizeSliderValue(value) {
+  const clamped = clamp01(value);
+  const quantized = Math.round(clamped * MANUAL_SLIDER_PRECISION) / MANUAL_SLIDER_PRECISION;
+  return clamp01(quantized);
+}
+
+function normalizeManualValue(actual, bounds) {
+  if (!bounds) {
+    return 0.5;
+  }
+  const range = bounds.max - bounds.min;
+  if (!Number.isFinite(range) || range === 0) {
+    return 0.5;
+  }
+  return (actual - bounds.min) / range;
+}
+
+function denormalizeManualValue(normalized, bounds) {
+  if (!bounds) {
+    return normalized;
+  }
+  const range = bounds.max - bounds.min;
+  if (!Number.isFinite(range) || range === 0) {
+    return bounds.min;
+  }
+  return bounds.min + normalized * range;
+}
+
+function computeManualBounds(config) {
+  const spec = getParamSpec(config.param);
+  const baseGroup = MANUAL_BASE_VALUES[config.group] ?? {};
+  const fallbackBaseline = baseGroup[config.param];
+  if (!spec) {
+    const baseline = Number.isFinite(fallbackBaseline) ? fallbackBaseline : 0.5;
+    const min = baseline - 0.25;
+    const max = baseline + 0.25;
+    return {
+      min: Math.min(min, max),
+      max: Math.max(min, max),
+      baseline: clampValue(baseline, Math.min(min, max), Math.max(min, max)),
+    };
+  }
+  const baselineCandidate = Number.isFinite(spec.baseline)
+    ? spec.baseline
+    : Number.isFinite(fallbackBaseline)
+      ? fallbackBaseline
+      : 0.5;
+  const swing = Number.isFinite(spec.safeSwing)
+    ? Math.max(0, spec.safeSwing)
+    : Number.isFinite(spec.swing)
+      ? Math.max(0, spec.swing)
+      : 0;
+  let min = baselineCandidate - swing;
+  let max = baselineCandidate + swing;
+  if (Number.isFinite(spec.min)) {
+    min = Math.max(min, spec.min);
+  }
+  if (Number.isFinite(spec.max)) {
+    max = Math.min(max, spec.max);
+  }
+  if (Number.isFinite(spec.safeMax)) {
+    max = Math.min(max, spec.safeMax);
+  }
+  if (Number.isFinite(spec.safeMin)) {
+    min = Math.max(min, spec.safeMin);
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) {
+    const fallbackMin = Number.isFinite(spec.min)
+      ? spec.min
+      : baselineCandidate - Math.max(0, swing || spec.swing || 0.25);
+    const fallbackMax = Number.isFinite(spec.max)
+      ? spec.max
+      : baselineCandidate + Math.max(0, swing || spec.swing || 0.25);
+    min = Number.isFinite(fallbackMin) ? fallbackMin : 0;
+    max = Number.isFinite(fallbackMax) ? fallbackMax : 1;
+    if (min >= max) {
+      const mid = Number.isFinite(baselineCandidate) ? baselineCandidate : 0.5;
+      min = mid - 0.5;
+      max = mid + 0.5;
+    }
+  }
+  const clampedBaseline = clampValue(
+    Number.isFinite(baselineCandidate) ? baselineCandidate : (min + max) / 2,
+    min,
+    max,
+  );
+  const range = max - min;
+  if (!Number.isFinite(range) || range <= 0) {
+    return {
+      min,
+      max: min + 1,
+      baseline: clampedBaseline,
+    };
+  }
+  return { min, max, baseline: clampedBaseline };
+}
+
+function computePresetValues(presetId) {
+  const base = {
+    sim: { ...MANUAL_BASE_VALUES.sim },
+    render: { ...MANUAL_BASE_VALUES.render },
+  };
+  if (!presetId) {
+    return base;
+  }
+  const preset = getPreset(presetId);
+  if (!preset) {
+    return base;
+  }
+  const adjusted = applyPreset(preset, base);
+  return {
+    sim: { ...base.sim, ...(adjusted?.sim ?? {}) },
+    render: { ...base.render, ...(adjusted?.render ?? {}) },
+  };
+}
+
+function resolveManualBaseline(config, presetValues, bounds) {
+  const groupValues = presetValues[config.group] ?? {};
+  const manualValue = groupValues[config.param];
+  if (Number.isFinite(manualValue)) {
+    return clampValue(manualValue, bounds.min, bounds.max);
+  }
+  return bounds.baseline;
+}
+
+function formatManualValue(value) {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+  return value.toFixed(2);
+}
+
+function updateManualSliderMetadata(slider, config, actual) {
+  if (!(slider instanceof HTMLInputElement)) {
+    return;
+  }
+  const label = config.label ?? config.key;
+  const formatted = formatManualValue(actual);
+  slider.setAttribute('aria-valuetext', `${label} ${formatted}`);
+  slider.title = `${label}: ${formatted}`;
+}
+
+function updateManualTweakNormalized(key, normalized, { userInitiated = false, preserveModification = false } = {}) {
+  const config = MANUAL_TWEAK_LOOKUP.get(key);
+  if (!config) {
+    return;
+  }
+  const tweak = state.manual.tweaks[key];
+  if (!tweak) {
+    return;
+  }
+  const bounds = tweak.bounds ?? computeManualBounds(config);
+  tweak.bounds = bounds;
+  const quantized = quantizeSliderValue(normalized);
+  const actual = clampValue(denormalizeManualValue(quantized, bounds), bounds.min, bounds.max);
+  tweak.value = quantized;
+  tweak.actual = actual;
+  if (tweak.slider instanceof HTMLInputElement) {
+    const stringValue = quantized.toFixed(2);
+    if (tweak.slider.value !== stringValue) {
+      tweak.slider.value = stringValue;
+    }
+    updateManualSliderMetadata(tweak.slider, config, actual);
+  }
+  const baseline = Number.isFinite(tweak.baseline) ? tweak.baseline : actual;
+  if (userInitiated) {
+    tweak.modified = Math.abs(actual - baseline) > MANUAL_VALUE_EPSILON;
+  } else if (!preserveModification) {
+    tweak.modified = Math.abs(actual - baseline) > MANUAL_VALUE_EPSILON;
+  }
+}
+
+function syncManualTweaksToPreset({ force = false } = {}) {
+  const presetId = getSelectedPresetId();
+  if (!force && state.manual.lastPresetId === presetId) {
+    return;
+  }
+  const presetValues = computePresetValues(presetId);
+  MANUAL_TWEAKS.forEach((config) => {
+    const tweak = state.manual.tweaks[config.key];
+    if (!tweak) {
+      return;
+    }
+    const bounds = computeManualBounds(config);
+    tweak.bounds = bounds;
+    const baseline = resolveManualBaseline(config, presetValues, bounds);
+    tweak.baseline = baseline;
+    const normalizedBaseline = clamp01(normalizeManualValue(baseline, bounds));
+    if (force || !tweak.modified) {
+      updateManualTweakNormalized(config.key, normalizedBaseline, { preserveModification: false });
+      tweak.modified = false;
+    } else {
+      const currentActual = Number.isFinite(tweak.actual) ? tweak.actual : baseline;
+      const clampedActual = clampValue(currentActual, bounds.min, bounds.max);
+      const normalized = clamp01(normalizeManualValue(clampedActual, bounds));
+      updateManualTweakNormalized(config.key, normalized, { preserveModification: true });
+      tweak.modified = Math.abs(tweak.actual - tweak.baseline) > MANUAL_VALUE_EPSILON;
+    }
+  });
+  state.manual.lastPresetId = presetId;
+}
+
+function resetManualTweaks() {
+  MANUAL_TWEAKS.forEach((config) => {
+    const tweak = state.manual.tweaks[config.key];
+    if (tweak) {
+      tweak.modified = false;
+    }
+  });
+  state.manual.lastPresetId = '';
+  syncManualTweaksToPreset({ force: true });
+}
+
+function getPresetOverrides() {
+  const simOverrides = {};
+  const renderOverrides = {};
+  let hasSim = false;
+  let hasRender = false;
+  MANUAL_TWEAKS.forEach((config) => {
+    const tweak = state.manual.tweaks[config.key];
+    if (!tweak) {
+      return;
+    }
+    const actual = tweak.actual;
+    const baseline = tweak.baseline;
+    if (!Number.isFinite(actual) || !Number.isFinite(baseline)) {
+      return;
+    }
+    if (Math.abs(actual - baseline) <= MANUAL_VALUE_EPSILON) {
+      return;
+    }
+    if (config.group === 'sim') {
+      simOverrides[config.param] = actual;
+      hasSim = true;
+    } else if (config.group === 'render') {
+      renderOverrides[config.param] = actual;
+      hasRender = true;
+    }
+  });
+  if (!hasSim && !hasRender) {
+    return null;
+  }
+  const overrides = {};
+  if (hasSim) {
+    overrides.sim = simOverrides;
+  }
+  if (hasRender) {
+    overrides.render = renderOverrides;
+  }
+  return overrides;
+}
+
+function handleManualTweakInput(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
+  const key = target.dataset.tweakKey;
+  if (!key || !MANUAL_TWEAK_LOOKUP.has(key)) {
+    return;
+  }
+  const numeric = Number(target.value);
+  if (!Number.isFinite(numeric)) {
+    return;
+  }
+  updateManualTweakNormalized(key, numeric, { userInitiated: true, preserveModification: false });
+  const tweak = state.manual.tweaks[key];
+  if (tweak) {
+    const baseline = Number.isFinite(tweak.baseline) ? tweak.baseline : tweak.actual;
+    tweak.modified = Number.isFinite(baseline)
+      ? Math.abs((tweak.actual ?? baseline) - baseline) > MANUAL_VALUE_EPSILON
+      : false;
+  }
 }
 
 function populateCorrelationSelectors() {
@@ -468,6 +799,20 @@ const state = {
     loadToken: 0,
     entries: [],
     statusTone: MANAGER_STATUS_TONES.INFO,
+  },
+  manual: {
+    lastPresetId: '',
+    tweaks: MANUAL_TWEAK_KEYS.reduce((acc, key) => {
+      acc[key] = {
+        slider: null,
+        value: 0.5,
+        actual: null,
+        baseline: null,
+        bounds: null,
+        modified: false,
+      };
+      return acc;
+    }, {}),
   },
   training: {
     status: TRAINING_STATUS.IDLE,
@@ -1212,6 +1557,7 @@ function resetForm() {
   }
   state.lastError = null;
   state.analysisToken += 1;
+  resetManualTweaks();
   setInputsDisabled(false);
   setStatus(STATUS.IDLE);
 }
@@ -1242,7 +1588,12 @@ function handleFormInput(event) {
   if (!(target instanceof HTMLElement)) {
     return;
   }
-  if (target === state.elements.presetSelect || target === state.elements.modelSelect) {
+  if (target === state.elements.presetSelect) {
+    syncManualTweaksToPreset();
+    updateStatusFromInputs();
+    return;
+  }
+  if (target === state.elements.modelSelect) {
     updateStatusFromInputs();
   }
 }
@@ -1376,6 +1727,7 @@ function handleTrain(event) {
       summary: state.datasetSummary,
       hyperparameters: collectHyperparameters(),
       correlations,
+      presetOverrides: getPresetOverrides(),
     });
   } else {
     console.info(
@@ -2054,6 +2406,19 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   state.elements.managerList = drawer.querySelector('#byom-manager-entries');
   state.elements.managerEmpty = drawer.querySelector('#byom-manager-empty');
 
+  MANUAL_TWEAKS.forEach((config) => {
+    const slider = drawer.querySelector(config.inputSelector);
+    const tweak = state.manual.tweaks[config.key];
+    if (tweak) {
+      tweak.slider = slider instanceof HTMLInputElement ? slider : null;
+      if (tweak.slider) {
+        tweak.slider.dataset.tweakKey = config.key;
+        tweak.slider.addEventListener('input', handleManualTweakInput);
+        tweak.slider.addEventListener('change', handleManualTweakInput);
+      }
+    }
+  });
+
   if (!state.elements.summary) {
     const summary = document.createElement('p');
     summary.id = 'byom-summary';
@@ -2112,6 +2477,8 @@ export function mount({ drawer, toggle, modelOptions = [], onTrain, onCancel } =
   if (state.support) {
     refreshManagerEntriesInternal({ silent: true }).catch(() => {});
   }
+
+  resetManualTweaks();
 
   state.mounted = true;
 }

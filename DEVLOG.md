@@ -358,3 +358,8 @@
 - Added a modal export settings form with resolution presets, custom dimensions, frame rate, bitrate, and MP4/WebM toggle, persisting choices in localStorage.
 - Taught the video exporter to normalize user-provided options, honor bitrate overrides, validate combinations, and skip worker conversion when WebM is selected.
 - Extended the exporter test suite to cover option handling, custom bitrates, and WebM exports, and reran `npm test` plus `npm run lint` for validation.
+
+## 2025-10-27 - BYOM Manual Preset Overrides
+- Wired the BYOM manual tweak sliders to compute safe preset override values for cohesion, vortex amount, and trail fade before launching training.
+- Persisted user overrides alongside BYOM entries so playback and future sessions reuse the customized preset values.
+- Validated the feature with `npm run lint` and `npm test -- --coverage`.

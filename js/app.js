@@ -1179,6 +1179,41 @@ function resolveStoredTrackIndex(reference) {
   return 0;
 }
 
+function clonePresetOverrides(overrides) {
+  if (!overrides || typeof overrides !== 'object') {
+    return null;
+  }
+  const cloned = {};
+  let hasValue = false;
+  if (overrides.sim && typeof overrides.sim === 'object') {
+    const sim = {};
+    for (const [key, value] of Object.entries(overrides.sim)) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        sim[key] = numeric;
+      }
+    }
+    if (Object.keys(sim).length > 0) {
+      cloned.sim = sim;
+      hasValue = true;
+    }
+  }
+  if (overrides.render && typeof overrides.render === 'object') {
+    const render = {};
+    for (const [key, value] of Object.entries(overrides.render)) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        render[key] = numeric;
+      }
+    }
+    if (Object.keys(render).length > 0) {
+      cloned.render = render;
+      hasValue = true;
+    }
+  }
+  return hasValue ? cloned : null;
+}
+
 function createFileMetadata(file, summary) {
   if (file instanceof File) {
     const lastModified = Number.isFinite(file.lastModified) ? file.lastModified : 0;
@@ -1365,12 +1400,23 @@ const trainingController = createTrainingController({
 });
 
 byom.setHandlers({
-  onTrain: ({ file, objectUrl, preset, dataset, summary, model, hyperparameters, correlations }) => {
+  onTrain: ({
+    file,
+    objectUrl,
+    preset,
+    dataset,
+    summary,
+    model,
+    hyperparameters,
+    correlations,
+    presetOverrides,
+  }) => {
     if (!dataset || !model) {
       byom.setTrainingStatus('error', { message: 'Training aborted — dataset is unavailable.', progress: 0 });
       return;
     }
     const isFreshModel = model === FRESH_MODEL_ID;
+    const overrides = clonePresetOverrides(presetOverrides);
     activeTrainingContext = {
       file: file instanceof File ? file : null,
       objectUrl: typeof objectUrl === 'string' ? objectUrl : '',
@@ -1380,6 +1426,7 @@ byom.setHandlers({
       hyperparameters,
       correlations: Array.isArray(correlations) ? correlations.slice() : [],
       mode: isFreshModel ? 'fresh' : 'tune',
+      presetOverrides: overrides,
     };
     byom.setTrainingStatus('preparing', { progress: 0, message: 'Preparing training…' });
     const inlineDefinition = isFreshModel ? null : getStoredModelDefinition(model);
@@ -1956,6 +2003,7 @@ async function finalizeByomTraining({ modelDefinition, stats }) {
       summary: context.summary ?? null,
       stats: stats ?? null,
       model: modelDefinition,
+      presetOverrides: context.presetOverrides ?? null,
       version: 1,
     });
     persisted = await byomStorage.putEntry(payload, {
