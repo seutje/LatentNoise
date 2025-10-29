@@ -353,3 +353,8 @@
 - Treated `TypeError: Failed to fetch` blob reads as transient so the exporter retries with Response/FileReader fallbacks instead of aborting the mux pipeline.
 - Added Jest coverage to confirm MP4 conversions proceed when the primary arrayBuffer path rejects with the browser-specific TypeError.
 - Re-verified the suite with `npm test` and `npm run lint`.
+
+## 2025-10-27 - Preset Morphing Controls
+- Added a `mixPresets` helper to blend sim/render adjustments and extended Jest coverage for the new interpolation logic.
+- Introduced HUD controls for selecting a secondary preset and morph weight, blending presets before manual offsets while persisting the UI state.
+- Confirmed the changes with `npm test` and `npm run lint`.

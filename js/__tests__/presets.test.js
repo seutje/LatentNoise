@@ -5,6 +5,7 @@ import {
   getPreset,
   listPresets,
   resolvePreset,
+  mixPresets,
 } from '../presets.js';
 
 describe('presets', () => {
@@ -94,5 +95,35 @@ describe('presets', () => {
     expect(summary).toMatchObject({ id: 'clouds', title: 'Clouds' });
     expect(summary.palette).not.toBe(getPreset('Clouds').palette);
     expect(describePreset('missing')).toBeNull();
+  });
+
+  test('mixPresets returns base adjustments when weight is zero', () => {
+    const base = getPreset('meditation');
+    const target = getPreset('traffic-jam');
+    const mixed = mixPresets(base, target, 0);
+
+    expect(mixed).not.toBeNull();
+    expect(mixed?.sim?.spawnRate).toMatchObject({ scale: base.sim.spawnRate.scale });
+    expect(mixed?.render?.hueShift).toMatchObject({ offset: base.render.hueShift.offset });
+  });
+
+  test('mixPresets interpolates scale and offset values', () => {
+    const base = getPreset('meditation');
+    const target = getPreset('traffic-jam');
+    const mixed = mixPresets(base, target, 0.5);
+
+    expect(mixed?.sim?.spawnRate?.scale).toBeCloseTo(
+      (base.sim.spawnRate.scale + target.sim.spawnRate.scale) / 2,
+    );
+    expect(mixed?.render?.hueShift?.offset).toBeCloseTo(
+      (base.render.hueShift.offset + target.render.hueShift.offset) / 2,
+    );
+  });
+
+  test('mixPresets clamps weight and handles missing presets', () => {
+    const target = getPreset('clouds');
+    const mixed = mixPresets(null, target, 2);
+    expect(mixed?.sim).toMatchObject(target.sim);
+    expect(mixPresets(null, null, 0.5)).toBeNull();
   });
 });

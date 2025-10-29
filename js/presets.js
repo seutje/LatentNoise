@@ -288,6 +288,77 @@ for (const preset of PRESET_DATA) {
   PRESET_LOOKUP.set(slugify(preset.title), preset);
 }
 
+function clamp01(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  if (value <= 0) {
+    return 0;
+  }
+  if (value >= 1) {
+    return 1;
+  }
+  return value;
+}
+
+function normalizeAdjustment(config) {
+  if (typeof config === 'number') {
+    return { scale: Number.isFinite(config) ? config : 1, offset: 0 };
+  }
+  const scale = typeof config?.scale === 'number' && Number.isFinite(config.scale) ? config.scale : 1;
+  const offset = typeof config?.offset === 'number' && Number.isFinite(config.offset) ? config.offset : 0;
+  return { scale, offset };
+}
+
+function mixAdjustment(baseConfig, targetConfig, t) {
+  const base = normalizeAdjustment(baseConfig);
+  const target = normalizeAdjustment(targetConfig);
+  const weight = clamp01(t);
+
+  if (weight === 0) {
+    return base;
+  }
+  if (weight === 1) {
+    return target;
+  }
+
+  const scale = base.scale + (target.scale - base.scale) * weight;
+  const offset = base.offset + (target.offset - base.offset) * weight;
+  return { scale, offset };
+}
+
+function reduceAdjustment(adjustment) {
+  if (!adjustment) {
+    return undefined;
+  }
+  const { scale, offset } = adjustment;
+  const hasScale = Number.isFinite(scale) && Math.abs(scale - 1) > 1e-6;
+  const hasOffset = Number.isFinite(offset) && Math.abs(offset) > 1e-6;
+  if (hasScale && hasOffset) {
+    return { scale, offset };
+  }
+  if (hasOffset) {
+    return { offset };
+  }
+  if (hasScale) {
+    return { scale };
+  }
+  return undefined;
+}
+
+function mixGroup(baseGroup = {}, targetGroup = {}, t) {
+  const keys = new Set([...Object.keys(baseGroup), ...Object.keys(targetGroup)]);
+  const result = {};
+  for (const key of keys) {
+    const blended = mixAdjustment(baseGroup[key], targetGroup[key], t);
+    const reduced = reduceAdjustment(blended);
+    if (reduced) {
+      result[key] = reduced;
+    }
+  }
+  return result;
+}
+
 function slugify(name) {
   return String(name)
     .toLowerCase()
@@ -410,3 +481,33 @@ export function describePreset(nameOrIndex) {
 }
 
 export const PRESETS = PRESET_DATA;
+
+export function mixPresets(basePreset, targetPreset, t) {
+  const base = basePreset || null;
+  const target = targetPreset || null;
+  const weight = clamp01(t);
+
+  if (!base && !target) {
+    return null;
+  }
+  if (!target || weight === 0) {
+    if (!base) {
+      return null;
+    }
+    return {
+      sim: { ...(base.sim || {}) },
+      render: { ...(base.render || {}) },
+    };
+  }
+  if (!base || weight === 1) {
+    return {
+      sim: { ...(target.sim || {}) },
+      render: { ...(target.render || {}) },
+    };
+  }
+
+  return {
+    sim: mixGroup(base.sim, target.sim, weight),
+    render: mixGroup(base.render, target.render, weight),
+  };
+}

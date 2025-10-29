@@ -3,7 +3,13 @@ import * as nn from './nn.js';
 import * as physics from './physics.js';
 import * as map from './map.js';
 import * as render from './render.js';
-import { applyPreset as applyPresetScaling, getDefaultPreset, getPreset } from './presets.js';
+import {
+  applyPreset as applyPresetScaling,
+  getDefaultPreset,
+  getPreset,
+  listPresets,
+  mixPresets,
+} from './presets.js';
 import { getList, resolveUrl } from './playlist.js';
 import { initDebugOverlay, runStartupDiagnostics, updateDebugOverlay } from './diagnostics.js';
 import * as byom from './byom.js';
@@ -34,6 +40,8 @@ const STORAGE_KEYS = Object.freeze({
   SAFE_MODE: 'ln.safeMode',
   NN_BYPASS: 'ln.nnBypass',
   REPEAT: 'ln.repeat',
+  PRESET_BLEND_TARGET: 'ln.presetBlendTarget',
+  PRESET_BLEND_WEIGHT: 'ln.presetBlendWeight',
 });
 
 const MAP_PARAM_COUNT = map.PARAM_NAMES.length;
@@ -107,6 +115,9 @@ const SIM_PARAMS_DEFAULT = Object.freeze({
   repelImpulse: 0,
   vortexAmount: 0.28,
 });
+
+const SIM_PARAM_KEYS = Object.freeze(Object.keys(SIM_PARAMS_DEFAULT));
+const RENDER_PARAM_KEYS = Object.freeze(Object.keys(RENDER_PARAMS_DEFAULT));
 
 const PERFORMANCE_SAMPLE_WINDOW = 90;
 const PERFORMANCE_DROP_FPS = 56;
@@ -338,6 +349,9 @@ const playlistSelect = document.getElementById('playlist');
 const playlistAttachButton = document.getElementById('playlist-attach');
 const playlistRenameButton = document.getElementById('playlist-rename');
 const playlistDeleteButton = document.getElementById('playlist-delete');
+const presetBlendSelect = document.getElementById('preset-blend');
+const presetMorphSlider = document.getElementById('preset-morph');
+const presetMorphDisplay = document.getElementById('preset-morph-display');
 const exportButton = document.getElementById('export-video');
 const audioElement = document.getElementById('player');
 const volumeSlider = document.getElementById('volume');
@@ -365,6 +379,9 @@ if (
   !canvasElement ||
   !playlistSelect ||
   !audioElement ||
+  !presetBlendSelect ||
+  !presetMorphSlider ||
+  !presetMorphDisplay ||
   !volumeSlider ||
   !playButton ||
   !prevButton ||
@@ -381,7 +398,7 @@ if (
   !byomDrawer
 ) {
   throw new Error(
-    'Required controls missing from DOM (canvas, playlist, audio, volume, play, prev, next, seek, repeat, export, playlist actions, fullscreen, or BYOM).',
+    'Required controls missing from DOM (canvas, playlist, audio, morph controls, volume, play, prev, next, seek, repeat, export, playlist actions, fullscreen, or BYOM).',
   );
 }
 
@@ -414,7 +431,16 @@ if (visibilityState.hidden) {
 
 const renderParams = { ...RENDER_PARAMS_DEFAULT };
 const simParams = { ...SIM_PARAMS_DEFAULT };
+const presetBlendState = { targetId: '', weight: 0 };
 let activePreset = getDefaultPreset();
+let presetBaseDefaults = applyPresetToDefaults(activePreset);
+let presetBaseline = {
+  sim: { ...presetBaseDefaults.sim },
+  render: { ...presetBaseDefaults.render },
+};
+let presetOverrideDelta = computeOverrideDelta(presetBaseline, presetBaseDefaults);
+let presetBlendTarget = null;
+let blendedBaselineCache = null;
 render.setPalette(activePreset?.palette);
 videoExport.init({
   canvas: canvasElement,
@@ -962,6 +988,30 @@ byom.setHandlers({
 const storedSafeMode = readStoredBoolean(STORAGE_KEYS.SAFE_MODE, false);
 const storedBypass = readStoredBoolean(STORAGE_KEYS.NN_BYPASS, false);
 const storedRepeat = readStoredBoolean(STORAGE_KEYS.REPEAT, false);
+const storedBlendTargetId = readStorage(STORAGE_KEYS.PRESET_BLEND_TARGET) ?? '';
+const storedBlendWeightRaw = readStorage(STORAGE_KEYS.PRESET_BLEND_WEIGHT);
+let storedBlendWeight = Number.parseFloat(storedBlendWeightRaw ?? '');
+if (!Number.isFinite(storedBlendWeight)) {
+  storedBlendWeight = 0;
+}
+storedBlendWeight = clamp(storedBlendWeight, 0, 1);
+if (storedBlendTargetId) {
+  const resolvedBlendTarget = getPreset(storedBlendTargetId);
+  if (resolvedBlendTarget) {
+    presetBlendTarget = resolvedBlendTarget;
+    presetBlendState.targetId = resolvedBlendTarget.id;
+    presetBlendState.weight = storedBlendWeight;
+  } else {
+    presetBlendState.targetId = '';
+    presetBlendState.weight = 0;
+  }
+} else {
+  presetBlendState.targetId = '';
+  presetBlendState.weight = 0;
+}
+invalidateBlendCache();
+populatePresetBlendOptions(presetBlendState.targetId);
+syncPresetMorphUi();
 
 const safeModeEnabled = storedSafeMode;
 const nnBypass = storedBypass;
@@ -1023,6 +1073,122 @@ function copyParams(target, source) {
     target[key] = source[key];
   }
   return target;
+}
+
+function applyPresetToDefaults(preset) {
+  const baseSim = { ...SIM_PARAMS_DEFAULT };
+  const baseRender = { ...RENDER_PARAMS_DEFAULT };
+  if (!preset) {
+    return { sim: baseSim, render: baseRender };
+  }
+  const adjusted = applyPresetScaling(preset, { sim: baseSim, render: baseRender });
+  return {
+    sim: adjusted?.sim ?? baseSim,
+    render: adjusted?.render ?? baseRender,
+  };
+}
+
+function computeOverrideDelta(baseline, baseDefaults) {
+  const simDelta = {};
+  const renderDelta = {};
+  SIM_PARAM_KEYS.forEach((key) => {
+    const baseValue = baseDefaults?.sim?.[key];
+    const fallback = SIM_PARAMS_DEFAULT[key];
+    const baseDefault = Number.isFinite(baseValue) ? baseValue : fallback;
+    const baselineValue = baseline?.sim?.[key];
+    const resolvedBaseline = Number.isFinite(baselineValue) ? baselineValue : baseDefault;
+    simDelta[key] = resolvedBaseline - baseDefault;
+  });
+  RENDER_PARAM_KEYS.forEach((key) => {
+    const baseValue = baseDefaults?.render?.[key];
+    const fallback = RENDER_PARAMS_DEFAULT[key];
+    const baseDefault = Number.isFinite(baseValue) ? baseValue : fallback;
+    const baselineValue = baseline?.render?.[key];
+    const resolvedBaseline = Number.isFinite(baselineValue) ? baselineValue : baseDefault;
+    renderDelta[key] = resolvedBaseline - baseDefault;
+  });
+  return { sim: simDelta, render: renderDelta };
+}
+
+function invalidateBlendCache() {
+  blendedBaselineCache = null;
+}
+
+function getBlendedBaseline() {
+  const rawWeight = Number.isFinite(presetBlendState.weight) ? presetBlendState.weight : 0;
+  const weight = clamp(rawWeight, 0, 1);
+  if (!presetBlendTarget || weight <= 0) {
+    return presetBaseline;
+  }
+  const baseId = activePreset?.id ?? '';
+  const targetId = presetBlendTarget?.id ?? '';
+  if (
+    blendedBaselineCache
+    && blendedBaselineCache.weight === weight
+    && blendedBaselineCache.baseId === baseId
+    && blendedBaselineCache.targetId === targetId
+  ) {
+    return blendedBaselineCache.baseline;
+  }
+
+  const mixedPreset = mixPresets(activePreset, presetBlendTarget, weight);
+  const mixedBaseline = applyPresetToDefaults(mixedPreset);
+  const adjustFactor = 1 - weight;
+  const baseline = { sim: {}, render: {} };
+
+  SIM_PARAM_KEYS.forEach((key) => {
+    const baseDefault = presetBaseDefaults?.sim?.[key];
+    const defaultValue = Number.isFinite(baseDefault) ? baseDefault : SIM_PARAMS_DEFAULT[key];
+    const mixedValue = mixedBaseline?.sim?.[key];
+    const resolvedMixed = Number.isFinite(mixedValue) ? mixedValue : defaultValue;
+    const overrideDelta = presetOverrideDelta?.sim?.[key] ?? 0;
+    baseline.sim[key] = resolvedMixed + overrideDelta * adjustFactor;
+  });
+
+  RENDER_PARAM_KEYS.forEach((key) => {
+    const baseDefault = presetBaseDefaults?.render?.[key];
+    const defaultValue = Number.isFinite(baseDefault) ? baseDefault : RENDER_PARAMS_DEFAULT[key];
+    const mixedValue = mixedBaseline?.render?.[key];
+    const resolvedMixed = Number.isFinite(mixedValue) ? mixedValue : defaultValue;
+    const overrideDelta = presetOverrideDelta?.render?.[key] ?? 0;
+    baseline.render[key] = resolvedMixed + overrideDelta * adjustFactor;
+  });
+
+  blendedBaselineCache = { weight, baseId, targetId, baseline };
+  return baseline;
+}
+
+function populatePresetBlendOptions(selectedId = '') {
+  if (!presetBlendSelect) {
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  const noneOption = document.createElement('option');
+  noneOption.value = '';
+  noneOption.textContent = 'None';
+  fragment.appendChild(noneOption);
+  listPresets().forEach((preset) => {
+    const option = document.createElement('option');
+    option.value = preset.id;
+    option.textContent = preset.title;
+    fragment.appendChild(option);
+  });
+  presetBlendSelect.replaceChildren(fragment);
+  presetBlendSelect.value = selectedId ?? '';
+}
+
+function syncPresetMorphUi() {
+  const hasTarget = Boolean(presetBlendTarget);
+  const weight = hasTarget ? clamp(presetBlendState.weight, 0, 1) : 0;
+  if (presetMorphSlider) {
+    presetMorphSlider.disabled = !hasTarget;
+    presetMorphSlider.setAttribute('aria-disabled', hasTarget ? 'false' : 'true');
+    presetMorphSlider.value = weight.toFixed(2);
+    presetMorphSlider.style.setProperty('--value', `${Math.round(weight * 100)}%`);
+  }
+  if (presetMorphDisplay) {
+    presetMorphDisplay.textContent = `${Math.round(weight * 100)}%`;
+  }
 }
 
 function getPerformanceScale() {
@@ -1151,6 +1317,7 @@ function applyPresetForEntry(entry, options = {}) {
   }
 
   activePreset = preset;
+  presetBaseDefaults = applyPresetToDefaults(activePreset);
   if (preset?.palette) {
     render.setPalette(preset.palette);
   }
@@ -1180,6 +1347,13 @@ function applyPresetForEntry(entry, options = {}) {
       copyParams(renderParams, entry.presetOverrides.render);
     }
   }
+
+  presetBaseline = {
+    sim: { ...simParams },
+    render: { ...renderParams },
+  };
+  presetOverrideDelta = computeOverrideDelta(presetBaseline, presetBaseDefaults);
+  invalidateBlendCache();
 
   physics.configure({
     defaults: {
@@ -1288,26 +1462,106 @@ function applyMappedParams(mapped) {
     return;
   }
   const safe = Boolean(safeModeEnabled);
-  const spawnBase = Number.isFinite(mapped.spawnRate) ? mapped.spawnRate : SIM_PARAMS_DEFAULT.spawnRate;
-  const fieldBase = Number.isFinite(mapped.fieldStrength) ? mapped.fieldStrength : SIM_PARAMS_DEFAULT.fieldStrength;
-  const cohesionBase = Number.isFinite(mapped.cohesion) ? mapped.cohesion : SIM_PARAMS_DEFAULT.cohesion;
-  const repelBase = Number.isFinite(mapped.repelImpulse) ? mapped.repelImpulse : SIM_PARAMS_DEFAULT.repelImpulse;
-  const vortexBase = Number.isFinite(mapped.vortexAmount) ? mapped.vortexAmount : SIM_PARAMS_DEFAULT.vortexAmount;
+  const baseline = getBlendedBaseline();
+  const baseSim = presetBaseline?.sim ?? {};
+  const baseRender = presetBaseline?.render ?? {};
+  const blendSim = baseline?.sim ?? baseSim;
+  const blendRender = baseline?.render ?? baseRender;
 
-  const trailBase = Number.isFinite(mapped.trailFade) ? mapped.trailFade : RENDER_PARAMS_DEFAULT.trailFade;
-  const glowBase = Number.isFinite(mapped.glow) ? mapped.glow : RENDER_PARAMS_DEFAULT.glow;
-  const jitterBase = Number.isFinite(mapped.sizeJitter) ? mapped.sizeJitter : RENDER_PARAMS_DEFAULT.sizeJitter;
-  const hueBase = Number.isFinite(mapped.hueShift) ? mapped.hueShift : RENDER_PARAMS_DEFAULT.hueShift;
-  const sparkleBase = Number.isFinite(mapped.sparkleDensity) ? mapped.sparkleDensity : RENDER_PARAMS_DEFAULT.sparkleDensity;
-  const zoomBase = Number.isFinite(mapped.zoom) ? mapped.zoom : RENDER_PARAMS_DEFAULT.zoom;
+  const baseSimResolved = {};
+  SIM_PARAM_KEYS.forEach((key) => {
+    const baseValue = baseSim?.[key];
+    const fallback = SIM_PARAMS_DEFAULT[key];
+    baseSimResolved[key] = Number.isFinite(baseValue) ? baseValue : fallback;
+  });
+  const blendSimResolved = {};
+  SIM_PARAM_KEYS.forEach((key) => {
+    const blendValue = blendSim?.[key];
+    blendSimResolved[key] = Number.isFinite(blendValue) ? blendValue : baseSimResolved[key];
+  });
+
+  const baseRenderResolved = {};
+  RENDER_PARAM_KEYS.forEach((key) => {
+    const baseValue = baseRender?.[key];
+    const fallback = RENDER_PARAMS_DEFAULT[key];
+    baseRenderResolved[key] = Number.isFinite(baseValue) ? baseValue : fallback;
+  });
+  const blendRenderResolved = {};
+  RENDER_PARAM_KEYS.forEach((key) => {
+    const blendValue = blendRender?.[key];
+    blendRenderResolved[key] = Number.isFinite(blendValue) ? blendValue : baseRenderResolved[key];
+  });
+
+  const spawnOffset = Number.isFinite(mapped.spawnOffset)
+    ? mapped.spawnOffset
+    : Number.isFinite(mapped.spawnRate)
+      ? mapped.spawnRate - baseSimResolved.spawnRate
+      : 0;
+  const spawnBase = blendSimResolved.spawnRate + spawnOffset;
+
+  const fieldOffset = Number.isFinite(mapped.fieldStrength)
+    ? mapped.fieldStrength - baseSimResolved.fieldStrength
+    : 0;
+  const fieldBase = blendSimResolved.fieldStrength + fieldOffset;
+
+  const cohesionOffset = Number.isFinite(mapped.cohesion)
+    ? mapped.cohesion - baseSimResolved.cohesion
+    : 0;
+  const cohesionBase = blendSimResolved.cohesion + cohesionOffset;
+
+  const repelOffset = Number.isFinite(mapped.repelImpulse)
+    ? mapped.repelImpulse - baseSimResolved.repelImpulse
+    : 0;
+  const repelBase = blendSimResolved.repelImpulse + repelOffset;
+
+  const vortexOffset = Number.isFinite(mapped.vortexAmount)
+    ? mapped.vortexAmount - baseSimResolved.vortexAmount
+    : 0;
+  const vortexBase = blendSimResolved.vortexAmount + vortexOffset;
+
+  const trailOffset = Number.isFinite(mapped.trailFade)
+    ? mapped.trailFade - baseRenderResolved.trailFade
+    : 0;
+  const trailBase = blendRenderResolved.trailFade + trailOffset;
+
+  const glowOffset = Number.isFinite(mapped.glowOffset)
+    ? mapped.glowOffset
+    : Number.isFinite(mapped.glow)
+      ? mapped.glow - baseRenderResolved.glow
+      : 0;
+  const glowBase = blendRenderResolved.glow + glowOffset;
+
+  const jitterOffset = Number.isFinite(mapped.sizeJitter)
+    ? mapped.sizeJitter - baseRenderResolved.sizeJitter
+    : 0;
+  const jitterBase = blendRenderResolved.sizeJitter + jitterOffset;
+
+  const hueOffset = Number.isFinite(mapped.hueOffset)
+    ? mapped.hueOffset
+    : Number.isFinite(mapped.hueShift)
+      ? mapped.hueShift - baseRenderResolved.hueShift
+      : 0;
+  const hueBase = blendRenderResolved.hueShift + hueOffset;
+
+  const sparkleOffset = Number.isFinite(mapped.sparkleOffset)
+    ? mapped.sparkleOffset
+    : Number.isFinite(mapped.sparkleDensity)
+      ? mapped.sparkleDensity - baseRenderResolved.sparkleDensity
+      : 0;
+  const sparkleBase = blendRenderResolved.sparkleDensity + sparkleOffset;
+
+  const zoomOffset = Number.isFinite(mapped.zoom)
+    ? mapped.zoom - baseRenderResolved.zoom
+    : 0;
+  const zoomBase = blendRenderResolved.zoom + zoomOffset;
   const zoomBaseClamped = clamp(zoomBase, ZOOM_SOURCE_MIN, ZOOM_SOURCE_MAX);
   const zoomNormalized = (zoomBaseClamped - ZOOM_SOURCE_MIN) / ZOOM_SOURCE_RANGE;
   const zoomScaled = ZOOM_OUTPUT_MIN + (ZOOM_OUTPUT_MAX - ZOOM_OUTPUT_MIN) * zoomNormalized;
 
-  nnOffsets.spawnOffset = Number.isFinite(mapped.spawnOffset) ? mapped.spawnOffset : 0;
-  nnOffsets.glowOffset = Number.isFinite(mapped.glowOffset) ? mapped.glowOffset : 0;
-  nnOffsets.sparkleOffset = Number.isFinite(mapped.sparkleOffset) ? mapped.sparkleOffset : 0;
-  nnOffsets.hueOffset = Number.isFinite(mapped.hueOffset) ? mapped.hueOffset : 0;
+  nnOffsets.spawnOffset = spawnOffset;
+  nnOffsets.glowOffset = glowOffset;
+  nnOffsets.sparkleOffset = sparkleOffset;
+  nnOffsets.hueOffset = hueOffset;
   nnOffsets.repelImpulse = clamp(repelBase, 0, 1);
 
   const spawnMin = 0;
@@ -1739,6 +1993,68 @@ if (introPlayButton) {
   }
   introPlayButton.addEventListener('click', handleIntroStart);
 }
+
+presetBlendSelect.addEventListener('change', (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
+  const value = target.value;
+  if (!value) {
+    presetBlendTarget = null;
+    presetBlendState.targetId = '';
+    presetBlendState.weight = 0;
+    writeStorage(STORAGE_KEYS.PRESET_BLEND_TARGET, '');
+    writeStorage(STORAGE_KEYS.PRESET_BLEND_WEIGHT, '0');
+    invalidateBlendCache();
+    syncPresetMorphUi();
+    return;
+  }
+  const resolved = getPreset(value);
+  if (!resolved) {
+    target.value = '';
+    presetBlendTarget = null;
+    presetBlendState.targetId = '';
+    presetBlendState.weight = 0;
+    writeStorage(STORAGE_KEYS.PRESET_BLEND_TARGET, '');
+    writeStorage(STORAGE_KEYS.PRESET_BLEND_WEIGHT, '0');
+    invalidateBlendCache();
+    syncPresetMorphUi();
+    return;
+  }
+  presetBlendTarget = resolved;
+  presetBlendState.targetId = resolved.id;
+  writeStorage(STORAGE_KEYS.PRESET_BLEND_TARGET, resolved.id);
+  writeStorage(STORAGE_KEYS.PRESET_BLEND_WEIGHT, clamp(presetBlendState.weight, 0, 1).toFixed(2));
+  invalidateBlendCache();
+  syncPresetMorphUi();
+});
+
+presetMorphSlider.addEventListener('input', () => {
+  if (!presetBlendTarget) {
+    presetBlendState.weight = 0;
+    presetMorphSlider.value = '0';
+    presetMorphSlider.style.setProperty('--value', '0%');
+    if (presetMorphDisplay) {
+      presetMorphDisplay.textContent = '0%';
+    }
+    writeStorage(STORAGE_KEYS.PRESET_BLEND_WEIGHT, '0');
+    invalidateBlendCache();
+    return;
+  }
+  const raw = Number(presetMorphSlider.value);
+  if (!Number.isFinite(raw)) {
+    return;
+  }
+  const weight = clamp(raw, 0, 1);
+  presetBlendState.weight = weight;
+  presetMorphSlider.style.setProperty('--value', `${Math.round(weight * 100)}%`);
+  if (presetMorphDisplay) {
+    presetMorphDisplay.textContent = `${Math.round(weight * 100)}%`;
+  }
+  writeStorage(STORAGE_KEYS.PRESET_BLEND_WEIGHT, weight.toFixed(2));
+  invalidateBlendCache();
+});
 
 volumeSlider.addEventListener('input', () => {
   const nextVolume = Number(volumeSlider.value);
@@ -2175,6 +2491,8 @@ function frame(now) {
       manualHueOffset: manualAdjustments.hueOffset,
       safeMode: safeModeEnabled ? 1 : 0,
       nnBypass: nnBypass ? 1 : 0,
+      blendTarget: presetBlendTarget ? presetBlendTarget.id : '',
+      blendWeight: presetBlendTarget ? clamp(presetBlendState.weight, 0, 1) : 0,
     },
   });
 
