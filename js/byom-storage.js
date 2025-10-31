@@ -1,3 +1,5 @@
+import { normalizePresetOverrides } from './byom-overrides.js';
+
 const DB_NAME = 'ln.byom';
 const STORE_NAME = 'models';
 const DB_VERSION = 1;
@@ -67,41 +69,6 @@ function fallbackPut(entry) {
 function fallbackDelete(id) {
   MEMORY_STORE.delete(id);
   return true;
-}
-
-function normalizePresetOverrides(overrides) {
-  if (!overrides || typeof overrides !== 'object') {
-    return null;
-  }
-  const normalized = {};
-  let hasValue = false;
-  if (overrides.sim && typeof overrides.sim === 'object') {
-    const sim = {};
-    for (const [key, value] of Object.entries(overrides.sim)) {
-      const numeric = Number(value);
-      if (Number.isFinite(numeric)) {
-        sim[key] = numeric;
-      }
-    }
-    if (Object.keys(sim).length > 0) {
-      normalized.sim = sim;
-      hasValue = true;
-    }
-  }
-  if (overrides.render && typeof overrides.render === 'object') {
-    const render = {};
-    for (const [key, value] of Object.entries(overrides.render)) {
-      const numeric = Number(value);
-      if (Number.isFinite(numeric)) {
-        render[key] = numeric;
-      }
-    }
-    if (Object.keys(render).length > 0) {
-      normalized.render = render;
-      hasValue = true;
-    }
-  }
-  return hasValue ? normalized : null;
 }
 
 function sanitizeEntry(entry) {

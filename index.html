@@ -223,18 +223,65 @@
                   <h3 id="byom-manual-heading" class="byom-heading">Manual Tweaks</h3>
                   <details id="byom-manual">
                     <summary>Advanced parameters</summary>
-                    <div class="byom-manual-group">
+                    <h4 id="byom-manual-palette" class="byom-manual-subheading">Palette</h4>
+                    <div class="byom-manual-group" aria-labelledby="byom-manual-palette">
+                      <label class="byom-label" for="byom-tweak-background">
+                        Background
+                        <input id="byom-tweak-background" type="color" value="#050505">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-base-hue">
+                        Base Hue
+                        <input id="byom-tweak-base-hue" type="range" min="0" max="1" step="0.01" value="0.6">
+                      </label>
+                    </div>
+                    <h4 id="byom-manual-sim" class="byom-manual-subheading">Simulation</h4>
+                    <div class="byom-manual-group" aria-labelledby="byom-manual-sim">
+                      <label class="byom-label" for="byom-tweak-spawn">
+                        Spawn Rate
+                        <input id="byom-tweak-spawn" type="range" min="0" max="1" step="0.01" value="0.5">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-field">
+                        Field Strength
+                        <input id="byom-tweak-field" type="range" min="0" max="1" step="0.01" value="0.5">
+                      </label>
                       <label class="byom-label" for="byom-tweak-cohesion">
                         Cohesion
                         <input id="byom-tweak-cohesion" type="range" min="0" max="1" step="0.01" value="0.5">
                       </label>
+                      <label class="byom-label" for="byom-tweak-repel">
+                        Repel Impulse
+                        <input id="byom-tweak-repel" type="range" min="0" max="1" step="0.01" value="0.2">
+                      </label>
                       <label class="byom-label" for="byom-tweak-vortex">
                         Vortex
-                        <input id="byom-tweak-vortex" type="range" min="0" max="1" step="0.01" value="0.4">
+                        <input id="byom-tweak-vortex" type="range" min="0" max="1" step="0.01" value="0.5">
                       </label>
+                    </div>
+                    <h4 id="byom-manual-render" class="byom-manual-subheading">Rendering</h4>
+                    <div class="byom-manual-group" aria-labelledby="byom-manual-render">
                       <label class="byom-label" for="byom-tweak-trails">
                         Trail Fade
-                        <input id="byom-tweak-trails" type="range" min="0" max="1" step="0.01" value="0.6">
+                        <input id="byom-tweak-trails" type="range" min="0" max="1" step="0.01" value="0.5">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-glow">
+                        Glow
+                        <input id="byom-tweak-glow" type="range" min="0" max="1" step="0.01" value="0.5">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-jitter">
+                        Size Jitter
+                        <input id="byom-tweak-jitter" type="range" min="0" max="1" step="0.01" value="0.4">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-hue">
+                        Hue Shift
+                        <input id="byom-tweak-hue" type="range" min="0" max="1" step="0.01" value="0.5">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-sparkle">
+                        Sparkle Density
+                        <input id="byom-tweak-sparkle" type="range" min="0" max="1" step="0.01" value="0.4">
+                      </label>
+                      <label class="byom-label" for="byom-tweak-zoom">
+                        Zoom
+                        <input id="byom-tweak-zoom" type="range" min="0" max="1" step="0.01" value="0.5">
                       </label>
                     </div>
                   </details>
